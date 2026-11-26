@@ -1029,7 +1029,9 @@ const ptBR: ConsultationMessages = {
 		recordingSpeak: "gravando… fale normalmente",
 		consultationText: "Texto da consulta",
 		useSample: "Usar exemplo",
-		draftRecovered: paramMessage("pt-BR", "Rascunho recuperado — gravação finalizada às {time}", ["time"]),
+		draftRecovered: paramMessage("pt-BR", "Rascunho recuperado — gravação finalizada às {time}", [
+			"time",
+		]),
 		restoreDraft: "Restaurar rascunho",
 		discardDraft: "Descartar",
 		draftAudio: "Áudio do rascunho",
@@ -1425,7 +1427,9 @@ const es: ConsultationMessages = {
 		recordingSpeak: "grabando… hable con normalidad",
 		consultationText: "Texto de la consulta",
 		useSample: "Usar ejemplo",
-		draftRecovered: paramMessage("es", "Borrador recuperado — grabación terminada a las {time}", ["time"]),
+		draftRecovered: paramMessage("es", "Borrador recuperado — grabación terminada a las {time}", [
+			"time",
+		]),
 		restoreDraft: "Restaurar borrador",
 		discardDraft: "Descartar",
 		draftAudio: "Audio del borrador",

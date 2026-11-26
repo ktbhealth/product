@@ -484,8 +484,7 @@ export function NewConsultationPage({
 		void draftStore.load().then((d: RecordingDraft | null) => {
 			if (!cancelled && d) {
 				setDraft(d);
-				if (typeof URL.createObjectURL === "function")
-					setDraftUrl(URL.createObjectURL(d.audio));
+				if (typeof URL.createObjectURL === "function") setDraftUrl(URL.createObjectURL(d.audio));
 			}
 		});
 		return () => {

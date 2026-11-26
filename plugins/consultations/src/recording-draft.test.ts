@@ -35,8 +35,7 @@ const fakeIndexedDB = (rows = new Map<string, unknown>()) => {
 				get: (key: string) => makeReq(() => ({ result: rows.get(key) })),
 				put: (value: unknown, key: string) =>
 					makeReq(() => ({ result: (rows.set(key, value), undefined) })),
-				delete: (key: string) =>
-					makeReq(() => ({ result: (rows.delete(key), undefined) })),
+				delete: (key: string) => makeReq(() => ({ result: (rows.delete(key), undefined) })),
 			}),
 		}),
 		createObjectStore: () => ({}),

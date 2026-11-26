@@ -400,23 +400,14 @@ export function ConsultationDetailPage({
 	// (the edits column is ciphered — BYOK re-encryption is T-146
 	// scope), matching the anamnesis editor's gate.
 	const canEditTranscript = !zk && api?.saveTranscriptEdits != null;
-	const storedEdits = useMemo(
-		() => parseTranscriptEdits(v.transcriptEdits),
-		[v.transcriptEdits],
-	);
+	const storedEdits = useMemo(() => parseTranscriptEdits(v.transcriptEdits), [v.transcriptEdits]);
 	const [newEdits, setNewEdits] = useState<readonly TranscriptEditEntry[]>([]);
 	const entries = useMemo(
-		() => [
-			...storedEdits,
-			...newEdits.filter((e) => !storedEdits.some((s) => s.u === e.u)),
-		],
+		() => [...storedEdits, ...newEdits.filter((e) => !storedEdits.some((s) => s.u === e.u))],
 		[storedEdits, newEdits],
 	);
 	const editsBase = editsBaseText(v);
-	const projected = useMemo(
-		() => projectTranscript(editsBase, entries),
-		[editsBase, entries],
-	);
+	const projected = useMemo(() => projectTranscript(editsBase, entries), [editsBase, entries]);
 	const segEdits = useMemo(() => {
 		const m = new Map<number, string>();
 		for (const e of entries) if (e.seg != null && e.text != null) m.set(e.seg, e.text);
@@ -430,8 +421,7 @@ export function ConsultationDetailPage({
 	const [segEditing, setSegEditing] = useState<number | "full" | null>(null);
 	const [segDraft, setSegDraft] = useState("");
 	const [editBusy, setEditBusy] = useState(false);
-	const editSession = () =>
-		(sessionRef.current ??= new TranscriptEditSession(entries, editsBase));
+	const editSession = () => (sessionRef.current ??= new TranscriptEditSession(entries, editsBase));
 	const saveTranscriptEdit = () =>
 		void (async () => {
 			if (!api?.saveTranscriptEdits || segEditing === null) return;
@@ -907,8 +897,7 @@ export function ConsultationDetailPage({
 												canEditTranscript && segments.length > 0
 													? {
 															segEdits,
-															editing:
-																typeof segEditing === "number" ? segEditing : null,
+															editing: typeof segEditing === "number" ? segEditing : null,
 															draft: segDraft,
 															busy: editBusy,
 															onStart: (i) => {

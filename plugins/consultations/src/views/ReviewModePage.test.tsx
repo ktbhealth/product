@@ -352,7 +352,10 @@ describe("ReviewModePage — anamnesis step", () => {
 				transcriptReviewedEdits: 0,
 				anamnesis: {
 					...ANAMNESIS,
-					queixa_principal: { ...ANAMNESIS.queixa_principal, evidence: ["paráfrase sem match algum"] },
+					queixa_principal: {
+						...ANAMNESIS.queixa_principal,
+						evidence: ["paráfrase sem match algum"],
+					},
 					hda: { ...ANAMNESIS.hda, evidence: ["outra frase sem match"] },
 				},
 			}),

@@ -1131,7 +1131,9 @@ describe("review stamps (PL-022)", () => {
 	});
 	it("edits a karaoke segment inline and persists the Loro edit log", async () => {
 		const user = userEvent.setup();
-		const saveTranscriptEdits = vi.fn(async () => ({ ok: true }));
+		const saveTranscriptEdits = vi.fn(async (_input: { data: { id: number; edits: string } }) => ({
+			ok: true,
+		}));
 		const segments = [
 			{ start: 0, end: 2, text: "dor no peito" },
 			{ start: 2, end: 5, text: "desde ontem" },
@@ -1174,7 +1176,9 @@ describe("review stamps (PL-022)", () => {
 
 	it("full-text edit on segment-less rows lands in the same edit log", async () => {
 		const user = userEvent.setup();
-		const saveTranscriptEdits = vi.fn(async () => ({ ok: true }));
+		const saveTranscriptEdits = vi.fn(async (_input: { data: { id: number; edits: string } }) => ({
+			ok: true,
+		}));
 		render(
 			<ConsultationDetailPage
 				c={detail({})}

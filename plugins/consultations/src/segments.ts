@@ -12,6 +12,10 @@ export interface TranscriptSegment {
 	readonly text: string;
 	/** Whisper confidence proxy — lower = likelier ASR uncertainty. */
 	readonly avgLogprob?: number;
+	/** Diarized speaker label (P-118) — `SPEAKER_NN` or a matched
+	 * reference name; absent on rows that predate diarization or where
+	 * attribution failed. */
+	readonly speaker?: string;
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -34,9 +38,14 @@ export function extractTranscriptSegments(raw: unknown): TranscriptSegment[] | n
 		const end = num(s.end);
 		if (start === null || end === null || typeof s.text !== "string") continue;
 		const lp = num(s.avg_logprob ?? s.avgLogprob);
-		out.push(
-			lp === null ? { start, end, text: s.text } : { start, end, text: s.text, avgLogprob: lp },
-		);
+		const speaker = typeof s.speaker === "string" && s.speaker !== "" ? s.speaker : undefined;
+		out.push({
+			start,
+			end,
+			text: s.text,
+			...(lp === null ? {} : { avgLogprob: lp }),
+			...(speaker === undefined ? {} : { speaker }),
+		});
 	}
 	return out.length ? out : null;
 }
@@ -71,12 +80,7 @@ export function parseTranscriptSegments(raw: string | null | undefined): Transcr
  * evidence matching runs on, tolerant to the LLM's orthographic
  * clean-up of the ASR words. */
 const fold = (s: string): string =>
-	s
-		.normalize("NFD")
-		.replace(/\p{M}/gu, "")
-		.toLowerCase()
-		.replace(/\s+/g, " ")
-		.trim();
+	s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
 
 /** Word-overlap ratio a segment must reach to be accepted as a fuzzy
  * evidence match — below it we risk pointing at the wrong passage. */

@@ -11,10 +11,10 @@
 	"dependencies": {
 		"@ktb/eval-core": "workspace:*",
 		"@ktb/pipeline": "workspace:*",
+		"@ktb/transcript-diff": "workspace:*",
 		"better-sqlite3": "^13.0.3",
 		"effect": "4.1.2",
-		"eta": "^4.6.0",
-		"@ktb/transcript-diff": "workspace:*"
+		"eta": "^4.6.0"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^9.6.0"

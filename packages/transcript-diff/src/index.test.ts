@@ -45,12 +45,7 @@ describe("alignWords", () => {
 
 describe("splitSentences", () => {
 	it("splits on end punctuation and newlines", () => {
-		expect(splitSentences("Um. Dois! Três?\nQuatro")).toEqual([
-			"Um.",
-			"Dois!",
-			"Três?",
-			"Quatro",
-		]);
+		expect(splitSentences("Um. Dois! Três?\nQuatro")).toEqual(["Um.", "Dois!", "Três?", "Quatro"]);
 	});
 	it("keeps a single sentence whole", () => {
 		expect(splitSentences("sem pontuação final")).toEqual(["sem pontuação final"]);
@@ -81,8 +76,6 @@ describe("sentenceDiff", () => {
 
 	it("handles empty inputs", () => {
 		expect(sentenceDiff("", "")).toEqual([]);
-		expect(sentenceDiff("", "texto")).toEqual([
-			expect.objectContaining({ ref: "", hyp: "texto" }),
-		]);
+		expect(sentenceDiff("", "texto")).toEqual([expect.objectContaining({ ref: "", hyp: "texto" })]);
 	});
 });

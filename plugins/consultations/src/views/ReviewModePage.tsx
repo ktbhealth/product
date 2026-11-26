@@ -35,7 +35,11 @@ import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@ktbhealth/ui/components/popover";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 
-import { parseTranscriptSegments, resolveSegmentStart, type TranscriptSegment } from "../segments.ts";
+import {
+	parseTranscriptSegments,
+	resolveSegmentStart,
+	type TranscriptSegment,
+} from "../segments.ts";
 import {
 	parseTranscriptEdits,
 	serializeTranscriptEdits,
@@ -1099,10 +1103,7 @@ function AnamnesisStep({
 				</CardHeader>
 				<CardContent className="space-y-3">
 					{chapters.length > 0 ? (
-						<div
-							className="flex flex-wrap gap-1.5"
-							aria-label={t.review.chapters}
-						>
+						<div className="flex flex-wrap gap-1.5" aria-label={t.review.chapters}>
 							{chapters.map((ch) => (
 								<button
 									key={ch.key}
@@ -1201,10 +1202,7 @@ function AnamnesisStep({
 											</span>
 										</div>
 										{editingKey === key ? (
-											<div
-												className="mt-2 space-y-2"
-												onClick={(e) => e.stopPropagation()}
-											>
+											<div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
 												<textarea
 													className="w-full rounded-md border bg-background px-2 py-1.5 text-sm leading-relaxed"
 													rows={Math.min(12, Math.max(3, editDraft.split("\n").length + 1))}

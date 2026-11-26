@@ -1110,9 +1110,9 @@ describe("NewConsultationPage", () => {
 			await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledWith(DRAFT.audio));
 			expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull();
 			await user.click(screen.getByText("Restore draft"));
-			expect(
-				(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
-			).toContain("rascunho recuperado");
+			expect((screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value).toContain(
+				"rascunho recuperado",
+			);
 			expect(screen.queryByText(/Draft recovered/)).toBeNull();
 		});
 
@@ -1151,9 +1151,9 @@ describe("NewConsultationPage", () => {
 			renderPage();
 			await screen.findByText(/Draft recovered/);
 			await user.click(screen.getByText("Restore draft"));
-			expect(
-				(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
-			).toContain("rascunho recuperado");
+			expect((screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value).toContain(
+				"rascunho recuperado",
+			);
 		});
 
 		it("no banner when there is nothing stored", async () => {
@@ -1170,9 +1170,9 @@ describe("NewConsultationPage", () => {
 			await user.click(screen.getByText("Record microphone"));
 			act(() => micCb!({ type: "final", text: "tem febre" }));
 			await waitFor(() =>
-				expect(
-					(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
-				).toContain("Doctor: tem febre"),
+				expect((screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value).toContain(
+					"Doctor: tem febre",
+				),
 			);
 			act(() => micCb!({ type: "end" }));
 			await waitFor(() => expect(draftMock.store.save).toHaveBeenCalled());

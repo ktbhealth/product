@@ -82,6 +82,22 @@ export const createLocalAi = (baseUrl: string, fetchImpl: typeof fetch = fetch):
 		// Accept the base with or without the /v1 suffix (LLM_BASE_URL
 		// convention includes it; bare host roots are common too).
 		const base = `${baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1`;
+		// Speaker diarization (P-118): `diarize: true` routes to the
+		// Speaches /audio/diarization endpoint — same audio payload as
+		// transcription but the response carries speaker turns instead
+		// of text. Only OpenAI-compatible backends >= Speaches 0.9 have
+		// it; gated by AUDIO_DIARIZATION upstream.
+		if (i.diarize === true && "audio" in i) {
+			const form = new FormData();
+			form.set("file", new Blob([audioToBytes(i.audio)]), "audio.wav");
+			form.set("response_format", "json");
+			const res = await fetchImpl(`${base}/audio/diarization`, {
+				method: "POST",
+				body: form,
+			});
+			if (!res.ok) throw new Error(`local AI diarization failed: HTTP ${res.status}`);
+			return res.json();
+		}
 		if ("audio" in i) {
 			const form = new FormData();
 			form.set("model", model);

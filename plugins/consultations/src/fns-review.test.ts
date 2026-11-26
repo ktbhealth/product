@@ -149,9 +149,9 @@ describe("review server fns (PL-022)", () => {
 		conduta: { content: "c", confidence: "alta", evidence: [] },
 	};
 	it("editAnamnesisFn delegates to attachAnamnesis under the manual-edit engine", async () => {
-		await expect(
-			editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } }),
-		).resolves.toEqual({ ok: true });
+		await expect(editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } })).resolves.toEqual(
+			{ ok: true },
+		);
 		expect(mocks.attachAnamnesis).toHaveBeenCalledWith("u1", {
 			consultationId: 7,
 			anamnesis: DOC,
@@ -162,16 +162,16 @@ describe("review server fns (PL-022)", () => {
 
 	it("editAnamnesisFn is { ok: false } without a session user", async () => {
 		mocks.getDoctorUser.mockResolvedValueOnce(null);
-		await expect(
-			editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } }),
-		).resolves.toEqual({ ok: false });
+		await expect(editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } })).resolves.toEqual(
+			{ ok: false },
+		);
 	});
 
 	it("editAnamnesisFn collapses Forbidden to { ok: false }", async () => {
 		mocks.attachAnamnesis.mockReturnValueOnce(Effect.fail(new Forbidden({ path: "x" })));
-		await expect(
-			editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } }),
-		).resolves.toEqual({ ok: false });
+		await expect(editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } })).resolves.toEqual(
+			{ ok: false },
+		);
 	});
 
 	it("editAnamnesisFn rejects a string anamnesis without the ciphered flag", async () => {

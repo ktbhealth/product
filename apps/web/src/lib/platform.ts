@@ -233,6 +233,12 @@ const DEFAULT_AUDIO_MODEL = "@cf/openai/whisper-large-v3-turbo";
 export const audioTranscribeModel =
 	appEnv.AUDIO_TRANSCRIBE_MODEL?.toString() ?? DEFAULT_AUDIO_MODEL;
 
+/** Speaker diarization on the audio pipeline (P-118): opt-in flag —
+ * only meaningful when AI_BASE_URL points at a backend exposing
+ * `/v1/audio/diarization` (Speaches >= 0.9). Off by default: Workers
+ * AI has no such endpoint and a wasted call per job is cost. */
+export const audioDiarization = appEnv.AUDIO_DIARIZATION?.toString() === "1";
+
 /** Interop adapters behind the @ktb/interop port, one per supported standard. */
 const recordExporters: Record<ExportFormat, RecordExporter> = {
 	"fhir-r4": fhirR4Exporter,
@@ -827,6 +833,7 @@ setServerRuntime({
 	},
 	ai: aiBinding,
 	audioTranscribeModel,
+	audioDiarization,
 	recordExporters,
 	getLocale: currentLocale,
 	// PL-008: DB-canonical i18n capability — resolves enabled locales +

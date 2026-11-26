@@ -112,6 +112,10 @@ export interface AudioJobDeps {
 	/** Transcription model id — host-resolved deploy config
 	 * (AUDIO_TRANSCRIBE_MODEL via the runtime registry). */
 	readonly model: string;
+	/** Speaker diarization (P-118): when true and `ai` is bound, the
+	 * job diarizes the same audio and labels transcript segments —
+	 * best-effort, failures keep them unspeaker'd. */
+	readonly diarization?: boolean;
 	/**
 	 * LLM cleanup pass (P-017). Receives the transcript text plus the
 	 * provider's timed segments when available — the
@@ -123,15 +127,6 @@ export interface AudioJobDeps {
 		readonly text: string;
 		readonly segments?: readonly WhisperSegment[];
 	}) => Promise<CorrectedTranscript | null>;
-	/**
-	 * Post-cleanup hook (PL-023): the save-time anamnesis was extracted
-	 * from the raw transcript, so it goes stale the moment the LLM
-	 * cleanup lands. The host regenerates it from the corrected text —
-	 * skipping rows the physician already approved. Optional: hosts
-	 * without an anamnesis engine omit it; failures are logged, never
-	 * fatal (corrected transcript and audio status are already saved).
-	 */
-	readonly regenerateAnamnesis?: (consultationId: number, corrected: string) => Promise<void>;
 	/**
 	 * Post-cleanup hook (PL-023): the save-time anamnesis was extracted
 	 * from the raw transcript, so it goes stale the moment the LLM
@@ -252,6 +247,87 @@ export async function transcribeAudio(
 ): Promise<TranscriptionResult> {
 	const raw = await transcriber.run(model, whisperInputs(bytesToBase64(audio)));
 	return extractWhisperResult(raw);
+}
+
+/** Diarized speaker turn (P-118): provider output shape —
+ * `{start, end, speaker}` with `SPEAKER_NN` labels or matched
+ * reference names. */
+export interface DiarizedSegment {
+	readonly start: number;
+	readonly end: number;
+	readonly speaker: string;
+}
+
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Tolerant extraction of a diarization response — same contract as
+ * `extractTranscriptSegments`: skip malformed entries, null when
+ * nothing usable arrives. */
+export function extractDiarizedSegments(raw: unknown): DiarizedSegment[] | null {
+	if (!raw || typeof raw !== "object") return null;
+	const list = (raw as Record<string, unknown>).segments;
+	if (!Array.isArray(list)) return null;
+	const out: DiarizedSegment[] = [];
+	for (const item of list) {
+		if (!item || typeof item !== "object") continue;
+		const s = item as Record<string, unknown>;
+		const start = num(s.start);
+		const end = num(s.end);
+		if (start === null || end === null || typeof s.speaker !== "string" || !s.speaker) continue;
+		out.push({ start, end, speaker: s.speaker });
+	}
+	return out.length ? out : null;
+}
+
+export function diarizeInputs(audioBase64: string) {
+	return { audio: audioBase64, diarize: true };
+}
+
+/** Diarized turns below this are blips — pyannote's known <0.5s
+ * false-positives (breaths, clicks, overlap). Dropped before overlap
+ * matching so a noise frame never steals an ASR segment's label. */
+const DIARIZATION_MIN_TURN_SEC = 0.5;
+
+/** Speaker attribution onto ASR segments (P-118): each segment takes
+ * the diarized speaker it overlaps most; sub-floor turns are filtered
+ * first. Returns null when either side is empty — callers persist
+ * unspeaker'd segments rather than guessing. */
+export function assignSpeakers(
+	segments: readonly TranscriptSegment[] | null,
+	diarized: readonly DiarizedSegment[] | null,
+): readonly TranscriptSegment[] | null {
+	if (!segments?.length || !diarized?.length) return segments ?? null;
+	const turns = diarized.filter((t) => t.end - t.start >= DIARIZATION_MIN_TURN_SEC);
+	if (!turns.length) return segments;
+	return segments.map((seg) => {
+		let best: DiarizedSegment | null = null;
+		let bestOverlap = 0;
+		for (const t of turns) {
+			const overlap = Math.min(seg.end, t.end) - Math.max(seg.start, t.start);
+			if (overlap > bestOverlap) {
+				bestOverlap = overlap;
+				best = t;
+			}
+		}
+		// No overlap at all → leave the segment unspeaker'd instead of
+		// attaching the nearest voice — a wrong label is worse than none.
+		return best === null ? seg : { ...seg, speaker: best.speaker };
+	});
+}
+
+/** Best-effort diarization — a missing endpoint/model resolves to
+ * null so the job keeps unspeaker'd segments; it never fails the
+ * transcription job that produced them. */
+export async function diarizeAudio(
+	transcriber: AudioTranscriber,
+	audio: Uint8Array,
+): Promise<DiarizedSegment[] | null> {
+	try {
+		const raw = await transcriber.run("diarization", diarizeInputs(bytesToBase64(audio)));
+		return extractDiarizedSegments(raw);
+	} catch {
+		return null;
+	}
 }
 
 /** Best-effort live notification — publishing is a side channel, so a
@@ -388,7 +464,12 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 	// Segment presence is part of the provider contract for whisper
 	// models — surface its absence honestly (audit detail + warning)
 	// instead of letting downstream stages guess at pseudo-timings.
-	const segments = result.segments;
+	let segments = result.segments;
+	// Speaker diarization (P-118): same audio, best-effort — nulls and
+	// failures keep the segments unspeaker'd rather than failing the job.
+	if (deps.diarization === true && deps.ai !== undefined && segments != null) {
+		segments = assignSpeakers(segments, await diarizeAudio(deps.ai, bytes)) ?? segments;
+	}
 	if (segments === undefined) {
 		console.warn("transcription provider returned no segments", {
 			consultationId: job.consultationId,
@@ -599,6 +680,7 @@ export const defaultAudioJobDeps = async (
 		bucket: runtime.audio as unknown as AudioBucketLike | undefined,
 		ai: runtime.ai as AudioTranscriber | undefined,
 		model: runtime.audioTranscribeModel,
+		diarization: runtime.audioDiarization === true,
 		correctTranscript,
 	};
 };

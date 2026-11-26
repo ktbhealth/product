@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import {
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+	type Ref,
+	type RefObject,
+} from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -56,10 +64,7 @@ const DIACRITIC_CLASSES: Record<string, string> = {
  * LLM's evidence text normalizes accents the ASR dropped — and the
  * raw segment keeps them — so a literal match misses the mark. */
 const charPattern = (ch: string): string => {
-	const base = ch
-		.normalize("NFD")
-		.replace(/\p{M}/gu, "")
-		.toLowerCase();
+	const base = ch.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 	const cls = DIACRITIC_CLASSES[base];
 	return cls ? `[${cls}${cls.toUpperCase()}]` : escapeRegex(ch);
 };
@@ -352,22 +357,14 @@ function SegmentsKaraoke({
 										>
 											{editing.labels.save}
 										</Button>
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											onClick={editing.onCancel}
-										>
+										<Button type="button" variant="ghost" size="sm" onClick={editing.onCancel}>
 											{editing.labels.cancel}
 										</Button>
 									</div>
 								</div>
 							) : (
 								<>
-									<span
-										className="min-w-0 flex-1 cursor-pointer"
-										onClick={() => onSeek(i)}
-									>
+									<span className="min-w-0 flex-1 cursor-pointer" onClick={() => onSeek(i)}>
 										{markRe ? markedText(shown, markRe) : shown}
 										{edited != null ? (
 											<span className="ml-2 align-middle">

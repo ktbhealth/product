@@ -15,8 +15,11 @@ import type { AudioJobMessage } from "@ktb/server-fns";
 
 import { AUDIO_TRANSCRIPTION_JOB_KIND, attachAudioRecord } from "./audio-jobs.ts";
 import {
+	assignSpeakers,
 	bytesToBase64,
 	defaultAudioJobDeps,
+	diarizeAudio,
+	extractDiarizedSegments,
 	extractWhisperResult,
 	extractWhisperText,
 	handleAudioQueueBatch,
@@ -209,6 +212,71 @@ describe("audio-consumer pure helpers", () => {
 			{ start: 1.25, end: 2, text: "mundo" },
 		]);
 	});
+	it("extractDiarizedSegments parses speaker turns and skips malformed entries", () => {
+		expect(
+			extractDiarizedSegments({
+				segments: [
+					{ start: 0.5, end: 4.2, speaker: "SPEAKER_00" },
+					{ start: "bad", end: 9, speaker: "SPEAKER_01" },
+					{ start: 5, end: 6, speaker: "" },
+					{ start: 7, end: 8, speaker: "Doctor" },
+				],
+			}),
+		).toEqual([
+			{ start: 0.5, end: 4.2, speaker: "SPEAKER_00" },
+			{ start: 7, end: 8, speaker: "Doctor" },
+		]);
+		expect(extractDiarizedSegments(null)).toBeNull();
+		expect(extractDiarizedSegments({ segments: "x" })).toBeNull();
+		expect(extractDiarizedSegments({ segments: [] })).toBeNull();
+	});
+
+	it("assignSpeakers labels ASR segments by max overlap and drops blip turns", () => {
+		const segs = [
+			{ start: 0, end: 4, text: "a" },
+			{ start: 4, end: 8, text: "b" },
+			{ start: 8, end: 12, text: "c" },
+			{ start: 20, end: 22, text: "d" },
+		];
+		const diarized = [
+			{ start: 0, end: 5, speaker: "SPEAKER_00" },
+			{ start: 4.1, end: 4.3, speaker: "SPEAKER_99" }, // 0.2s blip — below floor
+			{ start: 5, end: 12, speaker: "SPEAKER_01" },
+		];
+		const out = assignSpeakers(segs, diarized)!;
+		expect(out.map((s) => s.speaker)).toEqual([
+			"SPEAKER_00",
+			"SPEAKER_01",
+			"SPEAKER_01",
+			undefined, // no overlap → stays unspeaker'd
+		]);
+	});
+
+	it("assignSpeakers passthrough on missing sides and filters all-blips", () => {
+		const segs = [{ start: 0, end: 4, text: "a" }];
+		expect(assignSpeakers(segs, null)).toEqual(segs);
+		expect(assignSpeakers(null, [{ start: 0, end: 4, speaker: "S" }])).toBeNull();
+		expect(
+			assignSpeakers(segs, [{ start: 0, end: 0.2, speaker: "S" }])![0]!.speaker,
+		).toBeUndefined();
+	});
+
+	it("diarizeAudio resolves null on provider failure", async () => {
+		const ok = await diarizeAudio(
+			{ run: async () => ({ segments: [{ start: 0, end: 2, speaker: "SPEAKER_00" }] }) },
+			new Uint8Array([1]),
+		);
+		expect(ok).toEqual([{ start: 0, end: 2, speaker: "SPEAKER_00" }]);
+		const missing = await diarizeAudio(
+			{
+				run: async () => {
+					throw new Error("HTTP 404");
+				},
+			},
+			new Uint8Array([1]),
+		);
+		expect(missing).toBeNull();
+	});
 });
 
 describe("processAudioJob", () => {
@@ -264,6 +332,83 @@ describe("processAudioJob", () => {
 				detail: { segments: 2 },
 			},
 		]);
+	});
+
+	it("labels transcript segments with diarized speakers when enabled (P-118)", async () => {
+		const diarizeCalls: unknown[] = [];
+		const { db, deps } = makeDeps({
+			diarization: true,
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) {
+						diarizeCalls.push(inputs);
+						return {
+							segments: [
+								{ start: 0, end: 3, speaker: "SPEAKER_00" },
+								{ start: 3, end: 8, speaker: "SPEAKER_01" },
+							],
+						};
+					}
+					return {
+						text: "oi tchau",
+						segments: [
+							{ start: 0, end: 2.5, text: "oi" },
+							{ start: 3.5, end: 7, text: "tchau" },
+						],
+					};
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+
+		expect(diarizeCalls).toHaveLength(1);
+		const r = await row(db, id);
+		const segs = JSON.parse(r?.transcriptSegments as string) as {
+			text: string;
+			speaker?: string;
+		}[];
+		expect(segs.map((s) => s.speaker)).toEqual(["SPEAKER_00", "SPEAKER_01"]);
+	});
+
+	it("skips diarization entirely when the flag is off", async () => {
+		const diarizeCalls: unknown[] = [];
+		const { db, deps } = makeDeps({
+			// flag omitted — default off
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) diarizeCalls.push(inputs);
+					return { text: "oi" };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect(diarizeCalls).toHaveLength(0);
+	});
+
+	it("keeps unspeaker'd segments when diarization fails", async () => {
+		const { db, deps } = makeDeps({
+			diarization: true,
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) {
+						throw new Error("HTTP 404");
+					}
+					return { text: "oi", segments: [{ start: 0, end: 2, text: "oi" }] };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		const r = await row(db, id);
+		expect(r?.audioStatus).toBe("done");
+		const segs = JSON.parse(r?.transcriptSegments as string) as { speaker?: string }[];
+		expect(segs[0]!.speaker).toBeUndefined();
 	});
 
 	it("refuses to send zero-knowledge audio to Whisper (T-147)", async () => {

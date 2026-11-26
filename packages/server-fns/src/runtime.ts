@@ -486,6 +486,10 @@ export interface ServerRuntime {
 	 * composition root from deploy config — the port never names a
 	 * provider model itself. */
 	readonly audioTranscribeModel: string;
+	/** Speaker diarization on the transcription job (P-118): when the
+	 * host's ASR backend exposes a diarization endpoint, the consumer
+	 * labels each transcript segment. Absent/false = unspeaker'd. */
+	readonly audioDiarization?: boolean;
 	/** Interop record exporters behind the @ktb/interop port — the host
 	 * wires the standard-specific adapters, plugins only see the port. */
 	readonly recordExporters?: Record<ExportFormat, RecordExporter>;

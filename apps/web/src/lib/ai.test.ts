@@ -82,6 +82,23 @@ describe("createLocalAi", () => {
 		expect(form.get("file")).toBeInstanceOf(Blob);
 	});
 
+	it("routes diarize:true inputs to /v1/audio/diarization", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () =>
+			jsonResponse({
+				duration: 6,
+				segments: [{ start: 0, end: 3, speaker: "SPEAKER_00" }],
+			}),
+		);
+		const ai = createLocalAi("http://localhost:8080/v1/", fetchImpl);
+		const out = await ai.run("diarization", { audio: "aGk=", diarize: true });
+		expect((out as { segments: { speaker: string }[] }).segments[0]!.speaker).toBe("SPEAKER_00");
+		const [url, init] = fetchImpl.mock.calls[0]!;
+		expect(url).toBe("http://localhost:8080/v1/audio/diarization");
+		const form = init?.body as FormData;
+		expect(form.get("file")).toBeInstanceOf(Blob);
+		expect(form.get("model")).toBeNull(); // rc.3 schema has no model field
+	});
+
 	it("accepts number[] audio payloads", async () => {
 		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
 		const ai = createLocalAi("http://localhost:8080", fetchImpl);
