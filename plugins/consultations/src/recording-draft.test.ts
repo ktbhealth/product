@@ -1,8 +1,9 @@
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
 
 import {
 	defaultDraftStore,
-	idbDraftStore,
+	dexieDraftStore,
 	memoryDraftStore,
 	type RecordingDraft,
 } from "./recording-draft.ts";
@@ -15,53 +16,19 @@ const draft = (over: Partial<RecordingDraft> = {}): RecordingDraft => ({
 	...over,
 });
 
-/** Minimal in-memory IDB — the same fake the keyring tests use:
- * open/transaction/objectStore get/put/delete resolved on microtask. */
-const fakeIndexedDB = (rows = new Map<string, unknown>()) => {
-	const makeReq = (fn: () => { result?: unknown; error?: unknown }) => {
-		const r: Record<string, unknown> = { result: undefined, error: null };
-		queueMicrotask(() => {
-			const out = fn();
-			r.result = out.result;
-			r.error = out.error ?? null;
-			if (out.error) (r.onerror as (() => void) | null)?.();
-			else (r.onsuccess as (() => void) | null)?.();
-		});
-		return r;
-	};
-	const db = {
-		transaction: (_store: string, _mode: string) => ({
-			objectStore: () => ({
-				get: (key: string) => makeReq(() => ({ result: rows.get(key) })),
-				put: (value: unknown, key: string) =>
-					makeReq(() => ({ result: (rows.set(key, value), undefined) })),
-				delete: (key: string) => makeReq(() => ({ result: (rows.delete(key), undefined) })),
-			}),
-		}),
-		createObjectStore: () => ({}),
-		close: () => {},
-	};
-	return {
-		open: () => {
-			const r: Record<string, unknown> = { result: db, error: null };
-			queueMicrotask(() => {
-				(r.onupgradeneeded as (() => void) | null)?.();
-				(r.onsuccess as (() => void) | null)?.();
-			});
-			return r;
-		},
-	};
-};
-
 const withFakeIdb = async <T>(idb: unknown, run: () => Promise<T>) => {
-	const global = globalThis as { indexedDB?: unknown };
-	const previous = global.indexedDB;
+	const global = globalThis as { indexedDB?: unknown; IDBKeyRange?: unknown };
+	const previousDb = global.indexedDB;
+	const previousKr = global.IDBKeyRange;
 	global.indexedDB = idb;
+	global.IDBKeyRange = IDBKeyRange;
 	try {
 		return await run();
 	} finally {
-		if (previous === undefined) delete global.indexedDB;
-		else global.indexedDB = previous;
+		if (previousDb === undefined) delete global.indexedDB;
+		else global.indexedDB = previousDb;
+		if (previousKr === undefined) delete global.IDBKeyRange;
+		else global.IDBKeyRange = previousKr;
 	}
 };
 
@@ -75,53 +42,59 @@ describe("recording-draft store", () => {
 		expect(await store.load()).toBeNull();
 	});
 
-	it("idb store saves, loads and clears the current draft", async () => {
-		const rows = new Map<string, unknown>();
-		await withFakeIdb(fakeIndexedDB(rows), async () => {
-			const store = idbDraftStore();
+	it("dexie store saves, loads and clears the current draft", async () => {
+		await withFakeIdb(new IDBFactory(), async () => {
+			const store = dexieDraftStore();
 			expect(await store.load()).toBeNull();
-			const d = draft();
-			await store.save(d);
-			expect(rows.get("current")).toBe(d);
+			await store.save(draft());
 			expect((await store.load())?.patientId).toBe(3);
+			expect(await (await store.load())!.audio.text()).toBe("audio");
 			await store.clear();
 			expect(await store.load()).toBeNull();
 		});
 	});
 
-	it("idb open failure rejects", async () => {
-		const global = globalThis as { indexedDB?: unknown };
-		const previous = global.indexedDB;
-		global.indexedDB = {
-			open: () => {
-				const r: Record<string, unknown> = { result: undefined, error: null };
-				queueMicrotask(() => (r.onerror as (() => void) | null)?.());
-				return r;
-			},
-		};
-		try {
-			await expect(idbDraftStore().load()).rejects.toThrow("indexeddb open failed");
-		} finally {
-			if (previous === undefined) delete global.indexedDB;
-			else global.indexedDB = previous;
-		}
+	it("dexie store overwrites an existing draft", async () => {
+		await withFakeIdb(new IDBFactory(), async () => {
+			const store = dexieDraftStore();
+			await store.save(draft({ transcript: "first" }));
+			await store.save(draft({ transcript: "second" }));
+			expect((await store.load())?.transcript).toBe("second");
+		});
 	});
 
-	it("default picks idb when present, memory otherwise", () => {
-		const global = globalThis as { indexedDB?: unknown };
-		const previous = global.indexedDB;
+	it("a fresh store sees what a previous instance persisted", async () => {
+		const idb = new IDBFactory();
+		await withFakeIdb(idb, async () => {
+			await dexieDraftStore().save(draft());
+		});
+		await withFakeIdb(idb, async () => {
+			expect((await dexieDraftStore().load())?.transcript).toBe("Doctor: texto");
+		});
+	});
+
+	it("default picks dexie when present, memory otherwise", async () => {
+		const global = globalThis as { indexedDB?: unknown; IDBKeyRange?: unknown };
+		const previousDb = global.indexedDB;
+		const previousKr = global.IDBKeyRange;
 		delete global.indexedDB;
 		try {
 			expect(defaultDraftStore()).toBeTypeOf("object");
 		} finally {
-			global.indexedDB = previous;
+			global.indexedDB = previousDb;
 		}
-		global.indexedDB = fakeIndexedDB();
+		global.indexedDB = new IDBFactory();
+		global.IDBKeyRange = IDBKeyRange;
 		try {
 			expect(defaultDraftStore()).toBeTypeOf("object");
+			// let the picked store's preload settle so a broken-IDB
+			// rejection can't leak into other tests
+			await new Promise((r) => setTimeout(r, 0));
 		} finally {
-			if (previous === undefined) delete global.indexedDB;
-			else global.indexedDB = previous;
+			if (previousDb === undefined) delete global.indexedDB;
+			else global.indexedDB = previousDb;
+			if (previousKr === undefined) delete global.IDBKeyRange;
+			else global.IDBKeyRange = previousKr;
 		}
 	});
 });
