@@ -483,7 +483,7 @@ describe("AgendaPortalPage", () => {
 		await waitFor(() => expect(agendaApiMocks.start).toHaveBeenCalledWith(1));
 		await waitFor(() =>
 			expect(routerMocks.navigate).toHaveBeenCalledWith({
-				to: "/portal/doctor/consultations/42",
+				to: "/portal/doctor/consultations/42/record",
 			}),
 		);
 	});

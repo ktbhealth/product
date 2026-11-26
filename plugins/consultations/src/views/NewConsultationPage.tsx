@@ -169,6 +169,7 @@ export interface NewConsultationApi {
 export function NewConsultationPage({
 	initialPatients,
 	initialPatientId,
+	resumeConsultationId,
 	api,
 	backend,
 	i18n,
@@ -180,6 +181,10 @@ export function NewConsultationPage({
 	initialPatients: Array<{ id: number; name: string }>;
 	/** Preselect a patient (e.g. "New consultation" from the patient record). */
 	initialPatientId?: number;
+	/** Pre-created record to fill instead of minting a new one — the
+	 * agenda's "start consult" shell (T-257). The first save writes the
+	 * transcript into it; ZK tenants skip it (the shell has no DEK). */
+	resumeConsultationId?: number;
 	api: NewConsultationApi;
 	backend: TranscriptionBackend;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -626,7 +631,8 @@ export function NewConsultationPage({
 		setSaving(true);
 		try {
 			// a consultation already saved/live is updated, never duplicated
-			const existing = liveId ?? savedId;
+			const resumeId = zk ? null : (resumeConsultationId ?? null);
+			const existing = liveId ?? savedId ?? resumeId;
 			let id: number | null = existing;
 			if (existing) {
 				let data: Parameters<NewConsultationApi["attachAnamnesis"]>[0]["data"];
@@ -656,6 +662,9 @@ export function NewConsultationPage({
 						// null clears a previously linked patient; undefined
 						// would keep it (tri-state on the wire).
 						patientId,
+						// The resumed shell holds no transcript yet — this
+						// browser's is the record's (bot-fed rows keep theirs).
+						...(existing === resumeId ? { transcript } : {}),
 					};
 				}
 				const r = await api.attachAnamnesis({ data });
