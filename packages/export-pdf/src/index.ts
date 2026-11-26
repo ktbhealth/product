@@ -66,17 +66,18 @@ export async function renderAnamnesisPdf(input: AnamnesisPdfInput): Promise<Buff
 	};
 	const drawWrapped = (
 		text: string,
-		opts: { size: number; font: PdfFont; color: typeof INK; gap?: number },
+		opts: { size: number; font: PdfFont; color: typeof INK; gap: number },
 	) => {
 		for (const line of wrap(text, opts.font, opts.size, CONTENT_W)) {
 			ensure(opts.size * 1.3);
 			if (line !== "") {
 				page.drawText(line, { x: MARGIN, y, size: opts.size, font: opts.font, color: opts.color });
 			}
-			y -= opts.size * (opts.gap ?? 1.25);
+			y -= opts.size * opts.gap;
 		}
 	};
-	const meta = (text: string) => drawWrapped(text, { size: 9.5, font: regular, color: GRAY, gap: 1.2 });
+	const meta = (text: string) =>
+		drawWrapped(text, { size: 9.5, font: regular, color: GRAY, gap: 1.2 });
 
 	// ---- header ----
 	page.drawText("Anamnesis", { x: MARGIN, y, size: 20, font: bold, color: INK });
@@ -118,7 +119,6 @@ export async function renderAnamnesisPdf(input: AnamnesisPdfInput): Promise<Buff
 			size: 11,
 			font: bold,
 			color: INK,
-			characterSpacing: 0.4,
 		});
 		y -= 15;
 		drawWrapped(block.content, { size: 10.5, font: regular, color: BODY, gap: 1.2 });
@@ -148,11 +148,11 @@ export async function renderAnamnesisPdf(input: AnamnesisPdfInput): Promise<Buff
 	const footer =
 		"AI-structured draft generated from the transcript, reviewed and validated by the responsible physician.";
 	pages.forEach((p, i) => {
-		const { height } = p.getSize();
+		const label = `${i + 1}/${pages.length}`;
 		p.drawText(footer, { x: MARGIN, y: 28, size: 8, font: regular, color: FOOTER });
-		p.drawText(`${i + 1}/${pages.length}`, {
-			x: A4[0] - MARGIN - 40,
-			y: height - 28 - 8,
+		p.drawText(label, {
+			x: A4[0] - MARGIN - regular.widthOfTextAtSize(label, 8),
+			y: 28,
 			size: 8,
 			font: regular,
 			color: FOOTER,
