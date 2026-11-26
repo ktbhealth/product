@@ -174,10 +174,12 @@ export class WhisperTranscriber implements Transcriber {
 		return { voicedSec: this.voicedSec, chars: this.sessionChars };
 	}
 
-	/** Session audio blob — awaits the recorder's stop so callers hitting
-	 * the "end" event (which races MediaRecorder.onstop) still get the
-	 * blob; null when nothing was recorded or unsupported. */
+	/** Last session's audio blob; null while still recording or if
+	 * unsupported. `stop()` transitions the recorder to "inactive" BEFORE
+	 * the "end" event fires, so post-end callers land on `recorderDone`
+	 * and simply await the already-stopped blob. */
 	recording(): Promise<Blob | null> {
+		if (this.recorder && this.recorder.state === "recording") return Promise.resolve(null);
 		return this.recorderDone ?? Promise.resolve(null);
 	}
 

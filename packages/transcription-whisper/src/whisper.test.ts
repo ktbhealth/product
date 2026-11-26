@@ -413,15 +413,12 @@ describe("WhisperTranscriber", () => {
 		await vi.waitFor(() => expect(MockAudioContext.instances).toHaveLength(1));
 		const rec = MockMediaRecorder.instances[0]!;
 		expect(rec.state).toBe("recording");
-		// live session: recording() stays pending until the recorder stops
-		let settled = false;
-		const pending = t.recording().then((b) => ((settled = true), b));
-		await Promise.resolve();
-		expect(settled).toBe(false);
+		// live session: no blob yet — callers hit during capture get null
+		await expect(t.recording()).resolves.toBeNull();
 		rec.ondataavailable!({ data: new Blob([]) });
 		rec.ondataavailable!({ data: new Blob(["audio"]) });
 		t.stop();
-		const blob = await pending;
+		const blob = await t.recording();
 		expect(blob).toBeInstanceOf(Blob);
 		expect(blob?.type).toBe("audio/webm");
 	});

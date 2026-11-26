@@ -28,8 +28,8 @@ export interface Transcriber {
 	/**
 	 * Optional: audio captured during the last session, for server-side
 	 * re-transcription when `sessionStats` reports low confidence and for
-	 * draft persistence (T-222). Awaits an in-flight recorder stop;
-	 * resolves null when nothing was recorded.
+	 * draft persistence (T-222). Resolves null when nothing was recorded
+	 * or the session is live — post-"end" callers get the finished blob.
 	 */
 	recording?(): Promise<Blob | null>;
 }
