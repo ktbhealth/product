@@ -52,13 +52,30 @@ describe("pipelineRegistryLive", () => {
 	});
 });
 
-describe("pipeline.core manifest", () => {
-	it("exposes a single data-only plugin", () => {
-		expect(plugins.map((p) => p.id)).toEqual(["pipeline.core"]);
+describe("pipeline manifests", () => {
+	it("exposes the composition plugin plus the admin chrome/panel plugins", () => {
+		expect(plugins.map((p) => p.id)).toEqual([
+			"pipeline.core",
+			"pipeline.admin.chrome",
+			"pipeline.admin.panel",
+		]);
 		const p = plugins[0];
 		expect(p?.meta?.keywords?.[0]).toBe("platform");
 		expect(p?.tables).toBeUndefined();
 		expect(p?.services).toBeUndefined();
 		expect(p?.pipelines).toBeUndefined();
+	});
+
+	it("admin plugins order after the platform panel and contribute the expected surface", () => {
+		const chrome = plugins.find((p) => p.id === "pipeline.admin.chrome");
+		const panel = plugins.find((p) => p.id === "pipeline.admin.panel");
+		expect(chrome?.requiredDeps).toEqual(["platform.panel"]);
+		expect(panel?.requiredDeps).toEqual(["platform.panel"]);
+		expect(chrome?.chrome?.[0]?.content).toMatchObject({
+			kind: "sidebarItem",
+			item: { to: "/platform/pipelines", group: "Runtime" },
+		});
+		const paths = (panel?.panel?.pages ?? []).map((page) => page.path);
+		expect(paths).toEqual(["/platform/pipelines", "/platform/pipelines/*"]);
 	});
 });
