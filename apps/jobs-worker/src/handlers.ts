@@ -3,7 +3,8 @@
  *
  * The shared `jobHandlers` registry (@ktb/jobs-port) is populated at
  * composition time — domain packages self-register on import, and
- * app-bound kinds are wired here. Today the only built-in is the ops
+ * app-bound kinds are wired here or in sibling modules (orchestration.ts
+ * owns `orchestrator.step`). Today the only built-in is the ops
  * `jobs.ping` smoke kind; the eval runner registers `eval.run` when
  * the in-platform eval lands.
  */
