@@ -145,6 +145,7 @@
       "dependencies": {
         "@ktb/eval-core": "workspace:*",
         "@ktb/pipeline": "workspace:*",
+        "@ktb/transcript-diff": "workspace:*",
         "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
         "eta": "^4.6.0",
@@ -768,6 +769,9 @@
         "effect": "4.1.2",
       },
     },
+    "packages/transcript-diff": {
+      "name": "@ktb/transcript-diff",
+    },
     "packages/transcription": {
       "name": "@ktb/transcription",
     },
@@ -1088,6 +1092,7 @@
         "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
+        "@ktb/transcript-diff": "workspace:*",
         "@ktb/transcription": "workspace:*",
         "@ktb/transcription-webspeech": "workspace:*",
         "@ktb/transcription-whisper": "workspace:*",
@@ -3156,6 +3161,8 @@
     "@ktb/tenant-plugin": ["@ktb/tenant-plugin@workspace:plugins/tenant"],
 
     "@ktb/theme": ["@ktb/theme@workspace:plugins/theme"],
+
+    "@ktb/transcript-diff": ["@ktb/transcript-diff@workspace:packages/transcript-diff"],
 
     "@ktb/transcription": ["@ktb/transcription@workspace:packages/transcription"],
 

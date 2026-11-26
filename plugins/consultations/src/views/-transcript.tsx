@@ -4,6 +4,8 @@ import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import { FastForwardIcon } from "lucide-react";
 
+import { sentenceDiff, type SentencePair } from "@ktb/transcript-diff";
+
 import {
 	AudioPlayer,
 	AudioPlayerControlBar,
@@ -440,6 +442,61 @@ export function ConsultationAudioPlayer({
 	);
 }
 
+/** Renders one aligned word — ref struck on del/sub, hyp highlighted
+ * on ins/sub, plain on ok. */
+function DiffWord({ op }: { op: SentencePair["ops"][number] }) {
+	if (op.op === "sub") {
+		return (
+			<>
+				<del className="rounded bg-destructive/10 px-0.5 text-destructive/80">{op.ref}</del>{" "}
+				<ins className="rounded bg-success/15 px-0.5 text-success no-underline">{op.hyp}</ins>{" "}
+			</>
+		);
+	}
+	if (op.op === "del") {
+		return (
+			<>
+				<del className="rounded bg-destructive/10 px-0.5 text-destructive/80">{op.ref}</del>{" "}
+			</>
+		);
+	}
+	if (op.op === "ins") {
+		return (
+			<>
+				<ins className="rounded bg-success/15 px-0.5 text-success no-underline">{op.hyp}</ins>{" "}
+			</>
+		);
+	}
+	return <>{op.ref} </>;
+}
+
+/** "Only differences" view (T-225): the review audits what the LLM
+ * cleanup actually changed — unchanged sentences are filtered out,
+ * so a long transcript reduces to its real edit surface. */
+function ChangesView({
+	pairs,
+	emptyLabel,
+}: {
+	pairs: readonly SentencePair[];
+	emptyLabel: string;
+}) {
+	const changed = pairs.filter((p) => p.ops.some((o) => o.op !== "ok"));
+	if (changed.length === 0) {
+		return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+	}
+	return (
+		<div className="space-y-3">
+			{changed.map((p, i) => (
+				<p key={i} className="text-sm leading-relaxed">
+					{p.ops.map((o, j) => (
+						<DiffWord key={j} op={o} />
+					))}
+				</p>
+			))}
+		</div>
+	);
+}
+
 /**
  * Transcript area for consultations with (or pending) server-side
  * audio processing: status chip, optional audio playback, and
@@ -492,7 +549,7 @@ export function AudioTranscriptPanel({
 	audioRef?: RefObject<HTMLAudioElement | null>;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
-	const [tab, setTab] = useState<"corrected" | "original">("corrected");
+	const [tab, setTab] = useState<"corrected" | "original" | "changes">("corrected");
 	const internalRef = useRef<HTMLAudioElement>(null);
 	const audioRef = audioRefProp ?? internalRef;
 	const [activeIdx, setActiveIdx] = useState(-1);
@@ -522,11 +579,18 @@ export function AudioTranscriptPanel({
 		correctedView.text.trim() !== primaryOriginal.text.trim()
 			? { corrected: correctedView, original: primaryOriginal }
 			: null;
+	// "Changes" view — sentence-level diff of original vs corrected; only
+	// pairs containing a real op are rendered below, so the reviewer
+	// audits what the cleanup changed instead of re-reading everything.
+	const changes = useMemo(
+		() => (tabbed ? sentenceDiff(tabbed.original.text, tabbed.corrected.text) : null),
+		[tabbed?.original.text, tabbed?.corrected.text],
+	);
 
 	const active: TranscriptView | null = tabbed
-		? tab === "corrected"
-			? tabbed.corrected
-			: tabbed.original
+		? tab === "original"
+			? tabbed.original
+			: tabbed.corrected
 		: (correctedView ?? primaryOriginal);
 	const lastReported = useRef("");
 	useEffect(() => {
@@ -594,12 +658,13 @@ export function AudioTranscriptPanel({
 			) : tabbed ? (
 				<Tabs
 					value={tab}
-					onValueChange={(v) => setTab(v as "corrected" | "original")}
+					onValueChange={(v) => setTab(v as "corrected" | "original" | "changes")}
 					className="w-full"
 				>
 					<TabsList className="text-xs">
 						<TabsTrigger value="corrected">{t.transcriptPanel.tabCorrected}</TabsTrigger>
 						<TabsTrigger value="original">{t.transcriptPanel.tabOriginal}</TabsTrigger>
+						<TabsTrigger value="changes">{t.transcriptPanel.tabChanges}</TabsTrigger>
 					</TabsList>
 					<TabsContent value="corrected" className="pt-2">
 						<SourceBlock
@@ -617,6 +682,9 @@ export function AudioTranscriptPanel({
 								highlight={highlight}
 							/>
 						))}
+					</TabsContent>
+					<TabsContent value="changes" className="space-y-3 pt-2">
+						<ChangesView pairs={changes ?? []} emptyLabel={t.transcriptPanel.noChanges} />
 					</TabsContent>
 				</Tabs>
 			) : originals.length ? (

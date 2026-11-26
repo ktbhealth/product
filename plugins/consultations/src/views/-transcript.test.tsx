@@ -225,6 +225,36 @@ describe("AudioTranscriptPanel", () => {
 		expect(second).toHaveBeenCalledWith({ text: "outro", source: "browser" });
 	});
 
+	it("changes tab shows only the differing sentences with del/ins marks", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Dor de garganta. Vou examinar."
+				correctedText="Dor na garganta. Vou examinar."
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		// unchanged sentence filtered out of the view entirely
+		expect(screen.queryByText(/Vou examinar/)).toBeNull();
+		// the substitution renders struck ref + highlighted hyp
+		expect(document.querySelector("del")?.textContent).toBe("de");
+		expect(document.querySelector("ins")?.textContent).toBe("na");
+	});
+
+	it("changes tab marks fully inserted sentences", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Dor de garganta."
+				correctedText="Dor de garganta. Nota do médico adicionada."
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		expect(screen.getByText("médico")).toBeTruthy();
+		expect(document.querySelectorAll("ins").length).toBeGreaterThan(0);
+		expect(document.querySelectorAll("del").length).toBe(0);
+	});
+
 	it("renders speaker-labelled lines as bubbles", () => {
 		render(<AudioTranscriptPanel consultationId={1} browserText={"Doctor: bom dia\nsem rótulo"} />);
 		expect(screen.getByText("Doctor")).toBeTruthy();

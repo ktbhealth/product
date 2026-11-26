@@ -9772,6 +9772,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "transcriptPanel.tabChanges",
+		locale: "en",
+		value: "Changes",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.noChanges",
+		locale: "en",
+		value: "No differences between original and corrected.",
+	},
+	{
+		namespace: "consultations",
 		key: "transcriptPanel.tabOriginal",
 		locale: "en",
 		value: "Original",
@@ -11655,6 +11667,18 @@ export const I18N_BASELINE = [
 		key: "transcriptPanel.skipSilence",
 		locale: "pt-BR",
 		value: "Pular silêncios",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.tabChanges",
+		locale: "pt-BR",
+		value: "Mudanças",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.noChanges",
+		locale: "pt-BR",
+		value: "Sem diferenças entre original e corrigida.",
 	},
 	{
 		namespace: "consultations",
@@ -13546,6 +13570,18 @@ export const I18N_BASELINE = [
 		key: "transcriptPanel.skipSilence",
 		locale: "es",
 		value: "Saltar silencios",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.tabChanges",
+		locale: "es",
+		value: "Cambios",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.noChanges",
+		locale: "es",
+		value: "Sin diferencias entre original y corregida.",
 	},
 	{
 		namespace: "consultations",
