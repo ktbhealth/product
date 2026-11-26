@@ -65,6 +65,7 @@ import {
 } from "@ktb/eval-consultation";
 import { builtinKinds } from "@ktb/orchestrator";
 import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
+import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
 import { Jobs, makeJobs } from "@ktb/jobs-port";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
@@ -528,6 +529,16 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
+	// Env-corrector port (P-120): the transcript env-cleanup stage
+	// probes this ambient service — the durable-safe successor of the
+	// envCorrect run-config function (live functions cannot serialize
+	// through the durable runner). Backed by the same
+	// envCorrectTranscript(llmConfig, …) correctTranscript injects per
+	// call, so in-memory and durable runs correct identically; env
+	// vars are composition-root data, resolved once here like llmConfig.
+	const EnvCorrectorLive = Layer.succeed(EnvCorrector, {
+		correct: (text: string) => envCorrectTranscript(llmConfig, text),
+	});
 	// F2: the ai-provider plugin's PlatformLlm capability wins over env
 	// providers when a platform-default endpoint is configured; the
 	// wrapped engine is the (b) env fallback → (c) heuristic path.
@@ -730,6 +741,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		MiddlewareStagesLive,
 		PipelineRegistryLive,
 		OrchestratorRegistryLive,
+		EnvCorrectorLive,
 		// External document-ref target registry (T-149): entity owners
 		// register existence checkers into this shared instance from
 		// their service layers; DocumentStore resolves entity refs

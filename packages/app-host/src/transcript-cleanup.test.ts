@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { makeDb } from "@ktb/db";
+import { makeD1 } from "@ktb/db/testing";
 import {
+	loadOrchestrationRun,
+	makeOrchestrationRunner,
 	makeOrchestratorRegistry,
 	OrchestratorRegistry,
 	type JsonObject,
@@ -18,9 +23,12 @@ import {
 	type PipelineRegistryService,
 	type PipelineStage,
 } from "@ktb/pipeline";
-import type { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
+import {
+	EnvCorrector,
+	transcriptPipelinePack,
+	type EnvCorrectorFn,
+} from "@ktb/plugin-pipeline-transcript";
 import { makeTranscriptOrchestratorRegistry } from "@ktb/plugin-pipeline-transcript/orchestration";
-import { transcriptPipelinePack } from "@ktb/plugin-pipeline-transcript";
 
 import { correctTranscriptEffect } from "./transcript-cleanup.ts";
 
@@ -33,7 +41,7 @@ import { correctTranscriptEffect } from "./transcript-cleanup.ts";
  * each engine.
  */
 
-const envCorrect: EnvCorrector = (text) =>
+const envCorrect: EnvCorrectorFn = (text) =>
 	Effect.succeed({ corrected: `env:${text}`, engine: "env-x" });
 
 const input = { text: "texto cru" };
@@ -101,7 +109,7 @@ const run = (
 	override?: {
 		readonly text?: string;
 		readonly segments?: readonly { readonly text: string }[];
-		readonly envCorrect?: EnvCorrector;
+		readonly envCorrect?: EnvCorrectorFn;
 	},
 ) =>
 	Effect.runPromise(
@@ -253,6 +261,140 @@ describe("correctTranscriptEffect envCorrect plumbing", () => {
 		await expect(run(layer)).resolves.toEqual({
 			corrected: "env:texto cru",
 			engine: "pipeline:env-x",
+		});
+	});
+
+	it("the envCorrect argument wins over an ambient EnvCorrector binding", async () => {
+		// correctTranscriptEffect lifts its argument into the port for
+		// the run — an ambient binding (e.g. the app's EnvCorrectorLive)
+		// must not shadow the explicit per-call corrector.
+		const layer = Layer.mergeAll(
+			Layer.succeed(OrchestratorRegistry, makeTranscriptOrchestratorRegistry()),
+			Layer.succeed(EnvCorrector, {
+				correct: () => Effect.succeed({ corrected: "ambient", engine: "amb-x" }),
+			}),
+		);
+		await expect(run(layer)).resolves.toEqual({
+			corrected: "env:texto cru",
+			engine: "pipeline:env-x",
+		});
+	});
+});
+
+/**
+ * Durable-runner suite: the env-cleanup stage's EnvCorrector probe is
+ * the ONLY corrector binding that survives `orchestration_*`
+ * serialization — the run-config function is dropped by JSON. These
+ * tests drive the real transcript OrchestrationDef through
+ * makeOrchestrationRunner + ambientContext, the same path an
+ * `orchestrator.step` consumer takes.
+ */
+describe("durable runner env corrector", () => {
+	const DDL = `
+CREATE TABLE orchestration_defs (
+	id TEXT PRIMARY KEY,
+	version TEXT NOT NULL,
+	def TEXT NOT NULL,
+	enabled INTEGER DEFAULT true NOT NULL,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+CREATE TABLE orchestration_runs (
+	id TEXT PRIMARY KEY,
+	def_id TEXT NOT NULL,
+	def_version TEXT NOT NULL,
+	status TEXT DEFAULT 'running' NOT NULL,
+	state TEXT NOT NULL,
+	runtime TEXT NOT NULL,
+	error TEXT,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+CREATE TABLE orchestration_events (
+	run_id TEXT NOT NULL,
+	seq INTEGER NOT NULL,
+	event_id TEXT NOT NULL,
+	event_type TEXT NOT NULL,
+	payload TEXT NOT NULL,
+	source TEXT NOT NULL,
+	ts INTEGER NOT NULL,
+	PRIMARY KEY(run_id, seq)
+);
+CREATE TABLE orchestration_node_runs (
+	run_id TEXT NOT NULL,
+	seq INTEGER NOT NULL,
+	node_id TEXT NOT NULL,
+	status TEXT NOT NULL,
+	latency_ms INTEGER NOT NULL,
+	error TEXT,
+	fires INTEGER NOT NULL,
+	PRIMARY KEY(run_id, seq)
+);
+`;
+
+	const fakeJobs = () => {
+		const sent: { kind: string; payload: unknown }[] = [];
+		return {
+			sent,
+			jobs: {
+				enqueue: async (kind: string, payload: unknown) => {
+					sent.push({ kind, payload });
+					return { id: `job-${sent.length}`, kind, payload };
+				},
+			},
+		};
+	};
+
+	const cleanupOf = (state: Readonly<Record<string, unknown>>) =>
+		state["cleanup"] as
+			| { readonly enabled?: unknown; readonly corrected?: unknown; readonly engine?: unknown }
+			| undefined;
+
+	it("corrects via the ambient EnvCorrector port across durable steps", async () => {
+		const db = makeDb(makeD1(DDL));
+		const registry = makeTranscriptOrchestratorRegistry();
+		const { jobs, sent } = fakeJobs();
+		const runner = makeOrchestrationRunner({
+			db,
+			jobs,
+			registry,
+			ambientContext: Context.make(EnvCorrector, { correct: envCorrect }),
+		});
+		const runId = await Effect.runPromise(
+			runner.start("consultation-transcript", { text: "texto cru" }),
+		);
+		// The whole chain fits one 50-event batch — a single step drains it.
+		await Effect.runPromise(runner.step(runId));
+		const loaded = await loadOrchestrationRun(db, runId);
+		expect(loaded?.record.status).toBe("done");
+		// env-cleanup skipped nothing — the port corrected; the
+		// run-config function never entered the picture (it could not
+		// have survived serialization anyway).
+		expect(cleanupOf(loaded?.runtime?.state ?? {})).toMatchObject({
+			enabled: true,
+			corrected: "env:texto cru",
+			engine: "env-x",
+		});
+		expect(sent.every((j) => j.kind === "orchestrator.step")).toBe(true);
+	});
+
+	it("degrades env-cleanup honestly when ambientContext carries no port", async () => {
+		const db = makeDb(makeD1(DDL));
+		const registry = makeTranscriptOrchestratorRegistry();
+		const { jobs } = fakeJobs();
+		const runner = makeOrchestrationRunner({ db, jobs, registry });
+		const runId = await Effect.runPromise(
+			runner.start("consultation-transcript", { text: "texto cru" }),
+		);
+		await Effect.runPromise(runner.step(runId));
+		const loaded = await loadOrchestrationRun(db, runId);
+		expect(loaded?.record.status).toBe("done");
+		// No platform endpoints either → cleanup stays disabled and the
+		// node output records the no-port degrade.
+		expect(cleanupOf(loaded?.runtime?.state ?? {})).toMatchObject({ enabled: false });
+		expect(loaded?.runtime?.state["env-cleanup"]).toEqual({
+			skipped: true,
+			reason: "no-port",
 		});
 	});
 });

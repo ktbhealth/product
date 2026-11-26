@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
 import type { DbClient } from "@ktb/db";
@@ -54,7 +55,12 @@ import type { LoadedOrchestrationRun } from "./types.ts";
  * Wiring (apps/web composition root — see the package README note):
  *
  * ```ts
- * const runner = makeOrchestrationRunner({ db, jobs, registry });
+ * const runner = makeOrchestrationRunner({
+ *   db, jobs, registry,
+ *   // ambientContext: Context.make(EnvCorrector, { correct }), // kinds'
+ *   //   Effect.serviceOption port probes resolve here — the only way
+ *   //   live services reach durable steps (config/events stay JSON).
+ * });
  * registerJobHandler(
  *   ORCHESTRATOR_STEP_KIND,
  *   orchestratorStepRegistration(runner),
@@ -77,6 +83,16 @@ export interface OrchestrationRunnerDeps {
 	readonly registry: OrchestratorRegistryService;
 	/** Max events one step job processes (default 50). */
 	readonly batchSize?: number;
+	/** Ambient services provided to kind executions on every step —
+	 * where kinds probe optional ports via `Effect.serviceOption`
+	 * (the same idiom the in-memory runner inherits from its caller's
+	 * context). Run config, events and snapshots stay JSON; live
+	 * services can ONLY arrive here, so a durable run needing e.g. the
+	 * transcript `EnvCorrector` port must pass it in this context
+	 * (build one with `Context.make(Tag, impl)` / `Layer.build`).
+	 * `Context` is contravariant in its service set, so `Context<never>`
+	 * is the top type any built context satisfies. */
+	readonly ambientContext?: Context.Context<never>;
 	readonly newRunId?: () => string;
 	readonly now?: () => number;
 }
@@ -261,13 +277,20 @@ export const makeOrchestrationRunner = (
 					// redeliveries ack cleanly.
 					return;
 				}
-				yield* advance(loaded, runId, now()).pipe(
+				const stepFx = advance(loaded, runId, now()).pipe(
 					Effect.catch((error) =>
 						Effect.promise(() =>
 							markOrchestrationRunFailed(deps.db, runId, describe(error), now()),
 						).pipe(Effect.asVoid),
 					),
 				);
+				// Kind effects run with an empty context by default —
+				// provideContext is what lets `Effect.serviceOption`
+				// probes (EnvCorrector & friends) resolve ambient ports
+				// during durable steps.
+				yield* deps.ambientContext === undefined
+					? stepFx
+					: Effect.provideContext(stepFx, deps.ambientContext);
 			}),
 	};
 };

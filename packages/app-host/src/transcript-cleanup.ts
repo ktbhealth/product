@@ -3,7 +3,11 @@ import * as Option from "effect/Option";
 
 import { OrchestratorRegistry } from "@ktb/orchestrator";
 import { PipelineRegistry } from "@ktb/pipeline";
-import { ENV_CORRECTOR_KEY, type EnvCorrector } from "@ktb/plugin-pipeline-transcript";
+import {
+	EnvCorrector,
+	ENV_CORRECTOR_KEY,
+	type EnvCorrectorFn,
+} from "@ktb/plugin-pipeline-transcript";
 import { transcriptOrchestrationConfig } from "@ktb/plugin-pipeline-transcript/orchestration";
 
 /**
@@ -16,11 +20,15 @@ import { transcriptOrchestrationConfig } from "@ktb/plugin-pipeline-transcript/o
  * AND knows `consultation-transcript` (the pipeline.transcript
  * manifest contributes the OrchestrationDef twin via `orchestrations`,
  * collected by `orchestratorRegistryLive` in the core layer). The env
- * corrector rides `RunOptions.config` — a FUNCTION, which survives the
- * in-memory runner but NOT the durable runner's serialized snapshots
- * (see orchestration.ts's KNOWN GAPS: durable runs need a port-based
- * corrector). `correctTranscript` is per-request and in-memory, so the
- * cast is safe here.
+ * corrector reaches env-cleanup through TWO bindings, both fed by the
+ * same `envCorrect` argument: it rides `RunOptions.config` (a
+ * FUNCTION — in-memory only, see orchestration.ts's KNOWN GAPS) AND
+ * is provided as the ambient `EnvCorrector` port for the duration of
+ * the run, which is the binding the durable runner's serialized
+ * snapshots cannot carry but its `ambientContext` can. The port wins
+ * inside the stage, so the explicit argument stays authoritative over
+ * any ambient binding the runtime happens to carry. `correctTranscript`
+ * is per-request and in-memory, so the config cast is safe here.
  *
  * `PipelineRegistry` is the transition fallback: consulted only when
  * the orchestrator service is absent or lacks the def — never after a
@@ -76,7 +84,7 @@ const cleanupOutcome = (state: Readonly<Record<string, unknown>>): CorrectedTran
  * degrade-to-disabled contract (the pipeline never rejects either). */
 export const correctTranscriptEffect = (
 	input: TranscriptInput,
-	envCorrect: EnvCorrector,
+	envCorrect: EnvCorrectorFn,
 ): Effect.Effect<CorrectedTranscript | null> =>
 	Effect.gen(function* () {
 		if (input.text.trim() === "") return null;
@@ -125,4 +133,11 @@ export const correctTranscriptEffect = (
 				),
 			);
 		return result === null ? null : cleanupOutcome(result.state);
-	});
+	}).pipe(
+		// Lift the explicit argument into the ambient EnvCorrector port
+		// for the duration of the run — env-cleanup prefers the port, so
+		// this keeps the caller-supplied corrector authoritative over any
+		// ambient binding (and gives the pipeline fallback the same port
+		// path the orchestration gets).
+		Effect.provideService(EnvCorrector, { correct: envCorrect }),
+	);

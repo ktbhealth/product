@@ -1,4 +1,6 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
@@ -389,6 +391,50 @@ describe("durable step execution", () => {
 		const record = await getOrchestrationRun(h.db, runId);
 		expect(record?.status).toBe("failed");
 		expect(record?.error).toContain("corrupt run state");
+	});
+
+	it("provides ambientContext services to kind probes during steps", async () => {
+		// A kind probing an ambient port via Effect.serviceOption — the
+		// EnvCorrector idiom — resolves it ONLY when the runner was
+		// built with ambientContext; without it the probe degrades.
+		class AmbientProbe extends Context.Service<AmbientProbe, { readonly ping: () => string }>()(
+			"@ktb/orchestrator-test/AmbientProbe",
+		) {}
+		const probeKind = (id: string): OrchestrationKind => ({
+			id,
+			run: () =>
+				Effect.gen(function* () {
+					const svc = yield* Effect.serviceOption(AmbientProbe);
+					const seen = Option.isSome(svc) ? svc.value.ping() : "none";
+					return { state: { seen }, output: { seen } };
+				}),
+		});
+		const db = makeTestDb();
+		const registry = makeOrchestratorRegistry([probeKind("probe")]);
+		registry.registerDef(def("p", [node("a", "probe", ["input"])]));
+		const { jobs } = fakeJobs();
+		const runner = makeOrchestrationRunner({
+			db,
+			jobs,
+			registry,
+			ambientContext: Context.make(AmbientProbe, { ping: () => "pong" }),
+		});
+		const runId = await Effect.runPromise(runner.start("p", {}));
+		await Effect.runPromise(runner.step(runId));
+		const loaded = await loadOrchestrationRun(db, runId);
+		expect(loaded?.record.status).toBe("done");
+		expect(loaded?.runtime?.state["seen"]).toBe("pong");
+
+		// Same run shape without ambientContext — the probe misses.
+		const db2 = makeTestDb();
+		const registry2 = makeOrchestratorRegistry([probeKind("probe")]);
+		registry2.registerDef(def("p", [node("a", "probe", ["input"])]));
+		const { jobs: jobs2 } = fakeJobs();
+		const runner2 = makeOrchestrationRunner({ db: db2, jobs: jobs2, registry: registry2 });
+		const runId2 = await Effect.runPromise(runner2.start("p", {}));
+		await Effect.runPromise(runner2.step(runId2));
+		const loaded2 = await loadOrchestrationRun(db2, runId2);
+		expect(loaded2?.runtime?.state["seen"]).toBe("none");
 	});
 
 	it("step on a missing run is a no-op", async () => {

@@ -22,8 +22,9 @@ import {
 
 import {
 	ENV_CORRECTOR_KEY,
+	EnvCorrector,
 	transcriptPipelinePack,
-	type EnvCorrector,
+	type EnvCorrectorFn,
 	type TranscriptCleanupState,
 	type TranscriptGateState,
 } from "./index.ts";
@@ -96,7 +97,7 @@ const decisionsLayer = (flag: (index: number) => boolean): Layer.Layer<Decisions
 	);
 
 const correctorStub =
-	(corrected: string, engine = "workers-ai"): EnvCorrector =>
+	(corrected: string, engine = "workers-ai"): EnvCorrectorFn =>
 	() =>
 		Effect.succeed({ corrected, engine });
 
@@ -279,7 +280,7 @@ describe("consultation-transcript orchestration parity", () => {
 describe("env-cleanup fallback parity", () => {
 	it("corrects through the injected env corrector when no platform endpoint is bound", async () => {
 		const seen: string[] = [];
-		const envCorrect: EnvCorrector = (text) =>
+		const envCorrect: EnvCorrectorFn = (text) =>
 			Effect.sync(() => {
 				seen.push(text);
 				return { corrected: "Texto corrigido.", engine: "workers-ai" };
@@ -298,7 +299,7 @@ describe("env-cleanup fallback parity", () => {
 
 	it("never overrides a successful platform cleanup", async () => {
 		const envCalls: string[] = [];
-		const envCorrect: EnvCorrector = (text) =>
+		const envCorrect: EnvCorrectorFn = (text) =>
 			Effect.sync(() => {
 				envCalls.push(text);
 				return { corrected: "NAO DEVE APARECER", engine: "workers-ai" };
@@ -319,6 +320,55 @@ describe("env-cleanup fallback parity", () => {
 		const { pipeline, orchestration } = await runBoth({ text: "texto cru" }, Layer.empty);
 		expectStateParity(pipeline, orchestration);
 		expect(cleanupOf(orchestration.state)?.enabled).toBe(false);
+	});
+
+	it("corrects through the ambient EnvCorrector port on both engines", async () => {
+		// The port is the durable-safe binding — provideService/ambient
+		// context reaches the shared stage on the pipeline engine and
+		// the orchestration kinds alike.
+		const seen: string[] = [];
+		const corrector: EnvCorrectorFn = (text) =>
+			Effect.sync(() => {
+				seen.push(text);
+				return { corrected: "Port corrigido.", engine: "port-x" };
+			});
+		const env = Layer.succeed(EnvCorrector, { correct: corrector });
+		const { pipeline, orchestration } = await runBoth({ text: "texto cru" }, env);
+		expectStateParity(pipeline, orchestration);
+		expect(cleanupOf(orchestration.state)).toMatchObject({
+			enabled: true,
+			corrected: "Port corrigido.",
+			engine: "port-x",
+		});
+		// Once per engine.
+		expect(seen).toEqual(["texto cru", "texto cru"]);
+	});
+
+	it("prefers the ambient port over the run-config function on both engines", async () => {
+		const portCalls: string[] = [];
+		const configCalls: string[] = [];
+		const env = Layer.succeed(EnvCorrector, {
+			correct: (text) =>
+				Effect.sync(() => {
+					portCalls.push(text);
+					return { corrected: "via port", engine: "port-x" };
+				}),
+		});
+		const configCorrector: EnvCorrectorFn = (text) =>
+			Effect.sync(() => {
+				configCalls.push(text);
+				return { corrected: "via config", engine: "cfg-x" };
+			});
+		const config = { [ENV_CORRECTOR_KEY]: configCorrector };
+		const { pipeline, orchestration } = await runBoth({ text: "texto cru" }, env, config);
+		expectStateParity(pipeline, orchestration);
+		expect(cleanupOf(orchestration.state)).toMatchObject({
+			enabled: true,
+			corrected: "via port",
+			engine: "port-x",
+		});
+		expect(portCalls).toEqual(["texto cru", "texto cru"]);
+		expect(configCalls).toEqual([]);
 	});
 });
 

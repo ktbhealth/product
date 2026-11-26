@@ -19,7 +19,7 @@ import {
 	CONSULTATION_TRANSCRIPT_PIPELINE,
 	ENV_CORRECTOR_KEY,
 	transcriptPipelinePack,
-	type EnvCorrector,
+	type EnvCorrectorFn,
 } from "./pack.ts";
 
 /**
@@ -63,8 +63,13 @@ import {
  *   `RunOptions.config` is nominally JsonObject — it survives the
  *   in-memory runner (runOrchestration) but NOT the durable runner,
  *   which serializes config/events to the `orchestration_*` tables.
- *   `transcriptOrchestrationConfig` carries the cast for phase 1;
- *   durable runs need a real port/kind variant (follow-up).
+ *   The durable-safe path is the ambient {@link EnvCorrector} port
+ *   (pack.ts): env-cleanup probes it via `Effect.serviceOption` —
+ *   port → config function → `{skipped: true}` degrade — so durable
+ *   steps resolve the corrector from the runner's `ambientContext`,
+ *   never from serialized config. `transcriptOrchestrationConfig`
+ *   keeps working for in-memory callers as the config-function
+ *   fallback.
  * - The builtin `ai` kind is still a stub; llm-cleanup deliberately
  *   keeps using the stage's PlatformLlm port rather than the stub.
  */
@@ -318,11 +323,14 @@ export const transcriptOrchestratorRegistryLive = (
 /** Run-config builder for the env-cleanup fallback: the composition
  * root's env corrector rides `RunOptions.config` under the same
  * {@link ENV_CORRECTOR_KEY} the pipeline pack reads. The `as unknown as
- * JsonObject` cast is the documented phase-1 edge — functions survive
- * the in-memory runner but cannot serialize through the durable
- * runner's snapshot/event persistence; a durable-safe corrector needs
- * a port or a kind variant (follow-up, see module doc). */
-export const transcriptOrchestrationConfig = (envCorrect?: EnvCorrector): JsonObject =>
+ * JsonObject` cast is the documented edge — functions survive the
+ * in-memory runner but cannot serialize through the durable runner's
+ * snapshot/event persistence (the function is silently dropped by
+ * JSON). Durable-safe callers bind the ambient {@link EnvCorrector}
+ * port instead (see pack.ts); this helper remains the in-memory
+ * config-function fallback — env-cleanup prefers the port when both
+ * are present. */
+export const transcriptOrchestrationConfig = (envCorrect?: EnvCorrectorFn): JsonObject =>
 	envCorrect === undefined ? {} : ({ [ENV_CORRECTOR_KEY]: envCorrect } as unknown as JsonObject);
 
 /** Convenience runner mirroring `PipelineRegistry.run(id, input,

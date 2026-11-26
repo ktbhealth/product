@@ -5,6 +5,7 @@ import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { makeD1 } from "@ktb/db/testing";
 import { Jobs } from "@ktb/jobs-port";
+import { OrchestratorRegistry } from "@ktb/orchestrator";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { PlatformAdmin } from "@ktb/platform";
 import { pluginDuration, pluginInvocations, tagged } from "@ktb/observability";
@@ -614,6 +615,24 @@ describe("createApp", () => {
 			} finally {
 				await bare.runtime.dispose();
 			}
+		});
+
+		it("binds EnvCorrectorLive so ambient orchestration runs correct without run config", async () => {
+			// A bare registry.run carries no envCorrect run config — the
+			// env-cleanup stage must resolve the ambient EnvCorrector port
+			// (EnvCorrectorLive over the same envCorrectTranscript
+			// llmConfig) — the binding durable steps get via
+			// ambientContext.
+			const result = await app.run(
+				Effect.gen(function* () {
+					const registry = yield* OrchestratorRegistry;
+					return yield* registry.run("consultation-transcript", { text: "texto cru" });
+				}),
+			);
+			expect(result.state["cleanup"]).toMatchObject({
+				enabled: true,
+				corrected: "Texto corrigido.",
+			});
 		});
 
 		it("falls back to env providers inside the pipeline when the platform corrector fails", async () => {

@@ -1,3 +1,4 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type * as Layer from "effect/Layer";
@@ -43,12 +44,13 @@ import {
  *                   char ranges when any were flagged, the historical
  *                   whole-transcript `cleanupTranscript` otherwise.
  *                   Absent endpoint → `cleanup.enabled = false`.
- *   env-cleanup   — env-derived providers injected by the composition
- *                   root as run config `envCorrect` (a corrector
- *                   function): the legacy free-text path, run ONLY when
- *                   llm-cleanup produced nothing. This is the
- *                   pipeline's own fallback — callers never chain
- *                   providers outside the def.
+ *   env-cleanup   — env-derived providers bound by the composition
+ *                   root as the ambient {@link EnvCorrector} port
+ *                   (durable-safe; the legacy run-config `envCorrect`
+ *                   function remains as in-memory back-compat): the
+ *                   free-text path, run ONLY when llm-cleanup produced
+ *                   nothing. This is the pipeline's own fallback —
+ *                   callers never chain providers outside the def.
  *
  * Every stage degrades gracefully (`onError: "skip"` plus internal
  * catch→disabled): the pipeline NEVER fails a transcript cleanup —
@@ -119,17 +121,50 @@ const asInput = (input: unknown): TranscriptPipelineInput | null => {
 	};
 };
 
-/** Env-corrector contract injected as run config — plugins cannot
- * import adapter packages (arch lint) or read env, so the composition
- * root supplies a ready corrector: app-host wires
- * `anamnesis-llm`'s `correctTranscript(llmConfig, text)` here. Returns
- * null on unconfigured/failure, mirroring CorrectedTranscript. */
-export type EnvCorrector = (
+/** Env-corrector result — the legacy free-text correction plus the
+ * provider tag recorded as `state.cleanup.engine`. */
+export interface EnvCorrectorResult {
+	readonly corrected: string;
+	readonly engine: string;
+}
+
+/** Env-corrector contract — the corrector function shape shared by
+ * the two injection paths: {@link EnvCorrectorFn} values ride run
+ * config under {@link ENV_CORRECTOR_KEY} (in-memory back-compat) and
+ * as the {@link EnvCorrector} ambient port's `correct` member (the
+ * durable-safe path — live functions cannot serialize through the
+ * durable runner's snapshot/event persistence). Plugins cannot import
+ * adapter packages (arch lint) or read env, so the composition root
+ * supplies a ready corrector: app-host wires `anamnesis-llm`'s
+ * `correctTranscript(llmConfig, text)` here. Returns null on
+ * unconfigured/failure, mirroring CorrectedTranscript; typed failures
+ * are caught by the stage like every other corrector error. */
+export type EnvCorrectorFn = (
 	text: string,
-) => Effect.Effect<{ readonly corrected: string; readonly engine: string } | null>;
+) => Effect.Effect<EnvCorrectorResult | null, unknown, unknown>;
+
+/** Ambient env-corrector port — the durable-safe successor of the
+ * `envCorrect` run-config function. Declared here (not in
+ * @ktb/orchestrator's ambient vocabulary) because the corrector is
+ * transcript-domain: only this pack's env-cleanup stage probes it, and
+ * the pack already owns the ENV_CORRECTOR_KEY contract. The stage
+ * probes it with `Effect.serviceOption` — the same ambient-port idiom
+ * the PlatformLlm/PlatformDecisions probes above use — so BOTH engines
+ * (PipelineRegistry and the OrchestrationDef kinds, which invoke this
+ * same stage) and BOTH runners (in-memory `registry.run` inheriting
+ * the caller's context, durable steps via the runner's
+ * `ambientContext`) resolve it identically. Precedence inside
+ * env-cleanup: ambient port → run-config `envCorrect` function →
+ * degrade (`{skipped: true}` output, no cleanup state). */
+export class EnvCorrector extends Context.Service<
+	EnvCorrector,
+	{ readonly correct: EnvCorrectorFn }
+>()("@ktb/plugin-pipeline-transcript/EnvCorrector") {}
 
 /** Run-config key carrying the composition root's env corrector into
- * the env-cleanup stage: `registry.run(id, input, { envCorrect })`. */
+ * the env-cleanup stage: `registry.run(id, input, { envCorrect })`.
+ * In-memory back-compat only — functions cannot serialize through the
+ * durable runner; durable runs bind {@link EnvCorrector} instead. */
 export const ENV_CORRECTOR_KEY = "envCorrect";
 
 /** `defaultLayer()` declares R=unknown because the plugin impl may
@@ -285,28 +320,48 @@ const llmCleanupStage: PipelineStage = {
 };
 
 /** env-cleanup — the pipeline's OWN fallback: env-derived providers
- * (anthropic > openai > workers-ai, resolved by the composition root
- * and injected as run config `envCorrect`) produce the legacy
- * free-text correction. Runs only when llm-cleanup left
- * `cleanup.enabled !== true` — platform endpoints always win, env is
- * the floor. Free-text (not EditList): ungated by design, it is the
- * pre-pipeline behavior preserved as a configured stage, not a
- * caller-side chain. Every absence/failure path writes nothing —
- * `state.cleanup` keeps whatever llm-cleanup left. */
+ * (anthropic > openai > workers-ai, resolved by the composition root)
+ * produce the legacy free-text correction. The corrector resolves in
+ * precedence order: the ambient {@link EnvCorrector} port first (the
+ * durable-safe path — live services reach the stage through the
+ * caller's Effect context on every engine/runner), then the run-config
+ * `envCorrect` function (in-memory back-compat), else the stage
+ * degrades to a `{skipped: true}` output. Runs only when llm-cleanup
+ * left `cleanup.enabled !== true` — platform endpoints always win,
+ * env is the floor. Free-text (not EditList): ungated by design, it is
+ * the pre-pipeline behavior preserved as a configured stage, not a
+ * caller-side chain. Corrector failures write nothing — `state.cleanup`
+ * keeps whatever llm-cleanup left. */
 const envCleanupStage: PipelineStage = {
 	id: "env-cleanup",
 	description:
-		"Env-provider transcript cleanup (corrector fn via run config) — fallback when no platform endpoint corrected the transcript.",
+		"Env-provider transcript cleanup (EnvCorrector port, envCorrect run-config fallback) — runs when no platform endpoint corrected the transcript.",
 	run: (ctx: StageContext) =>
 		Effect.gen(function* () {
 			const cleanup = ctx.state.cleanup as TranscriptCleanupState | undefined;
 			if (cleanup?.enabled === true && typeof cleanup.corrected === "string") return {};
-			const correct = (ctx.config as Record<string, unknown> | undefined)?.[ENV_CORRECTOR_KEY] as
-				| EnvCorrector
-				| undefined;
-			if (typeof correct !== "function") return {};
 			const input = asInput(ctx.input);
 			if (input === null || input.text.trim() === "") return {};
+
+			// Ambient port wins over the run-config function — the port
+			// is the only binding that survives the durable runner's
+			// serialized snapshots, so preferring it keeps in-memory and
+			// durable runs on the same corrector when both are bound.
+			const portOpt = yield* Effect.serviceOption(EnvCorrector);
+			const configured = (ctx.config as Record<string, unknown> | undefined)?.[
+				ENV_CORRECTOR_KEY
+			] as EnvCorrectorFn | undefined;
+			const correct: EnvCorrectorFn | undefined = Option.isSome(portOpt)
+				? portOpt.value.correct
+				: typeof configured === "function"
+					? configured
+					: undefined;
+			if (correct === undefined) {
+				// Same degrade shape the builtin `ai` kind uses for a
+				// missing port — observable in state["env-cleanup"],
+				// never a run failure.
+				return { output: { skipped: true, reason: "no-port" } };
+			}
 
 			const corrected = yield* correct(input.text).pipe(
 				Effect.catch((error) =>
