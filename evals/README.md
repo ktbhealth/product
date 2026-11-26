@@ -205,7 +205,10 @@ parents, and cycles are resolution errors. Merge semantics:
 rejected). `packages/eval-cli` merges domain params + suite overrides and
 threads the result as `domainParams` into `generateDataset`
 (dataset defaults: count/step/seed/noise) and `processSample`
-(`params.entityCategories` filters judged entity categories, etc.).
+(`params.entityCategories` filters judged entity categories;
+`params.cleanupTimestamps: true` sends the ungated cleanup corrector
+`[m:ss]`-timestamped ASR segments instead of flat text — ops are
+sanitized and re-anchored onto the plain transcript, T-207).
 Flags (`--n`, `--seed`, `--noise`, `--locale`, `--personas`,
 `--template`) still win over both. `eval list` prints the resolved
 definition (`domain-def <id> v<n> · k param key(s)`) and counts
