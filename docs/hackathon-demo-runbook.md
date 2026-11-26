@@ -99,12 +99,14 @@ anamnesis → PDF/FHIR. `consent_at` and `patient_id` confirmed written.
 
 ### Rehearsal findings / caveats
 
-- **Whisper prefetch is heavy**: mounting `/consultations/new` downloads a
-  ~50 MB+ onnxruntime-web model in the background (`backend.load()` →
-  `whisper-prefetch.ts`). First visit is slow and memory-hungry (it OOM'd
-  a constrained headless browser once). The paste/sample path does not
-  need it — but warm the page once before demoing, and expect judges on
-  slow connections to wait on first load.
+- **Whisper load is lazy (T-255)**: the ~50 MB+ onnxruntime-web model
+  only downloads when a capture actually starts (`backend.load()` inside
+  mic/tab/dictation start), or ahead of time via the warm-up card on
+  `/portal/doctor` — it OOM'd a constrained headless browser once during
+  rehearsal. The paste/sample, upload and bot paths never touch the
+  client model. If demoing a live capture on a slow connection, start
+  the mic once beforehand so the download overlaps the permission
+  prompt instead of the first words.
 - **Cold-compile latency is dev-only**: each route's first hit costs
   ~10-70 s under `vp dev`; subsequent hits are ~1-4 s. Hit every demo
   route once before showtime (does not apply to the deployed build).
