@@ -385,4 +385,3 @@ jobs:
           tar -xzf /tmp/tbls.tar.gz -C /tmp tbls
           sudo install -m 0755 /tmp/tbls /usr/local/bin/tbls
       - run: bun run db:erd:check
-
