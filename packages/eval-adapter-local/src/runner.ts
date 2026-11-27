@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { Driver } from "@ktb/driver-framework";
+import { OrchestratorRegistry } from "@ktb/orchestrator";
 import { PipelineRegistry } from "@ktb/pipeline";
 import {
 	AsrPort,
@@ -97,71 +98,110 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 			records.push(tag(asrRecord));
 			const asrText = asrResult.text;
 
-			// Preferred path when the runtime binds a PipelineRegistry
-			// that knows the shared `consultation-transcript` pack (the
-			// app composition root registers every plugin's packs): the
-			// pipeline stages resolve the platform decision/generative
-			// endpoints themselves, so cleanup works even without an
-			// ambient LlmPort. Unbound registry, unknown pipeline id,
-			// disabled cleanup, or a run failure all yield undefined and
-			// fall through to the direct LlmPort path — behavior with no
-			// registry bound is byte-identical to before.
-			const registryOpt = yield* Effect.serviceOption(PipelineRegistry);
-			const pipelineCleanup:
+			// Preferred path when the runtime binds a registry that knows
+			// the shared `consultation-transcript` cleanup (P-120
+			// cutover): OrchestratorRegistry first — the OrchestrationDef
+			// twin contributed via plugin manifests — then
+			// PipelineRegistry, the transition fallback. The stages
+			// resolve the platform decision/generative endpoints
+			// themselves, so cleanup works even without an ambient
+			// LlmPort. Eval passes NO run config on either engine (no
+			// envCorrect — eval has no env-derived corrector). Unbound
+			// registries, unknown ids, disabled cleanup, or a run
+			// failure all yield undefined and fall through to the
+			// direct LlmPort path — behavior with no registry bound is
+			// byte-identical to before.
+			const transcriptInput = {
+				text: asrText,
+				segments: asrResult.segments,
+				taskId: `eval-${item.id}`,
+			};
+			/** state.cleanup → the cleanup outcome, tagging any stage
+			 * RunRecords into this item's audit trail (same `eval-<id>`
+			 * namespace as every other stage record). Returns undefined
+			 * for disabled/malformed cleanup. */
+			const cleanupOutcome = (
+				state: Readonly<Record<string, unknown>>,
+			): { edits: number; corrected: string; werAfter: number; cerAfter: number } | undefined => {
+				const cleanup = state.cleanup as
+					| {
+							readonly enabled?: unknown;
+							readonly corrected?: unknown;
+							readonly edits?: unknown;
+							readonly records?: unknown;
+					  }
+					| undefined;
+				if (cleanup?.enabled !== true || typeof cleanup.corrected !== "string") {
+					return undefined;
+				}
+				if (Array.isArray(cleanup.records)) {
+					for (const r of cleanup.records as readonly RunRecord[]) {
+						records.push(tag(r));
+					}
+				}
+				return {
+					edits: typeof cleanup.edits === "number" ? cleanup.edits : 0,
+					corrected: cleanup.corrected,
+					werAfter: wer(item.script, cleanup.corrected),
+					cerAfter: cer(item.script, cleanup.corrected),
+				};
+			};
+			const runFailed = (engine: string) => (error: unknown) =>
+				Effect.logWarning(`eval transcript ${engine} failed, falling back`, {
+					error: String(error),
+				}).pipe(Effect.as(null));
+
+			// OrchestratorRegistry first: a bound registry that knows the
+			// def owns the run — success OR disabled cleanup is final
+			// (the shared stages would only repeat the same probes on
+			// the pipeline). Only an absent service/def or a run failure
+			// falls through to the pipeline probe.
+			const orchestratorOpt = yield* Effect.serviceOption(OrchestratorRegistry);
+			let registryCleanup:
 				| { edits: number; corrected: string; werAfter: number; cerAfter: number }
-				| undefined = yield* Option.isNone(registryOpt) ||
-			!registryOpt.value.has("consultation-transcript")
-				? Effect.succeed(undefined)
-				: Effect.gen(function* () {
-						const result = yield* registryOpt.value
-							.run("consultation-transcript", {
-								text: asrText,
-								segments: asrResult.segments,
-								taskId: `eval-${item.id}`,
-							})
-							.pipe(
-								Effect.catch((error) =>
-									Effect.logWarning("eval transcript pipeline failed, using direct cleanup", {
-										error: String(error),
-									}).pipe(Effect.as(null)),
-								),
-								Effect.catchDefect((defect) =>
-									Effect.logWarning("eval transcript pipeline failed, using direct cleanup", {
-										error: String(defect),
-									}).pipe(Effect.as(null)),
-								),
-							);
-						if (result === null) return undefined;
-						const cleanup = result.state.cleanup as
-							| {
-									readonly enabled?: unknown;
-									readonly corrected?: unknown;
-									readonly edits?: unknown;
-									readonly records?: unknown;
-							  }
-							| undefined;
-						if (cleanup?.enabled !== true || typeof cleanup.corrected !== "string") {
-							return undefined;
-						}
-						// The stages already emit RunRecords (corrector calls,
-						// gate judge batches) — tag them into this item's
-						// audit trail like every other stage record.
-						if (Array.isArray(cleanup.records)) {
-							for (const r of cleanup.records as readonly RunRecord[]) {
-								records.push(tag(r));
+				| undefined;
+			let orchestratorHandled = false;
+			if (Option.isSome(orchestratorOpt) && orchestratorOpt.value.has("consultation-transcript")) {
+				orchestratorHandled = true;
+				const result = yield* orchestratorOpt.value
+					.run("consultation-transcript", transcriptInput)
+					.pipe(
+						Effect.catch(runFailed("orchestration")),
+						Effect.catchDefect(runFailed("orchestration")),
+					);
+				if (result === null) {
+					orchestratorHandled = false;
+				} else {
+					registryCleanup = cleanupOutcome(result.state);
+				}
+			}
+
+			// PipelineRegistry fallback — only when the orchestrator
+			// could not serve the run at all (unbound, unknown id, or a
+			// failed run). A completed orchestrator run owns the outcome
+			// even when its cleanup disabled.
+			const transcriptCleanup =
+				registryCleanup ??
+				(orchestratorHandled
+					? undefined
+					: yield* Effect.gen(function* () {
+							const registryOpt = yield* Effect.serviceOption(PipelineRegistry);
+							if (Option.isNone(registryOpt) || !registryOpt.value.has("consultation-transcript")) {
+								return undefined;
 							}
-						}
-						return {
-							edits: typeof cleanup.edits === "number" ? cleanup.edits : 0,
-							corrected: cleanup.corrected,
-							werAfter: wer(item.script, cleanup.corrected),
-							cerAfter: cer(item.script, cleanup.corrected),
-						};
-					});
+							const result = yield* registryOpt.value
+								.run("consultation-transcript", transcriptInput)
+								.pipe(
+									Effect.catch(runFailed("pipeline")),
+									Effect.catchDefect(runFailed("pipeline")),
+								);
+							if (result === null) return undefined;
+							return cleanupOutcome(result.state);
+						}));
 
 			const llm = yield* Effect.serviceOption(LlmPort);
 			const cleanup =
-				pipelineCleanup ??
+				transcriptCleanup ??
 				(Option.isNone(llm)
 					? undefined
 					: yield* cleanupTranscript({

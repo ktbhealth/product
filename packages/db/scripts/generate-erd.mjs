@@ -157,6 +157,19 @@ const DOMAINS = [
 		tables: ["job_runs"],
 	},
 	{
+		id: "orchestrator",
+		title: "Orchestrator",
+		owner: "`packages/db/src/orchestration.ts` + `packages/orchestrator`",
+		description:
+			"Durable orchestration runs — persisted run state, the pending-event queue, per-node run trace, and stored orchestration definitions.",
+		tables: [
+			"orchestration_defs",
+			"orchestration_events",
+			"orchestration_node_runs",
+			"orchestration_runs",
+		],
+	},
+	{
 		id: "scheduler",
 		title: "Scheduler",
 		owner: "`packages/db/src/scheduled-jobs.ts` + `packages/scheduler-port`",

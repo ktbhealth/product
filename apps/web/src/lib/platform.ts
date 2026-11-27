@@ -86,6 +86,7 @@ import {
 import { resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
+import { makeOrchestrationHost } from "./orchestration.ts";
 import { portalInstances } from "./registry.ts";
 import { builtinMiddlewareStages } from "./middleware-stages.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
@@ -268,6 +269,18 @@ const jobs =
 // Registered unconditionally — the registry is per-process and a
 // no-op handler is harmless when AUDIO_QUEUE is unbound.
 registerJobHandler("jobs.ping", { handle: async () => {} });
+
+// Durable orchestration runner (P-120 phase 2): `orchestrator.step`
+// rides the same AUDIO_QUEUE transport — start() persists the run and
+// enqueues step 1; each step job advances one bounded batch and
+// re-enqueues the next (or marks the run terminal). The runner builds
+// lazily inside the app runtime on first use — see
+// lib/orchestration.ts for the ambientContext/loadStoredDefs wiring.
+// Unbound queue → no registration AND no start capability: nothing
+// can produce or consume step jobs, and "unknown job kind" is the
+// honest signal for a stray message.
+const orchestration = jobs === undefined ? undefined : makeOrchestrationHost({ run, db, jobs });
+orchestration?.registerStepHandler();
 
 // PL-006 phase 4: theme asset uploads ride a DEDICATED queue
 // (ktb-theme-assets) — image derivatives and font downloads never
@@ -768,6 +781,13 @@ setServerRuntime({
 		},
 	},
 	jobKinds: () => Object.keys(jobHandlers),
+	// P-120 phase 2: durable orchestration start surface — plugin fns
+	// (pipeline admin) reach runner.start through this capability; the
+	// consumer side is the orchestrator.step registration above.
+	orchestration:
+		orchestration === undefined
+			? undefined
+			: { startRun: (defId, input) => orchestration.startRun(defId, input) },
 	// P-094: capability-declaration views — handler registration merged
 	// with jobs.kind/jobs.schedulable declarations, plus the
 	// events.topic catalog for the pub/sub console.

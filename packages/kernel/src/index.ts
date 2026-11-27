@@ -141,6 +141,9 @@ export type ClientStubPlugin = Omit<MarkerPlugin, "contributions" | "configSchem
 	/** `pipelines` packs carry stage impls (Effects) — server-manifest
 	 * data that must never ride the client bundle. */
 	readonly pipelines?: never;
+	/** `orchestrations` packs carry kind handlers (Effects) —
+	 * server-manifest data that must never ride the client bundle. */
+	readonly orchestrations?: never;
 };
 
 export const clientStub = <const P extends ClientStubPlugin>(plugin: P): P => plugin;
