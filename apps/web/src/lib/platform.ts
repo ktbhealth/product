@@ -90,9 +90,11 @@ import { makeOrchestrationHost } from "./orchestration.ts";
 import { portalInstances } from "./registry.ts";
 import { builtinMiddlewareStages } from "./middleware-stages.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
-import { requestTelemetryContext } from "./telemetry.ts";
-import { makeFlushThrottler } from "./telemetry-flush.ts";
-import { setAccessLogSink } from "./access-log.ts";
+import {
+	makeFlushThrottler,
+	requestTelemetryContext,
+	setAccessLogSink,
+} from "@ktb/observability-edge";
 import { createApp } from "@ktb/app-host";
 import { packageLive } from "@ktb/kernel";
 import type { ExportFormat, RecordExporter } from "@ktb/interop";
@@ -899,7 +901,7 @@ export const audioBucket = env.AUDIO_BUCKET;
 export const themeAssetsBucket = env.THEME_ASSETS_BUCKET;
 export const imagesBucket = env.IMAGES_BUCKET;
 
-/** Coalesced flush (see telemetry-flush.ts): at most one real drain per
+/** Coalesced flush (see @ktb/observability-edge): at most one real drain per
  * min-interval across ALL callers — the worker entry invokes this after
  * every fetch and queue batch, and per-request draining would multiply
  * OTLP export subrequests under load. */

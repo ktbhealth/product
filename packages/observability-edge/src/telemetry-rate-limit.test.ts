@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { env } from "cloudflare:workers";
-
 import { checkTelemetryIngestRateLimit, telemetryClientKey } from "./telemetry-rate-limit.ts";
 
 const post = (ip?: string) =>
@@ -11,7 +9,12 @@ const post = (ip?: string) =>
 		body: "{}",
 	});
 
-const envBag = env as unknown as Record<string, unknown>;
+// Env slice the check resolves per call — the caller (the app's edge
+// route) reads its platform binding and hands it in. Mutable record:
+// tests rewrite the KTB_TELEMETRY_RATE_LIMIT_* keys between cases.
+const envBag: Record<string, string | undefined> = {};
+
+const check = (request: Request) => checkTelemetryIngestRateLimit(request, envBag);
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -30,7 +33,7 @@ describe("telemetryClientKey", () => {
 describe("checkTelemetryIngestRateLimit", () => {
 	it("allows under the default limits", () => {
 		for (let i = 0; i < 5; i++) {
-			expect(checkTelemetryIngestRateLimit(post("10.0.0.1")).allowed).toBe(true);
+			expect(check(post("10.0.0.1")).allowed).toBe(true);
 		}
 	});
 
@@ -38,9 +41,9 @@ describe("checkTelemetryIngestRateLimit", () => {
 		envBag.KTB_TELEMETRY_RATE_LIMIT_PER_IP = "2";
 		envBag.KTB_TELEMETRY_RATE_LIMIT_GLOBAL = "100";
 		const req = post("10.0.0.2");
-		expect(checkTelemetryIngestRateLimit(req).allowed).toBe(true);
-		expect(checkTelemetryIngestRateLimit(req).allowed).toBe(true);
-		const denied = checkTelemetryIngestRateLimit(req);
+		expect(check(req).allowed).toBe(true);
+		expect(check(req).allowed).toBe(true);
+		const denied = check(req);
 		expect(denied.allowed).toBe(false);
 		expect(denied.retryAfterMs).toBeGreaterThan(0);
 	});
@@ -48,9 +51,9 @@ describe("checkTelemetryIngestRateLimit", () => {
 	it("isolates the limit per client IP", () => {
 		envBag.KTB_TELEMETRY_RATE_LIMIT_PER_IP = "1";
 		envBag.KTB_TELEMETRY_RATE_LIMIT_GLOBAL = "100";
-		checkTelemetryIngestRateLimit(post("10.0.0.3"));
-		expect(checkTelemetryIngestRateLimit(post("10.0.0.3")).allowed).toBe(false);
-		expect(checkTelemetryIngestRateLimit(post("10.0.0.4")).allowed).toBe(true);
+		check(post("10.0.0.3"));
+		expect(check(post("10.0.0.3")).allowed).toBe(false);
+		expect(check(post("10.0.0.4")).allowed).toBe(true);
 	});
 
 	it("applies the global ceiling across distinct IPs", () => {
@@ -61,9 +64,9 @@ describe("checkTelemetryIngestRateLimit", () => {
 		vi.setSystemTime(later);
 		envBag.KTB_TELEMETRY_RATE_LIMIT_PER_IP = "100";
 		envBag.KTB_TELEMETRY_RATE_LIMIT_GLOBAL = "1";
-		expect(checkTelemetryIngestRateLimit(post("10.0.1.1")).allowed).toBe(true);
+		expect(check(post("10.0.1.1")).allowed).toBe(true);
 		// Different IP, same global bucket — denied.
-		expect(checkTelemetryIngestRateLimit(post("10.0.1.2")).allowed).toBe(false);
+		expect(check(post("10.0.1.2")).allowed).toBe(false);
 	});
 
 	it("resets the window after a minute", () => {
@@ -72,17 +75,17 @@ describe("checkTelemetryIngestRateLimit", () => {
 		envBag.KTB_TELEMETRY_RATE_LIMIT_PER_IP = "1";
 		envBag.KTB_TELEMETRY_RATE_LIMIT_GLOBAL = "100";
 		const req = post("10.0.0.5");
-		expect(checkTelemetryIngestRateLimit(req).allowed).toBe(true);
-		expect(checkTelemetryIngestRateLimit(req).allowed).toBe(false);
+		expect(check(req).allowed).toBe(true);
+		expect(check(req).allowed).toBe(false);
 		vi.setSystemTime(1_000_000 + 61_000);
-		expect(checkTelemetryIngestRateLimit(req).allowed).toBe(true);
+		expect(check(req).allowed).toBe(true);
 	});
 
 	it("treats 0 as disabled", () => {
 		envBag.KTB_TELEMETRY_RATE_LIMIT_PER_IP = "0";
 		envBag.KTB_TELEMETRY_RATE_LIMIT_GLOBAL = "0";
 		for (let i = 0; i < 10; i++) {
-			expect(checkTelemetryIngestRateLimit(post("10.0.0.6")).allowed).toBe(true);
+			expect(check(post("10.0.0.6")).allowed).toBe(true);
 		}
 	});
 
@@ -95,7 +98,7 @@ describe("checkTelemetryIngestRateLimit", () => {
 				throw new Error("binding exploded");
 			},
 		});
-		expect(checkTelemetryIngestRateLimit(post("10.0.0.7"))).toEqual({
+		expect(check(post("10.0.0.7"))).toEqual({
 			allowed: true,
 			retryAfterMs: 0,
 		});
