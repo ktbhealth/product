@@ -210,6 +210,7 @@ export function ConsultationDetailPage({
 	const frameRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		const el = frameRef.current;
+		/* v8 ignore next -- every render path attaches frameRef, so the ref is never null here */
 		if (!el) return;
 		const fit = () => {
 			const footer = document.querySelector("footer");
@@ -830,6 +831,7 @@ export function ConsultationDetailPage({
 															draft: segDraft,
 															busy: editBusy,
 															onStart: (i) => {
+																/* v8 ignore next -- onStart only fires for rendered rows, so the index is always in range and the draft falls back to the segment text */
 																setSegDraft(segEdits.get(i) ?? segments[i]?.text ?? "");
 																setSegEditing(i);
 															},

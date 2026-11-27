@@ -483,6 +483,37 @@ describe("ConsultationDetailPage", () => {
 		expect(screen.getByText(/enhancement failed — showing original/)).toBeTruthy();
 	});
 
+	it("shows the stored-audio chip and clears the status when the live row reports none", async () => {
+		const { unmount } = render(
+			<ConsultationDetailPage
+				c={detail({ audioKey: "k", audioStatus: "stored" })}
+				history={null}
+			/>,
+		);
+		expect(screen.getAllByText(/audio stored/).length).toBeGreaterThan(0);
+		unmount();
+
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const api = {
+			getConsultation: vi.fn(async () => ({ audioStatus: null, audioKey: "k" })),
+		};
+		render(
+			<ConsultationDetailPage
+				c={detail({ audioKey: "k", audioStatus: "queued" })}
+				history={null}
+				api={api}
+			/>,
+		);
+		// "queued" renders the enhancing chip until the poll lands…
+		expect(screen.getAllByText(/enhancing transcript/).length).toBeGreaterThan(0);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(0);
+		});
+		// …then the live row's null status clears it (the `?? ""` arm).
+		await waitFor(() => expect(screen.queryByText(/enhancing transcript/)).toBeNull());
+		vi.useRealTimers();
+	});
+
 	it("polls getConsultation while the pipeline is in flight", async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const api = {
@@ -1123,7 +1154,7 @@ describe("review stamps (PL-022)", () => {
 				api={{ getConsultation: vi.fn(), deferConsultation }}
 			/>,
 		);
-		await user.click(screen.getAllByText(/Deferred until/)[0]!);
+		await user.click(screen.getByRole("button", { name: /Deferred until/ }));
 		// Clicking the already-selected day deselects it — onSelect gets
 		// undefined and the defer call must not fire again.
 		const selected = document.querySelector<HTMLButtonElement>(
@@ -1478,7 +1509,7 @@ describe("ConsultationDetailPage — review edge cases", () => {
 				api={{ getConsultation: vi.fn(), deferConsultation }}
 			/>,
 		);
-		await user.click(screen.getAllByText(/Deferred until/)[0]!);
+		await user.click(screen.getByRole("button", { name: /Deferred until/ }));
 		// The calendar opens with the deferred day selected — clicking it
 		// again deselects (onSelect(undefined)) instead of re-deferring.
 		// rdp v10 marks the selected gridcell; the DayButton sits inside it.

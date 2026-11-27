@@ -2517,3 +2517,131 @@ describe("lazy ASR engine load", () => {
 		expect(loadMock()).toHaveBeenCalled();
 	});
 });
+
+describe("NewConsultationPage — chat workspace actions", () => {
+	const transcriptBox = () => screen.getByLabelText("Consultation text") as HTMLTextAreaElement;
+
+	beforeEach(() => {
+		micSupported = true;
+		micCb = null;
+		tabCb = null;
+		micStatsFn = null;
+		micRecFn = null;
+		tabStatsFn = null;
+		tabRecFn = null;
+		statusImpl = () => ({ state: "idle", device: null });
+		engineSubs.clear();
+		draftMock.state.draft = null;
+		draftMock.store.load.mockClear();
+		draftMock.store.save.mockClear();
+		draftMock.store.clear.mockClear();
+		vi.stubGlobal("fetch", vi.fn());
+		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+			this.setAttribute("open", "");
+		});
+		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+			this.removeAttribute("open");
+		});
+	});
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
+
+	it("stop capture ends every running channel at once", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Record microphone"));
+		await user.click(screen.getByText("Capture call tab"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(micStop).toHaveBeenCalled();
+		expect(tabStop).toHaveBeenCalled();
+	});
+
+	it("a second channel joining keeps the capture clock running", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Capture call tab"));
+		await user.click(screen.getByText("Record microphone"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(micStop).toHaveBeenCalled();
+		expect(tabStop).toHaveBeenCalled();
+	});
+
+	it("stop capture with only the tab channel leaves the mic alone", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Capture call tab"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(tabStop).toHaveBeenCalled();
+		expect(micStop).not.toHaveBeenCalled();
+	});
+
+	it("stop capture ends dictation too", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getByText("Post-consultation dictation"));
+		await consent(user);
+		await user.click(screen.getByText("Start dictation"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(micStop).toHaveBeenCalled();
+	});
+
+	it("copies the transcript to the clipboard", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn(async () => {});
+		Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+		renderPage();
+		fillTranscript("linha um\nlinha dois");
+		await user.click(screen.getByText("Copy transcript"));
+		await waitFor(() => expect(writeText).toHaveBeenCalledWith("linha um\nlinha dois"));
+		await screen.findByText(/Transcript copied/);
+	});
+
+	it("a failed transcript copy surfaces the error", async () => {
+		const user = userEvent.setup();
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: vi.fn(async () => Promise.reject(new Error("denied"))) },
+			configurable: true,
+		});
+		renderPage();
+		fillTranscript("texto");
+		await user.click(screen.getByText("Copy transcript"));
+		await screen.findByText(/Could not copy/);
+	});
+
+	it("downloads the transcript as a text file", async () => {
+		const user = userEvent.setup();
+		const create = vi.fn(() => "blob:export");
+		const revoke = vi.fn();
+		Object.defineProperty(URL, "createObjectURL", { value: create, configurable: true });
+		Object.defineProperty(URL, "revokeObjectURL", { value: revoke, configurable: true });
+		renderPage();
+		fillTranscript("export me");
+		await user.click(screen.getByText(/Download transcript/));
+		expect(create).toHaveBeenCalled();
+		expect(revoke).toHaveBeenCalledWith("blob:export");
+	});
+
+	it("trims captured row timestamps when the transcript shrinks", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Record microphone"));
+		act(() => micCb!({ type: "final", text: "primeira" }));
+		act(() => micCb!({ type: "final", text: "segunda" }));
+		await waitFor(() => expect(transcriptBox().value).toContain("segunda"));
+		fireEvent.change(transcriptBox(), { target: { value: "só uma linha" } });
+		expect(transcriptBox().value).toBe("só uma linha");
+	});
+
+	it("attributes Patient lines to the selected patient name", () => {
+		renderPage(makeApi(), PATIENTS, 1);
+		fillTranscript("Patient: oi doutor\nlinha solta");
+		expect(screen.getAllByText("Maria").length).toBeGreaterThan(0);
+	});
+});

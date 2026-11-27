@@ -376,6 +376,7 @@ export function NewConsultationPage({
 	// pattern as the review mode) — inner regions carry their own scroll.
 	useEffect(() => {
 		const el = frameRef.current;
+		/* v8 ignore next -- the ref is attached to the always-rendered frame */
 		if (!el) return;
 		const fit = () => {
 			const footer = document.querySelector("footer");
@@ -1030,8 +1031,7 @@ export function NewConsultationPage({
 	/* v8 ignore next -- the access question only exists for a linked patient, who has a name */
 	const accessPatientName = dialogPatientName ?? nc.patientFallback;
 
-	const selectedPatient =
-		patientId !== null ? (patients.find((p) => p.id === patientId) ?? null) : null;
+	const selectedPatient = patientId !== null ? patients.find((p) => p.id === patientId) : null;
 	const selectedPatientAge = patientId !== null ? createdAges[patientId] : undefined;
 
 	// Live chat rows: lines carry the capture-mode speaker hint as a
@@ -1055,7 +1055,7 @@ export function NewConsultationPage({
 					: speaker === t.speakers.patient && selectedPatient
 						? selectedPatient.name
 						: speaker,
-				text: m ? (m[2] ?? "") : line,
+				text: m ? m[2]! : line,
 				time: stamp === undefined ? undefined : fmtElapsed(stamp),
 			};
 		});

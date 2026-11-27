@@ -3,14 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const zkMocks = vi.hoisted(() => ({
-	decryptConsultation: vi.fn(async () => null as unknown),
-}));
-vi.mock("../zk.ts", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../zk.ts")>()),
-	...zkMocks,
-}));
-
 const routerMocks = vi.hoisted(() => ({
 	navigate: vi.fn<() => void>(),
 	invalidate: vi.fn<() => void>(),
@@ -1159,5 +1151,50 @@ describe("ReviewModePage — ZK overlay without raw anamnesis", () => {
 		await waitFor(() => expect(zkMocks.decryptConsultation).toHaveBeenCalled());
 		const row = zkMocks.decryptConsultation.mock.calls[0]![2] as { anamnesis?: unknown };
 		expect(row.anamnesis).toBeNull();
+	});
+
+	it("context bar flags a deferred, stale, audio-less item", () => {
+		renderPage(
+			{},
+			[item({})],
+			detail({
+				deferredUntil: new Date(Date.now() + 864e5),
+				anamnesisReviewedAt: new Date(),
+				anamnesisVersion: 2,
+				anamnesisReviewedVersion: 1,
+				audioKey: null,
+			}),
+		);
+		expect(screen.getAllByText("deferred").length).toBeGreaterThan(0);
+		expect(screen.getByText("New version v2")).toBeTruthy();
+		expect(screen.getAllByText("no audio").length).toBeGreaterThan(0);
+	});
+
+	it("groups chat rows by speaker with role chips and unknown fallbacks", () => {
+		const segs = [
+			{ start: 0, end: 2, text: "Bom dia", avgLogprob: -0.1, speaker: "Doctor" },
+			{ start: 2, end: 4, text: "Estou bem", avgLogprob: -0.1, speaker: "Doctor" },
+			{ start: 4, end: 6, text: "Quanto tempo", avgLogprob: -0.1, speaker: "Patient" },
+			{ start: 6, end: 8, text: "Falando", avgLogprob: -0.1, speaker: "SPEAKER_01" },
+			{ start: 8, end: 10, text: "Sem etiqueta", avgLogprob: -0.1 },
+		];
+		renderPage({}, [item({})], detail({ transcriptSegments: serializeTranscriptSegments(segs) }));
+		// Consecutive Doctor rows share one header; Patient/SPEAKER_01/none
+		// each open their own group.
+		expect(screen.getAllByText("Doctor").length).toBeGreaterThan(0);
+		expect(screen.getByText("Speaker 2")).toBeTruthy();
+		expect(screen.getByText("Speaker")).toBeTruthy();
+		// Enter on a bubble seeks like a click; other keys are ignored.
+		const bubble = screen.getAllByRole("button").find((b) => b.textContent?.includes("Estou bem"))!;
+		const audio = document.querySelector("audio")!;
+		audio.currentTime = 0;
+		fireEvent.keyDown(bubble, { key: "Enter" });
+		expect(audio.currentTime).toBe(2);
+		fireEvent.keyDown(bubble, { key: "a" });
+	});
+
+	it("context bar flags an in-flight audio pipeline", () => {
+		renderPage({}, [item({})], detail({ audioStatus: "processing" }));
+		expect(screen.getAllByText("processing").length).toBeGreaterThan(0);
 	});
 });

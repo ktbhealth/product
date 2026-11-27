@@ -134,6 +134,7 @@ export function ReviewModePage({
 	const hasItem = c !== null;
 	useEffect(() => {
 		const el = frameRef.current;
+		/* v8 ignore next -- every render path attaches frameRef, so the ref is never null here */
 		if (!el) return;
 		const fit = () => {
 			const footer = document.querySelector("footer");
