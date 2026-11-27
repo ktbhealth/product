@@ -1356,14 +1356,8 @@ export function NewConsultationPage({
 						 * audio test live inside the room itself. ---- */
 						<div className="fixed inset-0 z-50 overflow-hidden bg-background">
 							{/* floating chrome — the room itself stays full-bleed
-							 * exactly like the catalog demo */}
-							<Link
-								to={portalPath("/consultations")}
-								className={`${buttonVariants({ variant: "outline", size: "sm" })} absolute bottom-3 left-3 z-10 bg-background/80 backdrop-blur`}
-							>
-								<ArrowLeftIcon />
-								{t.detail.back}
-							</Link>
+							 * exactly like the catalog demo; navigation lives in
+							 * the room header's actions slot */}
 							{patientPickerOpen ? (
 								<div className="absolute top-20 left-3 z-10 rounded-xl border bg-card p-3 shadow-lg">
 									{patientPicker}
@@ -1396,6 +1390,15 @@ export function NewConsultationPage({
 								onChangePatient={() => setPatientPickerOpen(true)}
 								onAudioTest={() => backend.load()}
 								telemetry={{ encryptionLabel: lf.encryption }}
+								headerActions={
+									<Link
+										to={portalPath("/consultations")}
+										className={buttonVariants({ variant: "outline", size: "sm" })}
+									>
+										<ArrowLeftIcon />
+										{t.detail.back}
+									</Link>
+								}
 								labels={roomLabels}
 							/>
 						</div>,
