@@ -28,17 +28,22 @@ const mocks = vi.hoisted(() => ({
 // Same fake as session-fns.test.ts: handlers run as plain async fns
 // and the validator is applied to the incoming `data`.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => ({
-	ensureDoctorUser: mocks.ensureDoctorUser,
-	ensureSessionUser: mocks.ensureSessionUser,
-	getDoctorAccess: vi.fn(),
-	getDoctorUser: mocks.getDoctorUser,
-	getLocale: vi.fn(),
-	getServerRuntime: vi.fn(),
-	getSessionUser: vi.fn(),
-	purgeAudio: vi.fn(),
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		ensureDoctorUser: mocks.ensureDoctorUser,
+		ensureSessionUser: mocks.ensureSessionUser,
+		getDoctorAccess: vi.fn(),
+		getDoctorUser: mocks.getDoctorUser,
+		getLocale: vi.fn(),
+		getServerRuntime: vi.fn(),
+		getSessionUser: vi.fn(),
+		purgeAudio: vi.fn(),
+		runAs: mocks.runAs,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 /** Minimal DbClient — `deletePatientRow`'s rollback calls
  * `db.delete(table).where(cond)` + `db.batch(stmts)`; the P-101 tuple
  * cleanup then runs `db.delete(relationTuples).where(…).returning()`

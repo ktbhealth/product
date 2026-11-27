@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, getServerRuntime, runAs } from "@ktb/server-fns";
+import {
+	ensureSessionUser,
+	forbiddenTo,
+	getServerRuntime,
+	runAs,
+	sessionHandler,
+} from "@ktb/server-fns";
 import type { LlmEndpointPreset } from "@ktb/eval-consultation";
 
 import {
@@ -69,78 +75,81 @@ const endpointFrom = (d: Schema.Schema.Type<typeof EndpointSaveInput>): Endpoint
 });
 
 export const listEndpointsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly EndpointCard[]>> => {
-		const user = await ensureSessionUser();
+	sessionHandler(async ({ user }): Promise<Result<readonly EndpointCard[]>> => {
 		return run(
 			user,
 			Effect.gen(function* () {
 				const s = yield* AiEndpoints;
 				const data = yield* s.list();
 				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(forbiddenTo({ ok: false as const })),
 		);
-	},
+	}),
 );
 
 export const listEndpointPresetsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly LlmEndpointPreset[]>> => {
-		const user = await ensureSessionUser();
+	sessionHandler(async ({ user }): Promise<Result<readonly LlmEndpointPreset[]>> => {
 		return run(
 			user,
 			Effect.gen(function* () {
 				const s = yield* AiEndpoints;
 				const data = yield* s.presets();
 				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(forbiddenTo({ ok: false as const })),
 		);
-	},
+	}),
 );
 
 export const saveEndpointFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeEndpoint(input))
-	.handler(async ({ data }): Promise<Result<{ id: number }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* AiEndpoints;
-				const input = endpointFrom(data);
-				const r =
-					data.id != null
-						? yield* s.update({ id: data.id, ...input }).pipe(Effect.map(() => ({ id: data.id! })))
-						: yield* s.create(input);
-				return { ok: true as const, data: r };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ id: number }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* AiEndpoints;
+					const input = endpointFrom(data);
+					const r =
+						data.id != null
+							? yield* s
+									.update({ id: data.id, ...input })
+									.pipe(Effect.map(() => ({ id: data.id! })))
+							: yield* s.create(input);
+					return { ok: true as const, data: r };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const deleteEndpointFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* AiEndpoints;
-				yield* s.remove(data.id);
-				return { ok: true as const, data: null };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<null>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* AiEndpoints;
+					yield* s.remove(data.id);
+					return { ok: true as const, data: null };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const setPlatformDefaultEndpointFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* AiEndpoints;
-				yield* s.setPlatformDefault(data.id);
-				return { ok: true as const, data: null };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<null>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* AiEndpoints;
+					yield* s.setPlatformDefault(data.id);
+					return { ok: true as const, data: null };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 /**
  * Mint a bridge link (F3b). Returns the FULL `ai-bridge connect`
@@ -152,66 +161,72 @@ export const setPlatformDefaultEndpointFn = createServerFn({ method: "POST" })
  */
 export const createBridgeLinkFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<{ command: string; expiresAt: Date } | null>> => {
-		const user = await ensureSessionUser();
-		const { getRequestUrl } = await import("@tanstack/react-start/server");
-		const origin = new URL(getRequestUrl()).origin;
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* AiEndpoints;
-				const link = yield* s.createBridgeLink(data.id, user.id);
-				if (link === null) return { ok: true as const, data: null };
-				// The CLI argv prefix comes from the composition root — dev
-				// resolves the repo's cli.ts (the package is unpublished, so
-				// bunx 404s); the bunx fallback is the prod path for the day
-				// it ships. --cmd suggests the ACP adapter package: Claude
-				// Code 2.x has no `claude agent acp` subcommand —
-				// @agentclientprotocol/claude-agent-acp is the adapter, and
-				// bunx needs no install.
-				const cli = getServerRuntime().aiBridgeCli ?? "bunx @ktb/ai-bridge";
-				const command =
-					`${cli} connect ` +
-					`${origin}/api/ai/bridge?token=${link.token} ` +
-					`--cmd "bunx @agentclientprotocol/claude-agent-acp"`;
-				return { ok: true as const, data: { command, expiresAt: link.expiresAt } };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(
+			async ({ data, user }): Promise<Result<{ command: string; expiresAt: Date } | null>> => {
+				const { getRequestUrl } = await import("@tanstack/react-start/server");
+				const origin = new URL(getRequestUrl()).origin;
+				return run(
+					user,
+					Effect.gen(function* () {
+						const s = yield* AiEndpoints;
+						const link = yield* s.createBridgeLink(data.id, user.id);
+						if (link === null) return { ok: true as const, data: null };
+						// The CLI argv prefix comes from the composition root — dev
+						// resolves the repo's cli.ts (the package is unpublished, so
+						// bunx 404s); the bunx fallback is the prod path for the day
+						// it ships. --cmd suggests the ACP adapter package: Claude
+						// Code 2.x has no `claude agent acp` subcommand —
+						// @agentclientprotocol/claude-agent-acp is the adapter, and
+						// bunx needs no install.
+						const cli = getServerRuntime().aiBridgeCli ?? "bunx @ktb/ai-bridge";
+						const command =
+							`${cli} connect ` +
+							`${origin}/api/ai/bridge?token=${link.token} ` +
+							`--cmd "bunx @agentclientprotocol/claude-agent-acp"`;
+						return { ok: true as const, data: { command, expiresAt: link.expiresAt } };
+					}).pipe(forbiddenTo({ ok: false as const })),
+				);
+			},
+		),
+	);
 
 /** Bridge status poll for the connect dialog — `null` for
  * unknown/disabled/non-bridge endpoints or no grant. */
 export const endpointBridgeStatusFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeId(input))
 	.handler(
-		async ({ data }): Promise<Result<{ status: BridgeStatus; lastSeenAt: Date | null } | null>> => {
-			const user = await ensureSessionUser();
-			return run(
+		sessionHandler(
+			async ({
+				data,
 				user,
-				Effect.gen(function* () {
-					const s = yield* AiEndpoints;
-					const status = yield* s.bridgeStatus(data.id);
-					return { ok: true as const, data: status };
-				}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-			);
-		},
+			}): Promise<Result<{ status: BridgeStatus; lastSeenAt: Date | null } | null>> => {
+				return run(
+					user,
+					Effect.gen(function* () {
+						const s = yield* AiEndpoints;
+						const status = yield* s.bridgeStatus(data.id);
+						return { ok: true as const, data: status };
+					}).pipe(forbiddenTo({ ok: false as const })),
+				);
+			},
+		),
 	);
 
 /** Agents page list (F4): every bridge link joined to its endpoint —
  * the wire never carries token_hash. `{ ok: false }` without the
  * eval.validator grant. */
 export const listAgentLinksFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly AgentLinkRow[]>> => {
-		const user = await ensureSessionUser();
+	sessionHandler(async ({ user }): Promise<Result<readonly AgentLinkRow[]>> => {
 		return run(
 			user,
 			Effect.gen(function* () {
 				const s = yield* AiEndpoints;
 				const data = yield* s.listAgentLinks();
 				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(forbiddenTo({ ok: false as const })),
 		);
-	},
+	}),
 );
 
 /** Revoke a bridge link (F4): stamps revoked_at — future token use is
@@ -219,41 +234,43 @@ export const listAgentLinksFn = createServerFn({ method: "GET" }).handler(
  * unknown or already-revoked ids. */
 export const revokeAgentLinkFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<{ revoked: boolean }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* AiEndpoints;
-				const revoked = yield* s.revokeAgentLink(data.id);
-				return { ok: true as const, data: { revoked } };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ revoked: boolean }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* AiEndpoints;
+					const revoked = yield* s.revokeAgentLink(data.id);
+					return { ok: true as const, data: { revoked } };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const testEndpointFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<{ message?: string }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* AiEndpoints;
-				yield* s.test(data.id);
-				return { ok: true as const, data: {} };
-			}).pipe(
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
-				Effect.catch((e) =>
-					Effect.succeed({
-						ok: false as const,
-						data: {
-							message:
-								typeof e === "object" && e !== null && "message" in e
-									? String((e as { message: unknown }).message)
-									: String(e),
-						},
-					}),
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ message?: string }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* AiEndpoints;
+					yield* s.test(data.id);
+					return { ok: true as const, data: {} };
+				}).pipe(
+					forbiddenTo({ ok: false as const }),
+					Effect.catch((e) =>
+						Effect.succeed({
+							ok: false as const,
+							data: {
+								message:
+									typeof e === "object" && e !== null && "message" in e
+										? String((e as { message: unknown }).message)
+										: String(e),
+							},
+						}),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);

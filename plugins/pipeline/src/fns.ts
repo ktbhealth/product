@@ -14,11 +14,11 @@ import {
 import type { OrchestrationDefRecord } from "@ktb/orchestrator";
 import { PlatformAdmin } from "@ktb/platform";
 import {
-	ensureSessionUser,
-	getSessionUser,
 	getTenantSelector,
+	optionalSessionHandler,
 	runAs,
 	runtimeProbe,
+	sessionHandler,
 } from "@ktb/server-fns";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 import * as Effect from "effect/Effect";
@@ -104,23 +104,24 @@ export const orchestrationListRow = (record: OrchestrationDefRecord): Orchestrat
  * console manages both), newest fields first is NOT guaranteed: rows
  * come back id-ordered from the store. `null` for non-admins. */
 export const listOrchestrationsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly OrchestrationListRow[] | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const db = yield* Db;
-				const records = yield* Effect.promise(() =>
-					listOrchestrationDefs(db, { enabledOnly: false }),
-				);
-				return records.map(orchestrationListRow);
-			}),
-		).catch((error: unknown) => {
-			if (isForbidden(error)) return null;
-			throw error;
-		});
-	},
+	optionalSessionHandler(
+		() => null,
+		async ({ user }): Promise<readonly OrchestrationListRow[] | null> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const db = yield* Db;
+					const records = yield* Effect.promise(() =>
+						listOrchestrationDefs(db, { enabledOnly: false }),
+					);
+					return records.map(orchestrationListRow);
+				}),
+			).catch((error: unknown) => {
+				if (isForbidden(error)) return null;
+				throw error;
+			});
+		},
+	),
 );
 
 const IdInput = Schema.NonEmptyString;
@@ -131,20 +132,23 @@ const decodeId = Schema.decodeUnknownSync(IdInput);
  * as the store helper). */
 export const getOrchestrationFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data: id }): Promise<OrchestrationDefRecordWire | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const db = yield* Db;
-				return asWireRecord(yield* Effect.promise(() => getOrchestrationDef(db, id)));
-			}),
-		).catch((error: unknown) => {
-			if (isForbidden(error)) return null;
-			throw error;
-		});
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data: id }) => null,
+			async ({ data: id, user }): Promise<OrchestrationDefRecordWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const db = yield* Db;
+						return asWireRecord(yield* Effect.promise(() => getOrchestrationDef(db, id)));
+					}),
+				).catch((error: unknown) => {
+					if (isForbidden(error)) return null;
+					throw error;
+				});
+			},
+		),
+	);
 
 /**
  * Persist (or replace) an orchestration def. The wire payload IS the
@@ -156,20 +160,23 @@ export const getOrchestrationFn = createServerFn({ method: "GET" })
  */
 export const upsertOrchestrationFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeOrchestrationDef(input))
-	.handler(async ({ data: def }): Promise<OrchestrationDefRecordWire | false> => {
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const db = yield* Db;
-				yield* Effect.promise(() => upsertOrchestrationDef(db, def));
-				return asWireRecord(yield* Effect.promise(() => getOrchestrationDef(db, def.id))) ?? false;
-			}),
-		).catch((error: unknown) => {
-			if (isForbidden(error)) return false;
-			throw error;
-		});
-	});
+	.handler(
+		sessionHandler(async ({ data: def, user }): Promise<OrchestrationDefRecordWire | false> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const db = yield* Db;
+					yield* Effect.promise(() => upsertOrchestrationDef(db, def));
+					return (
+						asWireRecord(yield* Effect.promise(() => getOrchestrationDef(db, def.id))) ?? false
+					);
+				}),
+			).catch((error: unknown) => {
+				if (isForbidden(error)) return false;
+				throw error;
+			});
+		}),
+	);
 
 /**
  * Kind ids the node palette offers: the live `OrchestratorRegistry`
@@ -179,23 +186,24 @@ export const upsertOrchestrationFn = createServerFn({ method: "POST" })
  * palette.
  */
 export const listOrchestrationKindsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly string[] | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const registry = yield* Effect.serviceOption(OrchestratorRegistry);
-				const kinds = Option.isSome(registry)
-					? registry.value.listKinds().map((kind) => kind.id)
-					: builtinKinds.map((kind) => kind.id);
-				return [...new Set(kinds)].sort();
-			}),
-		).catch((error: unknown) => {
-			if (isForbidden(error)) return null;
-			throw error;
-		});
-	},
+	optionalSessionHandler(
+		() => null,
+		async ({ user }): Promise<readonly string[] | null> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const registry = yield* Effect.serviceOption(OrchestratorRegistry);
+					const kinds = Option.isSome(registry)
+						? registry.value.listKinds().map((kind) => kind.id)
+						: builtinKinds.map((kind) => kind.id);
+					return [...new Set(kinds)].sort();
+				}),
+			).catch((error: unknown) => {
+				if (isForbidden(error)) return null;
+				throw error;
+			});
+		},
+	),
 );
 
 // ---------------------------------------------------------------------------
@@ -240,40 +248,41 @@ const describeRunError = (error: unknown): string =>
  */
 export const startOrchestrationFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeStartOrchestrationInput(input))
-	.handler(async ({ data }): Promise<StartOrchestrationResult> => {
-		const user = await ensureSessionUser();
-		const tenantSelector = await getTenantSelector();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const startRun = runtimeProbe((r) => r.orchestration?.startRun);
-				if (startRun === undefined) {
-					return {
-						ok: false as const,
-						error: "orchestration runner unavailable (jobs transport unbound)",
-					};
-				}
-				// Stamp the run with the request's tenant scope — NULL in
-				// personal/platform scope (the /platform console normally
-				// sends no tenant selector, so admin-started runs are
-				// global unless a tenant context is bound).
-				const tenantId = tenantScopeId(yield* Tenant);
-				return yield* Effect.tryPromise({
-					try: () => startRun(data.defId, data.input, tenantId),
-					catch: (error) => error,
-				}).pipe(
-					Effect.map((runId): StartOrchestrationResult => ({ ok: true, runId })),
-					Effect.catch((error): Effect.Effect<StartOrchestrationResult> =>
-						Effect.succeed({ ok: false, error: describeRunError(error) }),
-					),
-				);
-			}),
-			tenantSelector,
-		).catch((error: unknown) => {
-			if (isForbidden(error)) return false;
-			throw error;
-		});
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<StartOrchestrationResult> => {
+			const tenantSelector = await getTenantSelector();
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const startRun = runtimeProbe((r) => r.orchestration?.startRun);
+					if (startRun === undefined) {
+						return {
+							ok: false as const,
+							error: "orchestration runner unavailable (jobs transport unbound)",
+						};
+					}
+					// Stamp the run with the request's tenant scope — NULL in
+					// personal/platform scope (the /platform console normally
+					// sends no tenant selector, so admin-started runs are
+					// global unless a tenant context is bound).
+					const tenantId = tenantScopeId(yield* Tenant);
+					return yield* Effect.tryPromise({
+						try: () => startRun(data.defId, data.input, tenantId),
+						catch: (error) => error,
+					}).pipe(
+						Effect.map((runId): StartOrchestrationResult => ({ ok: true, runId })),
+						Effect.catch((error): Effect.Effect<StartOrchestrationResult> =>
+							Effect.succeed({ ok: false, error: describeRunError(error) }),
+						),
+					);
+				}),
+				tenantSelector,
+			).catch((error: unknown) => {
+				if (isForbidden(error)) return false;
+				throw error;
+			});
+		}),
+	);
 
 /** Serializable run view — `OrchestrationRunRecord` plus the durable
  * node-run trace tail (`orchestration_node_runs`). `state` is the
@@ -296,20 +305,23 @@ export type OrchestrationRunWire = OrchestrationRunRecord & {
  * (same absent-reads-as-null contract as getOrchestrationFn). */
 export const getOrchestrationRunFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data: runId }): Promise<OrchestrationRunWire | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const db = yield* Db;
-				const record = yield* Effect.promise(() => getOrchestrationRun(db, runId));
-				if (record === null) return null;
-				const nodeRuns = yield* Effect.promise(() => listNodeRuns(db, runId));
-				return { ...record, nodeRuns };
-			}),
-		).catch((error: unknown) => {
-			if (isForbidden(error)) return null;
-			throw error;
-		});
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data: runId }) => null,
+			async ({ data: runId, user }): Promise<OrchestrationRunWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const db = yield* Db;
+						const record = yield* Effect.promise(() => getOrchestrationRun(db, runId));
+						if (record === null) return null;
+						const nodeRuns = yield* Effect.promise(() => listNodeRuns(db, runId));
+						return { ...record, nodeRuns };
+					}),
+				).catch((error: unknown) => {
+					if (isForbidden(error)) return null;
+					throw error;
+				});
+			},
+		),
+	);

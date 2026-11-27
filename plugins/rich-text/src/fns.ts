@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 import type { Json } from "effect/Schema";
 
-import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
+import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
@@ -104,61 +104,70 @@ const isHandled = (error: unknown): boolean =>
  * non-admins and handled domain failures. */
 export const createRichTextFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<RichTextDocWire | null> => {
-		await requirePluginEnabled("rich-text.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const richTexts = yield* RichTexts;
-				const row = yield* richTexts.adminCreate(data);
-				return row === null ? null : toDocWire(row);
+	.handler(
+		pluginHandler(
+			"rich-text.panel",
+			sessionHandler(async ({ data, user }): Promise<RichTextDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const richTexts = yield* RichTexts;
+						const row = yield* richTexts.adminCreate(data);
+						return row === null ? null : toDocWire(row);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Update a document's title and/or value; `null` for non-admins,
  * missing rows, invalid JSON values and other handled failures. */
 export const updateRichTextFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<RichTextDocWire | null> => {
-		await requirePluginEnabled("rich-text.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const richTexts = yield* RichTexts;
-				const { id, ...input } = data;
-				return toDocWire(yield* richTexts.adminUpdate(id, input));
+	.handler(
+		pluginHandler(
+			"rich-text.panel",
+			sessionHandler(async ({ data, user }): Promise<RichTextDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const richTexts = yield* RichTexts;
+						const { id, ...input } = data;
+						return toDocWire(yield* richTexts.adminUpdate(id, input));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Referencers of a document grouped by owning plugin — feeds the
  * delete dialog's extended confirm. Handled failures collapse to an
  * empty list; hook errors propagate (see the header comment). */
 export const richTextUsageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<RichTextUsageWire> => {
-		await requirePluginEnabled("rich-text.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const hooks = yield* RichTextDeleteHooks;
-				return yield* hooks.usage(data.id);
+	.handler(
+		pluginHandler(
+			"rich-text.panel",
+			sessionHandler(async ({ data, user }): Promise<RichTextUsageWire> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const hooks = yield* RichTextDeleteHooks;
+						return yield* hooks.usage(data.id);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return [] as RichTextUsageWire;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as RichTextUsageWire;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Delete a document by id; `false` for non-admins and missing rows.
  * When `actionId` is present the referencer hooks' `cleanup` runs
@@ -166,25 +175,28 @@ export const richTextUsageFn = createServerFn({ method: "POST" })
  * it the behavior is the plain delete. */
 export const deleteRichTextFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDelete(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("rich-text.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				if (data.actionId !== undefined) {
-					const hooks = yield* RichTextDeleteHooks;
-					yield* hooks.cleanup(data.id, data.actionId);
-				}
-				const richTexts = yield* RichTexts;
-				yield* richTexts.adminRemove(data.id);
-				return true;
+	.handler(
+		pluginHandler(
+			"rich-text.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						if (data.actionId !== undefined) {
+							const hooks = yield* RichTextDeleteHooks;
+							yield* hooks.cleanup(data.id, data.actionId);
+						}
+						const richTexts = yield* RichTexts;
+						yield* richTexts.adminRemove(data.id);
+						return true;
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return false;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return false;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Public document read by id — session-optional (anonymous app pages
  * embed stored documents). Returns null when the plugin is disabled or
@@ -212,19 +224,20 @@ export const richTextDocFn = createServerFn({ method: "GET" })
  * id/title/updatedAt only, no content payload. Handled failures
  * collapse to an empty list. */
 export const listRichTextDocsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly RichTextMetaWire[]> => {
-		await requirePluginEnabled("rich-text.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const richTexts = yield* RichTexts;
-				const rows = yield* richTexts.adminList();
-				return rows.map(toMetaWire);
-			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as readonly RichTextMetaWire[];
-			throw error;
-		});
-	},
+	pluginHandler(
+		"rich-text.panel",
+		sessionHandler(async ({ user }): Promise<readonly RichTextMetaWire[]> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const richTexts = yield* RichTexts;
+					const rows = yield* richTexts.adminList();
+					return rows.map(toMetaWire);
+				}),
+			).catch((error: unknown) => {
+				if (isHandled(error)) return [] as readonly RichTextMetaWire[];
+				throw error;
+			});
+		}),
+	),
 );

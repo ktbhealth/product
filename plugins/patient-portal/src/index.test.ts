@@ -32,7 +32,7 @@ import {
 const mocks = vi.hoisted(() => ({ patientContext: vi.fn() }));
 vi.mock("@ktb/server-fns", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
-	return { ...actual, getPatientContext: mocks.patientContext };
+	return { ...actual, getPatientContext: mocks.patientContext, ...actual.serverFnHandlerMocks() };
 });
 
 const section = (content: string): AnamnesisSection => ({

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
+import { optionalSessionHandler, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { Telemetry } from "@ktb/observability";
@@ -48,22 +48,23 @@ export interface PluginStateWire {
 }
 
 export const listPluginStatesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly PluginStateWire[] | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				return yield* states.entries();
-			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if ((error as { _tag?: string })._tag === "Forbidden") return null;
-			}
-			throw error;
-		});
-	},
+	optionalSessionHandler(
+		() => null,
+		async ({ user }): Promise<readonly PluginStateWire[] | null> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					return yield* states.entries();
+				}),
+			).catch((error: unknown) => {
+				if (typeof error === "object" && error !== null && "_tag" in error) {
+					if ((error as { _tag?: string })._tag === "Forbidden") return null;
+				}
+				throw error;
+			});
+		},
+	),
 );
 
 const SetEnabledInput = Schema.Struct({
@@ -80,22 +81,23 @@ const decodeSetEnabled = Schema.decodeUnknownSync(SetEnabledInput);
  */
 export const setPluginEnabledFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSetEnabled(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				yield* states.setEnabled(data.ids, data.enabled);
-				return true;
-			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if ((error as { _tag?: string })._tag === "Forbidden") return false;
-			}
-			throw error;
-		});
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<boolean> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					yield* states.setEnabled(data.ids, data.enabled);
+					return true;
+				}),
+			).catch((error: unknown) => {
+				if (typeof error === "object" && error !== null && "_tag" in error) {
+					if ((error as { _tag?: string })._tag === "Forbidden") return false;
+				}
+				throw error;
+			});
+		}),
+	);
 
 const PluginIdInput = Schema.String;
 const decodePluginId = Schema.decodeUnknownSync(PluginIdInput);
@@ -104,23 +106,26 @@ const decodePluginId = Schema.decodeUnknownSync(PluginIdInput);
  * the plugin is unknown or the caller is not an admin. */
 export const getPluginConfigFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodePluginId(input))
-	.handler(async ({ data: pluginId }): Promise<any> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				return yield* states.config(pluginId);
-			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				const tag = (error as { _tag?: string })._tag;
-				if (tag === "Forbidden" || tag === "UnknownPlugin") return null;
-			}
-			throw error;
-		});
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data: pluginId }) => null,
+			async ({ data: pluginId, user }): Promise<any> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const states = yield* PluginStates;
+						return yield* states.config(pluginId);
+					}),
+				).catch((error: unknown) => {
+					if (typeof error === "object" && error !== null && "_tag" in error) {
+						const tag = (error as { _tag?: string })._tag;
+						if (tag === "Forbidden" || tag === "UnknownPlugin") return null;
+					}
+					throw error;
+				});
+			},
+		),
+	);
 
 export type { ManagerMetrics } from "./metrics.ts";
 
@@ -133,23 +138,24 @@ export type { ManagerMetrics } from "./metrics.ts";
  * non-admins, same gate as the other manager fns.
  */
 export const getMetricsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<ManagerMetrics | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const telemetry = yield* Telemetry;
-				const text = yield* telemetry.scrape;
-				return summarizeMetrics(text);
-			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if ((error as { _tag?: string })._tag === "Forbidden") return null;
-			}
-			throw error;
-		});
-	},
+	optionalSessionHandler(
+		() => null,
+		async ({ user }): Promise<ManagerMetrics | null> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const telemetry = yield* Telemetry;
+					const text = yield* telemetry.scrape;
+					return summarizeMetrics(text);
+				}),
+			).catch((error: unknown) => {
+				if (typeof error === "object" && error !== null && "_tag" in error) {
+					if ((error as { _tag?: string })._tag === "Forbidden") return null;
+				}
+				throw error;
+			});
+		},
+	),
 );
 
 const SetConfigInput = Schema.Struct({
@@ -162,19 +168,20 @@ const decodeSetConfig = Schema.decodeUnknownSync(SetConfigInput);
  * `InvalidPluginConfig`/`UnknownPlugin` details for bad input. */
 export const setPluginConfigFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSetConfig(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				yield* states.setConfig(data.pluginId, data.config);
-				return true;
-			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if ((error as { _tag?: string })._tag === "Forbidden") return false;
-			}
-			throw error;
-		});
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<boolean> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					yield* states.setConfig(data.pluginId, data.config);
+					return true;
+				}),
+			).catch((error: unknown) => {
+				if (typeof error === "object" && error !== null && "_tag" in error) {
+					if ((error as { _tag?: string })._tag === "Forbidden") return false;
+				}
+				throw error;
+			});
+		}),
+	);

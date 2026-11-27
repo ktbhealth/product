@@ -6,10 +6,11 @@ import * as Option from "effect/Option";
 
 import { Audit, type AuditFacets, type AuditListQuery, type AuditListResult } from "@ktb/audit";
 import {
-	ensureSessionUser,
+	forbiddenTo,
 	getPatientContext,
 	getSessionUser,
-	runAs,
+	optionalSessionHandler,
+	sessionHandler,
 	setPatientSelection,
 } from "@ktb/server-fns";
 
@@ -93,20 +94,22 @@ const ACTIVITY_EMPTY: AuditListResult = {
  */
 export const patientActivityFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodePatientActivity(input))
-	.handler(async ({ data }): Promise<AuditListResult> => {
-		const user = await getSessionUser();
-		if (!user) return ACTIVITY_EMPTY;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return ACTIVITY_EMPTY;
-				return yield* audit.value
-					.patientList({ patientId: data.patientId, limit: PATIENT_ACTIVITY_LIMIT })
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(ACTIVITY_EMPTY)));
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => ACTIVITY_EMPTY,
+			async ({ data, run }): Promise<AuditListResult> => {
+				return run(
+					Effect.gen(function* () {
+						const audit = yield* Effect.serviceOption(Audit);
+						if (Option.isNone(audit)) return ACTIVITY_EMPTY;
+						return yield* audit.value
+							.patientList({ patientId: data.patientId, limit: PATIENT_ACTIVITY_LIMIT })
+							.pipe(forbiddenTo(ACTIVITY_EMPTY));
+					}),
+				);
+			},
+		),
+	);
 
 /**
  * Re-query the open record's access log with filters/pagination —
@@ -117,24 +120,26 @@ export const patientActivityFn = createServerFn({ method: "GET" })
  */
 export const patientActivityQueryFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeActivityQuery(input ?? {}))
-	.handler(async ({ data }): Promise<AuditListResult> => {
-		const user = await getSessionUser();
-		if (!user) return ACTIVITY_EMPTY;
-		const query = toActivityQuery(data);
-		const context = await getPatientContext();
-		const patientId = context?.active?.patientId ?? null;
-		if (patientId === null) return ACTIVITY_EMPTY;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return ACTIVITY_EMPTY;
-				return yield* audit.value
-					.patientList({ patientId, ...query })
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(ACTIVITY_EMPTY)));
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => ACTIVITY_EMPTY,
+			async ({ data, run }): Promise<AuditListResult> => {
+				const query = toActivityQuery(data);
+				const context = await getPatientContext();
+				const patientId = context?.active?.patientId ?? null;
+				if (patientId === null) return ACTIVITY_EMPTY;
+				return run(
+					Effect.gen(function* () {
+						const audit = yield* Effect.serviceOption(Audit);
+						if (Option.isNone(audit)) return ACTIVITY_EMPTY;
+						return yield* audit.value
+							.patientList({ patientId, ...query })
+							.pipe(forbiddenTo(ACTIVITY_EMPTY));
+					}),
+				);
+			},
+		),
+	);
 
 const EMPTY_FACETS: AuditFacets = { actionGroups: [], actors: [], targetTypes: [] };
 
@@ -143,23 +148,21 @@ const EMPTY_FACETS: AuditFacets = { actionGroups: [], actors: [], targetTypes: [
  * fail-closed resolution as {@link patientActivityQueryFn}.
  */
 export const patientActivityFacetsFn = createServerFn({ method: "POST" }).handler(
-	async (): Promise<AuditFacets> => {
-		const user = await getSessionUser();
-		if (!user) return EMPTY_FACETS;
-		const context = await getPatientContext();
-		const patientId = context?.active?.patientId ?? null;
-		if (patientId === null) return EMPTY_FACETS;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return EMPTY_FACETS;
-				return yield* audit.value
-					.patientFacets({ patientId })
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(EMPTY_FACETS)));
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => EMPTY_FACETS,
+		async ({ run }): Promise<AuditFacets> => {
+			const context = await getPatientContext();
+			const patientId = context?.active?.patientId ?? null;
+			if (patientId === null) return EMPTY_FACETS;
+			return run(
+				Effect.gen(function* () {
+					const audit = yield* Effect.serviceOption(Audit);
+					if (Option.isNone(audit)) return EMPTY_FACETS;
+					return yield* audit.value.patientFacets({ patientId }).pipe(forbiddenTo(EMPTY_FACETS));
+				}),
+			);
+		},
+	),
 );
 
 /** Open `patientId` in the portal from now on. Refused (`{ ok: false }`)
@@ -181,19 +184,19 @@ export const selectPatientFn = createServerFn({ method: "POST" })
  */
 export const portalRegisterDeviceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDeviceKeys(input))
-	.handler(async ({ data }) => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const portal = yield* PatientPortal;
-				return yield* portal.registerDevice(data).pipe(
-					Effect.map((device) => ({ ok: true as const, device })),
-					Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const portal = yield* PatientPortal;
+					return yield* portal.registerDevice(data).pipe(
+						Effect.map((device) => ({ ok: true as const, device })),
+						forbiddenTo({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /**
  * The caller's wrapped DEK envelopes for a batch of records, keyed by
@@ -203,16 +206,16 @@ export const portalRegisterDeviceFn = createServerFn({ method: "POST" })
  */
 export const portalDekEnvelopesFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeDekEnvelopes(input))
-	.handler(async ({ data }): Promise<Record<string, string>> => {
-		const user = await getSessionUser();
-		if (!user) return {};
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const portal = yield* PatientPortal;
-				return yield* portal
-					.dekEnvelopes(data)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed({})));
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => ({}),
+			async ({ data, run }): Promise<Record<string, string>> => {
+				return run(
+					Effect.gen(function* () {
+						const portal = yield* PatientPortal;
+						return yield* portal.dekEnvelopes(data).pipe(forbiddenTo({}));
+					}),
+				);
+			},
+		),
+	);

@@ -84,4 +84,15 @@ export {
 	pluginEnabledFn,
 	requirePluginEnabled,
 } from "./plugin-route.ts";
+export {
+	type BoundRun,
+	doctorHandler,
+	forbiddenTo,
+	optionalDoctorHandler,
+	optionalSessionHandler,
+	pluginHandler,
+	type ServerFnHandlerContext,
+	serverFnHandlerMocks,
+	sessionHandler,
+} from "./handlers.ts";
 export { peekServerRuntime } from "./runtime.ts";

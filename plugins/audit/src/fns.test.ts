@@ -15,11 +15,16 @@ const mocks = vi.hoisted(() => ({
 // async fns; `runAs` executes the Effect for real so the
 // serviceOption/Forbidden branches are exercised.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => ({
-	getSessionUser: mocks.getSessionUser,
-	getTenantSelector: mocks.getTenantSelector,
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		getSessionUser: mocks.getSessionUser,
+		getTenantSelector: mocks.getTenantSelector,
+		runAs: mocks.runAs,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 
 import { Forbidden } from "@ktb/authz";
 

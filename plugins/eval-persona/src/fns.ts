@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { ensureSessionUser, forbiddenTo, runAs, sessionHandler } from "@ktb/server-fns";
 
 import {
 	EvalInstances,
@@ -103,186 +103,194 @@ const personaFrom = (d: Schema.Schema.Type<typeof PersonaDefInput>) => ({
 });
 
 export const listPersonaDefsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly PersonaDefCard[]>> => {
-		const user = await ensureSessionUser();
+	sessionHandler(async ({ user }): Promise<Result<readonly PersonaDefCard[]>> => {
 		return run(
 			user,
 			Effect.gen(function* () {
 				const s = yield* EvalPersonas;
 				const data = yield* s.list();
 				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(forbiddenTo({ ok: false as const })),
 		);
-	},
+	}),
 );
 
 export const savePersonaDefFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDef(input))
-	.handler(async ({ data }): Promise<Result<{ id: number }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalPersonas;
-				const persona = personaFrom(data);
-				const notes = data.notes == null ? undefined : data.notes;
-				const r =
-					data.id != null
-						? yield* s
-								.update({
-									id: data.id,
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ id: number }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalPersonas;
+					const persona = personaFrom(data);
+					const notes = data.notes == null ? undefined : data.notes;
+					const r =
+						data.id != null
+							? yield* s
+									.update({
+										id: data.id,
+										name: data.name,
+										persona,
+										...(notes !== undefined ? { notes } : {}),
+									})
+									.pipe(Effect.map(() => ({ id: data.id! })))
+							: yield* s.create({
 									name: data.name,
 									persona,
 									...(notes !== undefined ? { notes } : {}),
-								})
-								.pipe(Effect.map(() => ({ id: data.id! })))
-						: yield* s.create({
-								name: data.name,
-								persona,
-								...(notes !== undefined ? { notes } : {}),
-							});
-				return { ok: true as const, data: r };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+								});
+					return { ok: true as const, data: r };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const generatePersonasFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeGenerate(input))
-	.handler(async ({ data }): Promise<Result<{ created: number }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalPersonas;
-				const r = yield* s.generate({
-					count: data.count,
-					...(data.endpointId != null ? { endpointId: data.endpointId } : {}),
-					...(data.seed != null ? { seed: data.seed } : {}),
-				});
-				return { ok: true as const, data: r };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ created: number }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalPersonas;
+					const r = yield* s.generate({
+						count: data.count,
+						...(data.endpointId != null ? { endpointId: data.endpointId } : {}),
+						...(data.seed != null ? { seed: data.seed } : {}),
+					});
+					return { ok: true as const, data: r };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const deletePersonaDefFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalPersonas;
-				yield* s.remove(data.id);
-				return { ok: true as const, data: null };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<null>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalPersonas;
+					yield* s.remove(data.id);
+					return { ok: true as const, data: null };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const listInstancesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly InstanceCard[]>> => {
-		const user = await ensureSessionUser();
+	sessionHandler(async ({ user }): Promise<Result<readonly InstanceCard[]>> => {
 		return run(
 			user,
 			Effect.gen(function* () {
 				const s = yield* EvalInstances;
 				const data = yield* s.list();
 				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(forbiddenTo({ ok: false as const })),
 		);
-	},
+	}),
 );
 
 export const instanceDetailFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<InstanceDetail | null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalInstances;
-				const d = yield* s.detail(data.id);
-				return { ok: true as const, data: d };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<InstanceDetail | null>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalInstances;
+					const d = yield* s.detail(data.id);
+					return { ok: true as const, data: d };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const createInstanceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeInstance(input))
-	.handler(async ({ data }): Promise<Result<{ id: number }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalInstances;
-				const input: CreateInstanceInput = {
-					name: data.name,
-					mode: data.mode,
-					...(data.endpointId != null ? { endpointId: data.endpointId } : {}),
-					...(data.defIds != null ? { defIds: data.defIds } : {}),
-					...(data.count != null ? { count: data.count } : {}),
-					...(data.seed != null ? { seed: data.seed } : {}),
-					...(data.minutes != null ? { minutes: data.minutes } : {}),
-				};
-				const r = yield* s.create(input);
-				return { ok: true as const, data: r };
-			}).pipe(
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
-				Effect.catchTag("InstanceRejected", (e) =>
-					Effect.succeed({ ok: false as const, data: { message: e.reason } }),
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ id: number }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalInstances;
+					const input: CreateInstanceInput = {
+						name: data.name,
+						mode: data.mode,
+						...(data.endpointId != null ? { endpointId: data.endpointId } : {}),
+						...(data.defIds != null ? { defIds: data.defIds } : {}),
+						...(data.count != null ? { count: data.count } : {}),
+						...(data.seed != null ? { seed: data.seed } : {}),
+						...(data.minutes != null ? { minutes: data.minutes } : {}),
+					};
+					const r = yield* s.create(input);
+					return { ok: true as const, data: r };
+				}).pipe(
+					forbiddenTo({ ok: false as const }),
+					Effect.catchTag("InstanceRejected", (e) =>
+						Effect.succeed({ ok: false as const, data: { message: e.reason } }),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);
 
 export const startInstanceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalInstances;
-				yield* s.start(data.id);
-				return { ok: true as const, data: null };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<null>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalInstances;
+					yield* s.start(data.id);
+					return { ok: true as const, data: null };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const deleteInstanceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<{ readonly message?: string } | null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalInstances;
-				yield* s.remove(data.id);
-				return { ok: true as const, data: null };
-			}).pipe(
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
-				Effect.catchTag("InstanceRejected", (e) =>
-					Effect.succeed({ ok: false as const, data: { message: e.reason } }),
-				),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(
+			async ({ data, user }): Promise<Result<{ readonly message?: string } | null>> => {
+				return run(
+					user,
+					Effect.gen(function* () {
+						const s = yield* EvalInstances;
+						yield* s.remove(data.id);
+						return { ok: true as const, data: null };
+					}).pipe(
+						forbiddenTo({ ok: false as const }),
+						Effect.catchTag("InstanceRejected", (e) =>
+							Effect.succeed({ ok: false as const, data: { message: e.reason } }),
+						),
+					),
+				);
+			},
+		),
+	);
 
 export const spawnInstancesFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSpawn(input))
-	.handler(async ({ data }): Promise<Result<{ created: number }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalInstances;
-				const r = yield* s.spawn({
-					count: data.count,
-					...(data.endpointId != null ? { endpointId: data.endpointId } : {}),
-					...(data.defCount != null ? { defCount: data.defCount } : {}),
-					...(data.seed != null ? { seed: data.seed } : {}),
-					...(data.name != null ? { name: data.name } : {}),
-				});
-				return { ok: true as const, data: r };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<Result<{ created: number }>> => {
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* EvalInstances;
+					const r = yield* s.spawn({
+						count: data.count,
+						...(data.endpointId != null ? { endpointId: data.endpointId } : {}),
+						...(data.defCount != null ? { defCount: data.defCount } : {}),
+						...(data.seed != null ? { seed: data.seed } : {}),
+						...(data.name != null ? { name: data.name } : {}),
+					});
+					return { ok: true as const, data: r };
+				}).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);

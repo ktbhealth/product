@@ -6,7 +6,15 @@ import { Schema } from "effect";
 
 import { Email } from "@ktb/email";
 import { inviteAcceptPath } from "@ktb/invites";
-import { getDoctorContext, getLocale, getSessionUser, run, runAs } from "@ktb/server-fns";
+import {
+	forbiddenTo,
+	getDoctorContext,
+	getLocale,
+	getSessionUser,
+	optionalSessionHandler,
+	run,
+	runAs,
+} from "@ktb/server-fns";
 
 import { secretaryMessages } from "./i18n.ts";
 import { Secretaries, type InviteErrorCode } from "./index.ts";
@@ -52,18 +60,20 @@ export const emailEnabledFn = createServerFn({ method: "GET" }).handler(() =>
 
 /** The session doctor's secretaries; null when the caller is anonymous
  * or has no doctor profile of their own. */
-export const listSecretariesFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getSessionUser();
-	if (!user) return null;
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const secretaries = yield* Secretaries;
-			const rows = yield* secretaries.list();
-			return rows.map(toItem);
-		}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
-	);
-});
+export const listSecretariesFn = createServerFn({ method: "GET" }).handler(
+	optionalSessionHandler(
+		() => null,
+		async ({ run }) => {
+			return run(
+				Effect.gen(function* () {
+					const secretaries = yield* Secretaries;
+					const rows = yield* secretaries.list();
+					return rows.map(toItem);
+				}).pipe(forbiddenTo(null)),
+			);
+		},
+	),
+);
 
 export type InviteSecretaryResult =
 	| { readonly ok: true; readonly secretary: SecretaryItem }
@@ -114,9 +124,7 @@ export const inviteSecretaryFn = createServerFn({ method: "POST" })
 				Effect.catchTag("InviteRejected", (e) =>
 					Effect.succeed({ ok: false as const, error: e.code }),
 				),
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed({ ok: false as const, error: "failed" as const }),
-				),
+				forbiddenTo({ ok: false as const, error: "failed" as const }),
 			),
 		);
 		if (result.ok) {
@@ -130,14 +138,16 @@ export const inviteSecretaryFn = createServerFn({ method: "POST" })
  * not the session doctor's. */
 export const revokeSecretaryFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getSessionUser();
-		if (!user) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const secretaries = yield* Secretaries;
-				return { ok: yield* secretaries.revoke(id) };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false }))),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data: id }) => ({ ok: false }),
+			async ({ data: id, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const secretaries = yield* Secretaries;
+						return { ok: yield* secretaries.revoke(id) };
+					}).pipe(forbiddenTo({ ok: false })),
+				);
+			},
+		),
+	);

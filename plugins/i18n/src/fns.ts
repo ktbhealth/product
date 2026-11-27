@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { getSessionUser, runAs } from "@ktb/server-fns";
+import { forbiddenTo, getSessionUser, runAs } from "@ktb/server-fns";
 import { Forbidden } from "@ktb/authz";
 
 import {
@@ -131,7 +131,7 @@ export const i18nMissingKeysFn = createServerFn({ method: "POST" })
 				Effect.catchTag("I18nValidationError", (e) =>
 					Effect.succeed({ ok: false as const, error: e.error }),
 				),
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				forbiddenTo({ ok: false as const }),
 			),
 		),
 	);
@@ -155,7 +155,7 @@ export const i18nSaveDraftFn = createServerFn({ method: "POST" })
 					Effect.catchTag("I18nValidationError", (e) =>
 						Effect.succeed({ ok: false as const, error: e.error }),
 					),
-					Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+					forbiddenTo({ ok: false as const }),
 				),
 		),
 	);
@@ -169,7 +169,7 @@ export const i18nPublishFn = createServerFn({ method: "POST" })
 				Effect.catchTag("I18nValidationError", (e) =>
 					Effect.succeed({ ok: false as const, error: e.error }),
 				),
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				forbiddenTo({ ok: false as const }),
 			),
 		),
 	);
@@ -183,7 +183,7 @@ export const i18nDiscardDraftFn = createServerFn({ method: "POST" })
 				Effect.catchTag("I18nValidationError", (e) =>
 					Effect.succeed({ ok: false as const, error: e.error }),
 				),
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				forbiddenTo({ ok: false as const }),
 			),
 		),
 	);
@@ -234,7 +234,7 @@ export const i18nImportFn = createServerFn({ method: "POST" })
 						Effect.catchTag("I18nValidationError", (e) =>
 							Effect.succeed({ ok: false as const, error: e.error }),
 						),
-						Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+						forbiddenTo({ ok: false as const }),
 					)
 				: Effect.succeed({ ok: false as const, error: "import payload too large" }),
 		),
@@ -251,7 +251,7 @@ export const i18nSetLocaleFn = createServerFn({ method: "POST" })
 				Effect.catchTag("I18nValidationError", (e) =>
 					Effect.succeed({ ok: false as const, error: e.error }),
 				),
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				forbiddenTo({ ok: false as const }),
 			),
 		),
 	);

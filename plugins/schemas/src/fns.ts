@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
+import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
@@ -119,81 +119,91 @@ const isHandled = (error: unknown): boolean =>
  * `null` for non-admins and handled domain failures. */
 export const createSchemaFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<SchemaDocWire | null> => {
-		await requirePluginEnabled("schemas.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const schemas = yield* Schemas;
-				const row = yield* schemas.adminCreate(data);
-				return row === null ? null : toDocWire(row);
+	.handler(
+		pluginHandler(
+			"schemas.panel",
+			sessionHandler(async ({ data, user }): Promise<SchemaDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const schemas = yield* Schemas;
+						const row = yield* schemas.adminCreate(data);
+						return row === null ? null : toDocWire(row);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Update a schema's name/description/schema; `null` for non-admins,
  * missing rows, invalid schema JSON, name conflicts and other handled
  * failures. */
 export const updateSchemaFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<SchemaDocWire | null> => {
-		await requirePluginEnabled("schemas.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const schemas = yield* Schemas;
-				const { id, ...input } = data;
-				return toDocWire(yield* schemas.adminUpdate(id, input));
+	.handler(
+		pluginHandler(
+			"schemas.panel",
+			sessionHandler(async ({ data, user }): Promise<SchemaDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const schemas = yield* Schemas;
+						const { id, ...input } = data;
+						return toDocWire(yield* schemas.adminUpdate(id, input));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Delete a schema by id; `false` for non-admins and missing rows. */
 export const deleteSchemaFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("schemas.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const schemas = yield* Schemas;
-				yield* schemas.adminRemove(data.id);
-				return true;
+	.handler(
+		pluginHandler(
+			"schemas.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const schemas = yield* Schemas;
+						yield* schemas.adminRemove(data.id);
+						return true;
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return false;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return false;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Admin schema list for pickers — id/name/description/updatedAt
  * only, no schema payload. Handled failures collapse to an empty
  * list. */
 export const listSchemasFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly SchemaMetaWire[]> => {
-		await requirePluginEnabled("schemas.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const schemas = yield* Schemas;
-				const rows = yield* schemas.adminList();
-				return rows.map(toMetaWire);
-			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as readonly SchemaMetaWire[];
-			throw error;
-		});
-	},
+	pluginHandler(
+		"schemas.panel",
+		sessionHandler(async ({ user }): Promise<readonly SchemaMetaWire[]> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const schemas = yield* Schemas;
+					const rows = yield* schemas.adminList();
+					return rows.map(toMetaWire);
+				}),
+			).catch((error: unknown) => {
+				if (isHandled(error)) return [] as readonly SchemaMetaWire[];
+				throw error;
+			});
+		}),
+	),
 );
 
 /** Public schema read by id — session-optional (anonymous app pages
