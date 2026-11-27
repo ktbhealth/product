@@ -124,18 +124,24 @@ export const platformLoader = async ({ params }: { params: { _splat?: string } }
 	// pages) resolve by longest matching base.
 	const pageEntry = findPage(portalPages, path);
 	if (pageEntry === undefined) throw notFound();
-	const [pluginStates, audiences, theme, deniedPaths, pageResult] = await Promise.all([
+	// Enablement resolves BEFORE the page-data server fn is invoked:
+	// the side-effect-free reads (states/audiences/theme/denied list)
+	// race, the package gate runs, and only a live entry reaches
+	// portalPageDataFn — the same ordering the server-side pageData
+	// middleware stages enforce, so a disabled plugin's loader work
+	// never starts.
+	const [pluginStates, audiences, theme, deniedPaths] = await Promise.all([
 		pluginStatesFn(),
 		portalAudiencesFn(),
 		// Instance → tenant → platform fallback (P-082).
 		themeScopeFn({ data: { scope: "portal-instance", id: "platform" } }),
 		consoleDeniedFn(),
-		portalPageDataFn({ data: path }),
 	]);
 	const enabled = enabledIdSet(pluginStates);
 	// Package-granular gates (P-058): the page's package must be live —
 	// same contract as the server-side pageData/CQRS gates.
 	if (!entryEnabled(plugins, enabled, pageEntry)) throw notFound();
+	const pageResult = await portalPageDataFn({ data: path });
 	if (pageResult.status === "notfound") throw notFound();
 	// Middleware `redirect` verdicts (PL-015) surface as router redirects.
 	if (pageResult.status === "redirect") throw redirect({ href: pageResult.to });

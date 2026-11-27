@@ -254,6 +254,9 @@ describe("platformLoader", () => {
 		await expect(platformLoader({ params: { _splat: "platform/patients" } })).rejects.toMatchObject(
 			{ isNotFound: true },
 		);
+		// The enablement gate runs before the page-data server fn —
+		// a disabled package's loader work never starts.
+		expect(portalPageDataFn).not.toHaveBeenCalled();
 	});
 
 	it("404s when the data fn reports notfound (guard denial)", async () => {
