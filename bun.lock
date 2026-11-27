@@ -735,6 +735,9 @@
         "@ktb/kernel": "workspace:*",
         "effect": "4.1.2",
       },
+      "devDependencies": {
+        "@ktb/orchestrator": "workspace:*",
+      },
     },
     "packages/platform": {
       "name": "@ktb/platform",
