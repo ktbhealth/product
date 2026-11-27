@@ -2,6 +2,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { makeRegistry } from "@ktb/kernel";
+
 import { runOrchestration } from "./runner.ts";
 import {
 	DuplicateKindError,
@@ -75,30 +77,19 @@ export class OrchestratorRegistry extends Context.Service<
  * pre-registered; a duplicate kind id throws
  * {@link DuplicateKindError}. */
 export const makeOrchestratorRegistry = (
-	kinds: readonly OrchestrationKind[] = [],
+	initialKinds: readonly OrchestrationKind[] = [],
 ): OrchestratorRegistryService => {
-	const defs = new Map<string, OrchestrationDef>();
-	const kindMap = new Map<string, OrchestrationKind>();
-
-	const registerKind = (kind: OrchestrationKind): void => {
-		if (kindMap.has(kind.id)) {
-			throw new DuplicateKindError({ kind: kind.id });
-		}
-		kindMap.set(kind.id, kind);
-	};
-	for (const kind of kinds) {
-		registerKind(kind);
-	}
-
-	return {
-		registerKind,
-
-		registerDef(def) {
-			if (defs.has(def.id)) {
-				throw new DuplicateOrchestrationError({ orchestrationId: def.id });
-			}
+	const kinds = makeRegistry<OrchestrationKind>({
+		key: (kind) => kind.id,
+		duplicate: (id) => new DuplicateKindError({ kind: id }),
+	});
+	const defs = makeRegistry<OrchestrationDef>({
+		key: (def) => def.id,
+		duplicate: (id) => new DuplicateOrchestrationError({ orchestrationId: id }),
+		unknown: (id) => new UnknownOrchestrationError({ orchestrationId: id }),
+		validate: (def) => {
 			for (const node of def.nodes) {
-				if (node.handler === undefined && !kindMap.has(node.kind)) {
+				if (node.handler === undefined && !kinds.has(node.kind)) {
 					throw new UnknownKindError({
 						kind: node.kind,
 						nodeId: node.id,
@@ -106,31 +97,27 @@ export const makeOrchestratorRegistry = (
 					});
 				}
 			}
-			defs.set(def.id, def);
 		},
+	});
+	for (const kind of initialKinds) {
+		kinds.register(kind);
+	}
 
-		get(id) {
-			const def = defs.get(id);
-			if (def === undefined) {
-				throw new UnknownOrchestrationError({ orchestrationId: id });
-			}
-			return def;
-		},
+	return {
+		registerKind: (kind) => kinds.register(kind),
 
-		has(id) {
-			return defs.has(id);
-		},
+		registerDef: (def) => defs.register(def),
 
-		listDefs() {
-			return [...defs.values()];
-		},
+		get: (id) => defs.get(id),
 
-		listKinds() {
-			return [...kindMap.values()];
-		},
+		has: (id) => defs.has(id),
+
+		listDefs: () => defs.list(),
+
+		listKinds: () => kinds.list(),
 
 		run(id, input, opts) {
-			const def = defs.get(id);
+			const def = defs.lookup(id);
 			if (def === undefined) {
 				return Effect.fail(
 					new OrchestrationRunError({
@@ -140,7 +127,7 @@ export const makeOrchestratorRegistry = (
 					}),
 				);
 			}
-			return runOrchestration(def, kindMap, input, opts);
+			return runOrchestration(def, kinds.map, input, opts);
 		},
 	};
 };
