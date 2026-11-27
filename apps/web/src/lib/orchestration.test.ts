@@ -36,6 +36,7 @@ CREATE TABLE orchestration_runs (
 	state TEXT NOT NULL,
 	runtime TEXT NOT NULL,
 	error TEXT,
+	tenant_id INTEGER,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
@@ -66,11 +67,15 @@ const makeTestDb = (): DbClient => makeDb(makeD1(DDL));
 /** Capturing enqueuer — the fake transport (same shape the
  * orchestrator package's own runner tests use). */
 const fakeJobs = () => {
-	const sent: { kind: string; payload: unknown }[] = [];
+	const sent: {
+		kind: string;
+		payload: unknown;
+		options?: { tenantId?: number | null };
+	}[] = [];
 	const jobs: JobsEnqueuer = {
-		enqueue: async (kind, payload): Promise<JobEnvelope> => {
-			sent.push({ kind, payload });
-			return { id: `job-${sent.length}`, kind, payload };
+		enqueue: async (kind, payload, options): Promise<JobEnvelope> => {
+			sent.push({ kind, payload, options });
+			return { id: `job-${sent.length}`, kind, payload, tenantId: options?.tenantId ?? null };
 		},
 	};
 	return { jobs, sent };
@@ -111,7 +116,11 @@ interface HostHarness {
 	readonly host: ReturnType<typeof makeOrchestrationHost>;
 	readonly db: DbClient;
 	readonly registry: ReturnType<typeof makeOrchestratorRegistry>;
-	readonly sent: { kind: string; payload: unknown }[];
+	readonly sent: {
+		kind: string;
+		payload: unknown;
+		options?: { tenantId?: number | null };
+	}[];
 }
 
 /** `run` mimics lib/platform.ts's: executes the effect against a
@@ -201,6 +210,18 @@ describe("makeOrchestrationHost", () => {
 		// The probe resolved AmbientProbe from the captured ambient
 		// context — without it the kind would have recorded "none".
 		expect(record?.state["seen"]).toBe("pong");
+	});
+
+	it("stamps tenantId on the run row and the step envelope", async () => {
+		const h = harness({ kinds: [noopKind] });
+		h.registry.registerDef(def("d", [node("a", "noop", ["input"])]));
+		const runId = await h.host.startRun("d", {}, undefined, 7);
+		expect((await getOrchestrationRun(h.db, runId))?.tenantId).toBe(7);
+		expect(h.sent[0]?.options?.tenantId).toBe(7);
+		// Omitted tenantId → NULL row + null envelope option.
+		const globalRun = await h.host.startRun("d");
+		expect((await getOrchestrationRun(h.db, globalRun))?.tenantId).toBeNull();
+		expect(h.sent[1]?.options?.tenantId).toBeNull();
 	});
 
 	it("loads stored orchestration_defs into the registry on first build", async () => {

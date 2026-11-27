@@ -13,7 +13,14 @@ import {
 } from "@ktb/orchestrator";
 import type { OrchestrationDefRecord } from "@ktb/orchestrator";
 import { PlatformAdmin } from "@ktb/platform";
-import { ensureSessionUser, getSessionUser, peekServerRuntime, runAs } from "@ktb/server-fns";
+import {
+	ensureSessionUser,
+	getSessionUser,
+	getTenantSelector,
+	peekServerRuntime,
+	runAs,
+} from "@ktb/server-fns";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Schema } from "effect";
@@ -31,10 +38,14 @@ import { decodeOrchestrationDef, type DataOnlyOrchestrationDef } from "./def-sch
  * any consumer that re-reads the table).
  */
 
-/** Run `eff` as the session user after the PlatformAdmin gate. */
+/** Run `eff` as the session user after the PlatformAdmin gate.
+ * `tenantSelector` (from `getTenantSelector`) is forwarded to `runAs`
+ * so the composition root binds `Tenant` — fns that stamp or scope
+ * by tenant pass it; the rest stay personal-scoped. */
 const asAdmin = <A, E>(
 	user: { readonly id: string; readonly email?: string },
 	eff: Effect.Effect<A, E, unknown>,
+	tenantSelector?: Parameters<typeof runAs>[2],
 ): Promise<A> =>
 	runAs(
 		user,
@@ -43,6 +54,7 @@ const asAdmin = <A, E>(
 			yield* platformAdmin.requireAdmin();
 			return yield* eff;
 		}),
+		tenantSelector,
 	);
 
 /** `Forbidden` (and only it) collapses to the fn's denial value —
@@ -187,13 +199,18 @@ export const listOrchestrationKindsFn = createServerFn({ method: "GET" }).handle
 );
 
 // ---------------------------------------------------------------------------
-// Durable runs (P-120 phase 2): start + inspect. `orchestration_runs`
-// carries no tenant column — runs are GLOBAL composition data like the
-// defs themselves, so the PlatformAdmin gate is the whole auth boundary
-// (same as every fn in this file). `start` reaches the durable runner
-// through the ServerRuntime `orchestration` capability the composition
-// root wires when the jobs transport is bound; without it the fn
-// reports unavailable instead of enqueuing into the void.
+// Durable runs (P-120 phase 2): start + inspect. Defs stay GLOBAL
+// composition data, but runs carry `orchestration_runs.tenant_id` —
+// stamped from the bound `Tenant` at start (NULL = platform/personal
+// scope, same convention as job_runs) and propagated onto every
+// `orchestrator.step` envelope so durable steps re-bind tenant scope.
+// Reads stay admin-cross-tenant: the PlatformAdmin gate is the whole
+// auth boundary (same convention as Audit.adminList / the queue
+// console's jobRuns — admin sees every tenant's rows). `start` reaches
+// the durable runner through the ServerRuntime `orchestration`
+// capability the composition root wires when the jobs transport is
+// bound; without it the fn reports unavailable instead of enqueuing
+// into the void.
 // ---------------------------------------------------------------------------
 
 const StartOrchestrationInput = Schema.Struct({
@@ -225,6 +242,7 @@ export const startOrchestrationFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeStartOrchestrationInput(input))
 	.handler(async ({ data }): Promise<StartOrchestrationResult> => {
 		const user = await ensureSessionUser();
+		const tenantSelector = await getTenantSelector();
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
@@ -235,8 +253,13 @@ export const startOrchestrationFn = createServerFn({ method: "POST" })
 						error: "orchestration runner unavailable (jobs transport unbound)",
 					};
 				}
+				// Stamp the run with the request's tenant scope — NULL in
+				// personal/platform scope (the /platform console normally
+				// sends no tenant selector, so admin-started runs are
+				// global unless a tenant context is bound).
+				const tenantId = tenantScopeId(yield* Tenant);
 				return yield* Effect.tryPromise({
-					try: () => startRun(data.defId, data.input),
+					try: () => startRun(data.defId, data.input, tenantId),
 					catch: (error) => error,
 				}).pipe(
 					Effect.map((runId): StartOrchestrationResult => ({ ok: true, runId })),
@@ -245,6 +268,7 @@ export const startOrchestrationFn = createServerFn({ method: "POST" })
 					),
 				);
 			}),
+			tenantSelector,
 		).catch((error: unknown) => {
 			if (isForbidden(error)) return false;
 			throw error;
@@ -265,9 +289,11 @@ export type OrchestrationRunWire = OrchestrationRunRecord & {
 	}[];
 };
 
-/** One durable run by id — status, merged state, error and the node
- * trace. `null` for non-admins and unknown ids (same absent-reads-as-
- * null contract as getOrchestrationFn). */
+/** One durable run by id — status, merged state, error, tenant scope
+ * and the node trace. Admin-cross-tenant like every read in this file
+ * (PlatformAdmin sees all tenants' runs; `tenantId` on the record is
+ * attribution, not a fence). `null` for non-admins and unknown ids
+ * (same absent-reads-as-null contract as getOrchestrationFn). */
 export const getOrchestrationRunFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeId(input))
 	.handler(async ({ data: runId }): Promise<OrchestrationRunWire | null> => {

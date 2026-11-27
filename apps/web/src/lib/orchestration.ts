@@ -32,7 +32,9 @@ import {
  * in-memory `registry.run` inside `run()` would see, which is the
  * contract `ambientContext` documents. Capturing under `run` (never
  * `runAs`) keeps Principal/Tenant request scope out of durable steps:
- * runs are global, not per-request.
+ * kinds see system scope — the run's own `tenant_id` is re-bound per
+ * step inside the runner (`TenantAccess`), so a tenant-stamped run
+ * still scopes correctly without inheriting request context.
  *
  * `loadStoredDefs` runs once inside the same build so defs persisted
  * through the pipeline admin fns (`orchestration_defs` rows) resolve
@@ -59,8 +61,14 @@ export interface OrchestrationHost {
 	 * call retries (a transient db failure must not brick the kind). */
 	readonly runner: () => Promise<OrchestrationRunnerService>;
 	/** `runner.start` for the ServerRuntime start surface — persists
-	 * the run and enqueues its first step job. */
-	readonly startRun: (defId: string, input?: unknown, opts?: RunOptions) => Promise<string>;
+	 * the run and enqueues its first step job. `tenantId` stamps the
+	 * run row + step envelope (see OrchestrationRunnerService.start). */
+	readonly startRun: (
+		defId: string,
+		input?: unknown,
+		opts?: RunOptions,
+		tenantId?: number | null,
+	) => Promise<string>;
 	/** Register `orchestrator.step` in the shared `jobHandlers`
 	 * registry. The registration defers runner construction to first
 	 * delivery (queue batches can arrive before any admin fn calls
@@ -113,8 +121,8 @@ export const makeOrchestrationHost = (deps: OrchestrationHostDeps): Orchestratio
 
 	return {
 		runner,
-		startRun: (defId, input, opts) =>
-			runner().then((r) => Effect.runPromise(r.start(defId, input, opts))),
+		startRun: (defId, input, opts, tenantId) =>
+			runner().then((r) => Effect.runPromise(r.start(defId, input, opts, tenantId))),
 		registerStepHandler: () => {
 			registerJobHandler(ORCHESTRATOR_STEP_KIND, {
 				decodePayload: decodeOrchestrationStepPayload,

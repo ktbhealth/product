@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 
 import type { DbClient, TxOp } from "@ktb/db";
 import { tx } from "@ktb/db";
@@ -54,6 +54,7 @@ const toRunRecord = (row: typeof orchestrationRuns.$inferSelect): OrchestrationR
 	status: row.status as OrchestrationRunStatus,
 	state: (parseJson(row.state) ?? {}) as OrchestrationRunRecord["state"],
 	error: row.error,
+	tenantId: row.tenantId,
 	createdAt: row.createdAt,
 	updatedAt: row.updatedAt,
 });
@@ -205,6 +206,9 @@ export interface CreateRunInput {
 	/** The run's initial queue event (seq 0) — `toInitialEvent(input)`
 	 * from the caller so the stored row and a fresh session agree. */
 	readonly initialEvent: OrchestrationEvent;
+	/** Tenant scope stamped on the run row (`groups.id`); `null`/absent
+	 * = platform/personal scope. */
+	readonly tenantId?: number | null;
 	readonly now?: number;
 }
 
@@ -225,6 +229,7 @@ export const createOrchestrationRun = async (
 			state: stringify(input.snapshot.state),
 			runtime: stringify(input.snapshot),
 			error: null,
+			tenantId: input.tenantId ?? null,
 			createdAt: now,
 			updatedAt: now,
 		}),
@@ -247,18 +252,29 @@ export const getOrchestrationRun = async (
 	return row === undefined ? null : toRunRecord(row);
 };
 
-/** Console-feed read: newest first. */
+/** Console-feed read: newest first. `tenantId` follows the
+ * job-runs filter convention: absent = every scope, `null` = only
+ * platform/personal (`tenant_id IS NULL`) rows, a number = that
+ * tenant's runs. */
 export const listOrchestrationRuns = async (
 	db: DbClient,
 	filter: {
 		readonly defId?: string;
 		readonly status?: OrchestrationRunStatus;
+		readonly tenantId?: number | null;
 		readonly limit?: number;
 	} = {},
 ): Promise<OrchestrationRunRecord[]> => {
 	const conditions: SQL[] = [];
 	if (filter.defId !== undefined) conditions.push(eq(orchestrationRuns.defId, filter.defId));
 	if (filter.status !== undefined) conditions.push(eq(orchestrationRuns.status, filter.status));
+	if (filter.tenantId !== undefined) {
+		conditions.push(
+			filter.tenantId === null
+				? isNull(orchestrationRuns.tenantId)
+				: eq(orchestrationRuns.tenantId, filter.tenantId),
+		);
+	}
 	const rows = await db
 		.select()
 		.from(orchestrationRuns)

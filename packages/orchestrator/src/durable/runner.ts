@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 
 import type { DbClient } from "@ktb/db";
 import type { JobRegistration, JobsEnqueuer } from "@ktb/jobs-port";
+import { TenantAccess } from "@ktb/tenant";
 
 import type { OrchestratorRegistryService } from "../registry.ts";
 import {
@@ -99,13 +100,16 @@ export interface OrchestrationRunnerDeps {
 
 export interface OrchestrationRunnerService {
 	/** Persist a new run and enqueue its first step job. Returns the
-	 * run id. Fails with {@link OrchestratorError} on an unknown def id
+	 * run id. `tenantId` stamps `orchestration_runs.tenant_id` and the
+	 * step-job envelope (NULL/absent = platform/personal scope).
+	 * Fails with {@link OrchestratorError} on an unknown def id
 	 * or an unresolvable node kind (validated up front, before any row
 	 * is written); infrastructure failures defect. */
 	readonly start: (
 		defId: string,
 		input?: unknown,
 		opts?: RunOptions,
+		tenantId?: number | null,
 	) => Effect.Effect<string, OrchestratorError>;
 	/** Advance one run by one bounded batch — the `orchestrator.step`
 	 * job body. Missing/terminal runs are a no-op (idempotent
@@ -148,14 +152,17 @@ export const makeOrchestrationRunner = (
 	const newRunId = deps.newRunId ?? (() => `orun-${crypto.randomUUID()}`);
 	const now = () => deps.now?.() ?? Date.now();
 
-	/** Enqueue the next step job. `tryPromise` keeps rejections in the
-	 * typed channel so callers choose the policy: `start` marks the run
-	 * failed then defects; mid-run continuation defects outright (the
-	 * consumer retries and the persisted boundary means the retry just
-	 * continues the run). */
-	const enqueueStep = (runId: string): Effect.Effect<void, unknown> =>
+	/** Enqueue the next step job. `tenantId` rides the envelope
+	 * (`EnqueueJobOptions.tenantId` → `job_runs.tenant_id` + the
+	 * consumer's re-bind hint) — it comes from the run row so every
+	 * continuation step carries the run's own scope. `tryPromise` keeps
+	 * rejections in the typed channel so callers choose the policy:
+	 * `start` marks the run failed then defects; mid-run continuation
+	 * defects outright (the consumer retries and the persisted boundary
+	 * means the retry just continues the run). */
+	const enqueueStep = (runId: string, tenantId: number | null): Effect.Effect<void, unknown> =>
 		Effect.tryPromise({
-			try: () => deps.jobs.enqueue(ORCHESTRATOR_STEP_KIND, { runId }),
+			try: () => deps.jobs.enqueue(ORCHESTRATOR_STEP_KIND, { runId }, { tenantId }),
 			catch: (error) => error,
 		}).pipe(Effect.asVoid);
 
@@ -218,12 +225,14 @@ export const makeOrchestrationRunner = (
 				}),
 			);
 			if (!finished) {
-				yield* enqueueStep(runId).pipe(Effect.catch((error) => Effect.die(error)));
+				yield* enqueueStep(runId, loaded.record.tenantId).pipe(
+					Effect.catch((error) => Effect.die(error)),
+				);
 			}
 		});
 
 	return {
-		start: (defId, input, opts) =>
+		start: (defId, input, opts, tenantId) =>
 			Effect.gen(function* () {
 				const def: OrchestrationDef = yield* Effect.try({
 					try: () => deps.registry.get(defId),
@@ -246,12 +255,13 @@ export const makeOrchestrationRunner = (
 						defVersion: def.version ?? "1",
 						snapshot: session.snapshot(),
 						initialEvent: toInitialEvent(input),
+						tenantId: tenantId ?? null,
 						now: ts,
 					}),
 				);
 				// Enqueue failure leaves a "running" row with no driver —
 				// mark it failed (best-effort) before defecting.
-				yield* enqueueStep(runId).pipe(
+				yield* enqueueStep(runId, tenantId ?? null).pipe(
 					Effect.catch((error) =>
 						Effect.gen(function* () {
 							yield* ignorePromise(() =>
@@ -287,10 +297,27 @@ export const makeOrchestrationRunner = (
 				// Kind effects run with an empty context by default —
 				// provideContext is what lets `Effect.serviceOption`
 				// probes (EnvCorrector & friends) resolve ambient ports
-				// during durable steps.
-				yield* deps.ambientContext === undefined
-					? stepFx
-					: Effect.provideContext(stepFx, deps.ambientContext);
+				// during durable steps. TenantAccess is merged INTO that
+				// context (an outer provideService would be shadowed by
+				// provideContext): the run's tenant_id re-binds tenant
+				// scope for kinds — the durable counterpart of
+				// `runAsTenantId` on queue consumers. NULL tenant runs
+				// keep ambient (personal/system) scope; without an
+				// ambientContext the binding is a plain provideService
+				// over the caller's context.
+				const ambient = deps.ambientContext;
+				const scoped =
+					ambient === undefined
+						? loaded.record.tenantId === null
+							? stepFx
+							: Effect.provideService(stepFx, TenantAccess, [loaded.record.tenantId])
+						: Effect.provideContext(
+								stepFx,
+								loaded.record.tenantId === null
+									? ambient
+									: Context.add(ambient, TenantAccess, [loaded.record.tenantId]),
+							);
+				yield* scoped;
 			}),
 	};
 };

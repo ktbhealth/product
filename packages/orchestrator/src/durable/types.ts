@@ -24,6 +24,9 @@ export interface OrchestrationRunRecord {
 	readonly status: OrchestrationRunStatus;
 	readonly state: JsonObject;
 	readonly error: string | null;
+	/** Tenant scope (`groups.id`) the run was started under; `null` =
+	 * platform/personal scope (same convention as `job_runs.tenant_id`). */
+	readonly tenantId: number | null;
 	readonly createdAt: number;
 	readonly updatedAt: number;
 }

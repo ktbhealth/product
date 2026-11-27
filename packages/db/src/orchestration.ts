@@ -20,7 +20,12 @@ import { index, integer, primaryKey, sqliteTable, text } from "./table.ts";
  *   trace, policies). `status`: running | done | failed | cancelled.
  *   `error` carries the run-level failure message (budget exceeded,
  *   corrupt state, enqueue failure) — node-level failures live in the
- *   trace/events, not here.
+ *   trace/events, not here. `tenant_id` is the tenant scope the run
+ *   was started under (stamped from the bound `Tenant` at start;
+ *   NULL = platform/personal scope) — attribution + the
+ *   `orchestrator.step` envelope's tenant, same convention as
+ *   `job_runs.tenant_id`. Defs stay global; events/node_runs inherit
+ *   scope through `run_id` and carry no column of their own.
  * - `orchestration_events` — the durable pending-event queue: rows
  *   with the lowest `seq` per `run_id` route first. Rewritten
  *   wholesale at each step boundary (delete + reinsert), so `seq` is
@@ -56,10 +61,18 @@ export const orchestrationRuns = sqliteTable(
 		runtime: text("runtime").notNull(),
 		/** Run-level failure message; NULL unless status = "failed". */
 		error: text("error"),
+		/** Tenant scope (`groups.id`) the run was started under; NULL =
+		 * platform/personal scope. Plain integer, no FK — same convention
+		 * as `job_runs.tenant_id` (host-owned table, `groups` is not
+		 * reachable from @ktb/db). */
+		tenantId: integer("tenant_id"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
 	},
-	(table) => [index("orchestration_runs_def_status_idx").on(table.defId, table.status)],
+	(table) => [
+		index("orchestration_runs_def_status_idx").on(table.defId, table.status),
+		index("orchestration_runs_tenant_created_idx").on(table.tenantId, table.createdAt),
+	],
 );
 
 export const orchestrationEvents = sqliteTable(

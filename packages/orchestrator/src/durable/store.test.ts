@@ -42,6 +42,7 @@ CREATE TABLE orchestration_runs (
 	state TEXT NOT NULL,
 	runtime TEXT NOT NULL,
 	error TEXT,
+	tenant_id INTEGER,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
@@ -311,6 +312,50 @@ describe("run rows, pending events and node trace", () => {
 			(await listOrchestrationRuns(db, { defId: "d1", status: "done", limit: 5 })).map((r) => r.id),
 		).toEqual(["r1"]);
 		expect(await listOrchestrationRuns(db, { defId: "none" })).toEqual([]);
+	});
+
+	it("stamps tenant_id on create and filters runs by tenant scope", async () => {
+		const db = makeTestDb();
+		const snapshot = emptySnapshot();
+		const mk = (id: string, tenantId: number | null) =>
+			createOrchestrationRun(db, {
+				id,
+				defId: "demo",
+				defVersion: "1",
+				snapshot,
+				initialEvent: OrchestrationEvent.start(),
+				tenantId,
+				now: 100,
+			});
+		await mk("t-global", null);
+		await mk("t-7", 7);
+		await mk("t-9", 9);
+		// Absent tenantId also lands NULL.
+		await createOrchestrationRun(db, {
+			id: "t-absent",
+			defId: "demo",
+			defVersion: "1",
+			snapshot,
+			initialEvent: OrchestrationEvent.start(),
+			now: 100,
+		});
+		expect((await getOrchestrationRun(db, "t-7"))?.tenantId).toBe(7);
+		expect((await getOrchestrationRun(db, "t-global"))?.tenantId).toBeNull();
+		expect((await getOrchestrationRun(db, "t-absent"))?.tenantId).toBeNull();
+		// jobs-port filter convention: absent = all, null = NULL rows,
+		// number = that tenant.
+		expect((await listOrchestrationRuns(db)).map((r) => r.id).sort()).toEqual([
+			"t-7",
+			"t-9",
+			"t-absent",
+			"t-global",
+		]);
+		expect((await listOrchestrationRuns(db, { tenantId: null })).map((r) => r.id).sort()).toEqual([
+			"t-absent",
+			"t-global",
+		]);
+		expect((await listOrchestrationRuns(db, { tenantId: 7 })).map((r) => r.id)).toEqual(["t-7"]);
+		expect(await listOrchestrationRuns(db, { tenantId: 42 })).toEqual([]);
 	});
 
 	it("saveOrchestrationStep rewrites the queue, updates the run and appends trace idempotently", async () => {

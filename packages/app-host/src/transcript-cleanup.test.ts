@@ -307,6 +307,7 @@ CREATE TABLE orchestration_runs (
 	state TEXT NOT NULL,
 	runtime TEXT NOT NULL,
 	error TEXT,
+	tenant_id INTEGER,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );

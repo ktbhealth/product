@@ -787,7 +787,10 @@ setServerRuntime({
 	orchestration:
 		orchestration === undefined
 			? undefined
-			: { startRun: (defId, input) => orchestration.startRun(defId, input) },
+			: {
+					startRun: (defId, input, tenantId) =>
+						orchestration.startRun(defId, input, undefined, tenantId),
+				},
 	// P-094: capability-declaration views — handler registration merged
 	// with jobs.kind/jobs.schedulable declarations, plus the
 	// events.topic catalog for the pub/sub console.
