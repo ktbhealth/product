@@ -9,7 +9,7 @@ import {
 	session as sessionTable,
 	user as userTable,
 	verification as verificationTable,
-} from "@ktb/db/schema";
+} from "@ktb/auth/schema";
 import { eq } from "drizzle-orm";
 
 import { makeAuth, makeAuthService } from "./index.ts";

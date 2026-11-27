@@ -8,8 +8,9 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 
 import { Db } from "@ktb/db";
-import { pluginState } from "@ktb/db/schema";
 import type { Plugin, PluginConfigSchema } from "@ktb/kernel";
+
+import { pluginState } from "./schema.ts";
 
 /**
  * Runtime plugin state service (P-058). Provided by the composition root

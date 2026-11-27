@@ -1,8 +1,14 @@
 import { relations } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "./table.ts";
+import { sqliteTable, text, integer, index } from "@ktb/db/table";
 
-// Host-owned by @ktb/db (not a plugin slice) to break the @ktb/db ↔
-// package workspace cycle — consumers import this from `@ktb/db/schema`.
+// Auth-owned schema: the identity tables the Auth port's shapes
+// describe and the @ktb/auth-better adapter persists via better-auth's
+// drizzle adapter. `user` is the global identity root — clinical
+// plugins FK into it — so the definitions live in the port
+// (importable by plugins) rather than inside the adapter or a plugin.
+// Aggregated into `@ktb/db/schema` by tools/gen-db-schema.mjs; plugin
+// schema modules reference `user` via `@ktb/auth/schema` to avoid the
+// aggregate's import cycle.
 
 export const user = sqliteTable("user", {
 	id: text("id").primaryKey(),

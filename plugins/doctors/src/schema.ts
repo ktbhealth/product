@@ -1,6 +1,6 @@
 import { integer, sqliteTable, text } from "@ktb/db/table";
 
-import { user } from "@ktb/db/auth";
+import { user } from "@ktb/auth/schema";
 
 /**
  * Doctor profile — one per user. The row marks the account as a doctor

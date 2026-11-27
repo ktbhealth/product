@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
-import { pluginState } from "@ktb/db/schema";
+import { pluginState } from "./schema.ts";
 
 import { definePlugin } from "@ktb/kernel";
 import type { PluginConfigSchema, PluginId } from "@ktb/kernel";

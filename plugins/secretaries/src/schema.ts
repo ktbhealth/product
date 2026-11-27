@@ -1,6 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-import { user } from "@ktb/db/auth";
+import { user } from "@ktb/auth/schema";
 import { doctors } from "@ktb/doctors/schema";
 
 /** Delegate roles on a doctor profile. Only "secretary" today. */

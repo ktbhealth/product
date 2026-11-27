@@ -3,7 +3,7 @@ import type { OrchestrationSnapshot } from "../runner.ts";
 
 /**
  * types.ts — durable-run record shapes (phase 2). These mirror the
- * `orchestration_*` tables in `@ktb/db`; the store helpers in
+ * `orchestration_*` tables in `../schema.ts`; the store helpers in
  * `store.ts` own the row ↔ record mapping.
  */
 

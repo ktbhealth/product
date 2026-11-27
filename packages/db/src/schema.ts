@@ -1,25 +1,15 @@
-// Composed schema: plugin-owned table definitions live in
-// plugins/<pkg>/src/schema.ts and are aggregated by the GENERATED
+// Composed schema: table definitions are owned next to their concept —
+// plugins/<pkg>/src/schema.ts for plugin-owned tables and
+// packages/<pkg>/src/schema.ts for port/infra-owned tables (auth,
+// platform, jobs-port, scheduler-port, orchestrator). The GENERATED
 // ./schema.gen.ts (tools/gen-db-schema.mjs — `bun run gen:db-schema`,
-// verified by the ci:db-schema task). @ktb/db still never depends on
-// plugin packages: the generated file reaches into plugin sources by
-// relative path, so plugins keep importing tables from `@ktb/db/schema`
-// without a workspace cycle.
+// verified by the ci:db-schema task) re-exports every owner module so
+// `@ktb/db/schema` stays the single import path WITHOUT @ktb/db
+// depending on any owning package: the generated file reaches into
+// owner sources by relative path, so owners keep importing tables from
+// `@ktb/db/schema` (or their own module) without a workspace cycle.
 //
-// Host-owned slices stay here as hand-written modules:
-// - auth.ts — better-auth's user/session/account/verification tables
-//   (auth infrastructure, not a plugin concern).
-// - plugin-state.ts — platform-owned runtime plugin state (P-058);
-//   deliberately kept out of the plugin glob (see the file's comment).
-// - job-runs.ts — generic jobs backbone status projection (PL-007);
-//   written by @ktb/jobs-port, read by the /platform jobs console.
-// - scheduled-jobs.ts — runtime scheduler definitions; claimed and
-//   dispatched by @ktb/scheduler-port's heartbeat sweep.
-// - orchestration.ts — durable orchestration runs/events/node trace
-//   (@ktb/orchestrator phase 2); written by its durable runner.
-export * from "./auth.ts";
-export * from "./job-runs.ts";
-export * from "./orchestration.ts";
-export * from "./plugin-state.ts";
-export * from "./scheduled-jobs.ts";
+// @ktb/db itself is generic: it owns only the SqlDatabase contract,
+// makeDb, the Db/Binding services, tx and the testing shim — no product
+// table definitions.
 export * from "./schema.gen.ts";

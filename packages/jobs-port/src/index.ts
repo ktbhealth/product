@@ -4,8 +4,9 @@ import * as Layer from "effect/Layer";
 import { and, desc, eq, isNull, like, sql, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
-import { jobRuns } from "@ktb/db/schema";
 import { tenantStorageId, type TenantId } from "@ktb/tenant";
+
+import { jobRuns } from "./schema.ts";
 
 /**
  * @ktb/jobs-port — the generic job backbone (PL-007): an enqueue port,

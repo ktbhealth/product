@@ -1,6 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-import { user } from "@ktb/db/auth";
+import { user } from "@ktb/auth/schema";
 import { groups } from "@ktb/groups/schema";
 
 /**
