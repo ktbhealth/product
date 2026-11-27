@@ -484,6 +484,20 @@
       "when": 1795194261544,
       "tag": "0069_wet_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "6",
+      "when": 1795669536220,
+      "tag": "0070_mute_kree",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1795728197635,
+      "tag": "0071_hesitant_blue_marvel",
+      "breakpoints": true
     }
   ]
 }

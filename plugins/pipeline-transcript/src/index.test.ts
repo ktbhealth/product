@@ -15,13 +15,15 @@ import {
 
 import {
 	ENV_CORRECTOR_KEY,
+	EnvCorrector,
 	plugins,
 	transcriptPipelinePack,
 	transcriptPipelinePlugin,
-	type EnvCorrector,
+	type EnvCorrectorFn,
 	type TranscriptCleanupState,
 	type TranscriptGateState,
 } from "./index.ts";
+import { transcriptOrchestrationPack } from "./orchestration.ts";
 
 const record: RunRecord = {
 	runId: "r1",
@@ -207,13 +209,13 @@ describe("env-cleanup fallback stage", () => {
 	 * function (app-host wires anamnesis-llm's correctTranscript);
 	 * plugins never see LlmConfig. */
 	const envCorrect =
-		(corrected: string, engine = "workers-ai"): EnvCorrector =>
+		(corrected: string, engine = "workers-ai"): EnvCorrectorFn =>
 		() =>
 			Effect.succeed({ corrected, engine });
 
 	it("corrects through the injected env corrector when no platform endpoint is bound", async () => {
 		const seen: string[] = [];
-		const corrector: EnvCorrector = (text) =>
+		const corrector: EnvCorrectorFn = (text) =>
 			Effect.sync(() => {
 				seen.push(text);
 				return { corrected: "Texto corrigido.", engine: "workers-ai" };
@@ -249,7 +251,7 @@ describe("env-cleanup fallback stage", () => {
 
 	it("never overrides a successful platform cleanup", async () => {
 		const envCalls: string[] = [];
-		const corrector: EnvCorrector = (text) =>
+		const corrector: EnvCorrectorFn = (text) =>
 			Effect.sync(() => {
 				envCalls.push(text);
 				return { corrected: "NAO DEVE APARECER", engine: "workers-ai" };
@@ -269,6 +271,63 @@ describe("env-cleanup fallback stage", () => {
 			[ENV_CORRECTOR_KEY]: envCorrect("via helper", "env-x"),
 		});
 		expect(cleanupOf(r)).toMatchObject({ enabled: true, corrected: "via helper", engine: "env-x" });
+	});
+
+	it("corrects through the ambient EnvCorrector port when bound", async () => {
+		const seen: string[] = [];
+		const corrector: EnvCorrectorFn = (text) =>
+			Effect.sync(() => {
+				seen.push(text);
+				return { corrected: "Port corrigido.", engine: "port-x" };
+			});
+		const env = Layer.succeed(EnvCorrector, { correct: corrector });
+		const r = await run({ text: "texto cru" }, env);
+		expect(cleanupOf(r)).toMatchObject({
+			enabled: true,
+			corrected: "Port corrigido.",
+			engine: "port-x",
+		});
+		expect(seen).toEqual(["texto cru"]);
+	});
+
+	it("prefers the ambient port over the run-config function", async () => {
+		const portCalls: string[] = [];
+		const configCalls: string[] = [];
+		const env = Layer.succeed(EnvCorrector, {
+			correct: (text) =>
+				Effect.sync(() => {
+					portCalls.push(text);
+					return { corrected: "via port", engine: "port-x" };
+				}),
+		});
+		const configCorrector: EnvCorrectorFn = (text) =>
+			Effect.sync(() => {
+				configCalls.push(text);
+				return { corrected: "via config", engine: "cfg-x" };
+			});
+		const r = await run({ text: "texto cru" }, env, {
+			[ENV_CORRECTOR_KEY]: configCorrector,
+		});
+		expect(cleanupOf(r)).toMatchObject({ enabled: true, corrected: "via port", engine: "port-x" });
+		expect(portCalls).toEqual(["texto cru"]);
+		expect(configCalls).toEqual([]);
+	});
+
+	it("stays disabled when the port corrector returns null or fails", async () => {
+		const nullEnv = Layer.succeed(EnvCorrector, { correct: () => Effect.succeed(null) });
+		const rNull = await run({ text: "texto cru" }, nullEnv);
+		expect(cleanupOf(rNull)?.enabled).toBe(false);
+		const failEnv = Layer.succeed(EnvCorrector, {
+			correct: () => Effect.fail(new PortError({ port: "llm", message: "down" })),
+		});
+		const rFail = await run({ text: "texto cru" }, failEnv);
+		expect(cleanupOf(rFail)?.enabled).toBe(false);
+	});
+
+	it("marks state[env-cleanup] skipped when correction is needed but no corrector is bound", async () => {
+		const r = await run({ text: "texto cru" }, Layer.empty);
+		expect(r.state["env-cleanup"]).toEqual({ skipped: true, reason: "no-port" });
+		expect(cleanupOf(r)?.enabled).toBe(false);
 	});
 });
 
@@ -351,7 +410,7 @@ describe("wire input narrowing", () => {
 	});
 
 	it("env-cleanup ignores invalid input even with a corrector configured", async () => {
-		const corrector: EnvCorrector = () => Effect.succeed({ corrected: "x", engine: "e" });
+		const corrector: EnvCorrectorFn = () => Effect.succeed({ corrected: "x", engine: "e" });
 		const r = await run({ text: "   " }, Layer.empty, {
 			[ENV_CORRECTOR_KEY]: corrector,
 		});
@@ -369,9 +428,10 @@ describe("env-cleanup corrector defects", () => {
 });
 
 describe("pipeline.transcript manifest", () => {
-	it("contributes the consultation-transcript pack", () => {
+	it("contributes the consultation-transcript pack on both engines", () => {
 		expect(plugins.map((p) => p.id)).toEqual(["pipeline.transcript"]);
 		expect(plugins[0]?.pipelines).toEqual([transcriptPipelinePack]);
+		expect(plugins[0]?.orchestrations).toEqual([transcriptOrchestrationPack]);
 		expect(transcriptPipelinePlugin.id).toBe("pipeline.transcript");
 		expect(transcriptPipelinePack.def.id).toBe("consultation-transcript");
 		expect(transcriptPipelinePack.def.stages.map((s) => s.id)).toEqual([

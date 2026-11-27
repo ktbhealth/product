@@ -115,12 +115,27 @@ const patientRecordLoader = (prefix: string) => (path: string) =>
 		}),
 	);
 
+/** An agenda "start consult" shell still waiting for its first save
+ * (T-257): live, agenda-sourced, no anamnesis yet. `<id>/record` opens
+ * the recording flow on it; anything else falls back to the detail. */
+const isResumableShell = (c: {
+	readonly status: string;
+	readonly source: string;
+	readonly anamnesis: unknown;
+}) => c.status === "live" && c.source === "agenda" && c.anamnesis == null;
+
+/** `<id>` or `<id>/record` — anything deeper or different is not a page. */
+const recordTailOk = (tail: string | undefined, extra: readonly string[]) =>
+	extra.length === 0 && (tail === undefined || tail === "record");
+
 const consultationRecordGuard = (prefix: string) => (path: string) =>
 	Effect.gen(function* () {
-		const [head, tail] = subpath(path, prefix);
+		const [head, tail, ...extra] = subpath(path, prefix);
 		if (head === "new" && tail === undefined) return true;
 		const id = Number(head);
-		if (tail !== undefined || !Number.isInteger(id) || id <= 0) return false;
+		if (!recordTailOk(tail, extra) || !Number.isInteger(id) || id <= 0) {
+			return false;
+		}
 		const principal = yield* Principal;
 		if (principal === null) return false;
 		const consultations = yield* Consultations;
@@ -132,7 +147,7 @@ const consultationRecordGuard = (prefix: string) => (path: string) =>
 
 const consultationRecordLoader = (prefix: string) => (path: string) =>
 	Effect.gen(function* () {
-		const [head, tail] = subpath(path, prefix);
+		const [head, tail, ...extra] = subpath(path, prefix);
 		const principal = yield* Principal;
 		if (principal === null) return { view: "missing" };
 		if (head === "new" && tail === undefined) {
@@ -143,7 +158,7 @@ const consultationRecordLoader = (prefix: string) => (path: string) =>
 			return { view: "new", patients: list };
 		}
 		const id = Number(head);
-		if (tail !== undefined || !Number.isInteger(id) || id <= 0) {
+		if (!recordTailOk(tail, extra) || !Number.isInteger(id) || id <= 0) {
 			return { view: "missing" };
 		}
 		const consultations = yield* Consultations;
@@ -151,6 +166,17 @@ const consultationRecordLoader = (prefix: string) => (path: string) =>
 			.get(id, principal.userId)
 			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
 		if (c === null) return { view: "missing" };
+		if (tail === "record" && isResumableShell(c)) {
+			const patients = yield* Patients;
+			const list = yield* patients
+				.list(principal.userId)
+				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
+			return {
+				view: "new",
+				patients: list,
+				resume: { consultationId: c.id, patientId: c.patientId },
+			};
+		}
 		const history = c.patientId
 			? yield* consultations.history(c.patientId, principal.userId, c.id)
 			: null;

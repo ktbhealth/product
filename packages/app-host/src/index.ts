@@ -63,8 +63,9 @@ import {
 	LlmPort,
 	DecisionsFactory,
 } from "@ktb/eval-consultation";
-import { PipelineRegistry } from "@ktb/pipeline";
-import { pipelineRegistryLive } from "@ktb/plugin-pipeline";
+import { builtinKinds } from "@ktb/orchestrator";
+import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
+import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
 import { Jobs, makeJobs } from "@ktb/jobs-port";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
@@ -106,7 +107,7 @@ import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
 import { platformPreferringEngine } from "./platform-llm.ts";
 import { correctTranscript as envCorrectTranscript } from "@ktb/anamnesis-llm";
-import { ENV_CORRECTOR_KEY } from "@ktb/plugin-pipeline-transcript";
+import { correctTranscriptEffect } from "./transcript-cleanup.ts";
 import {
 	Command,
 	CommandBus,
@@ -528,6 +529,16 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
+	// Env-corrector port (P-120): the transcript env-cleanup stage
+	// probes this ambient service — the durable-safe successor of the
+	// envCorrect run-config function (live functions cannot serialize
+	// through the durable runner). Backed by the same
+	// envCorrectTranscript(llmConfig, …) correctTranscript injects per
+	// call, so in-memory and durable runs correct identically; env
+	// vars are composition-root data, resolved once here like llmConfig.
+	const EnvCorrectorLive = Layer.succeed(EnvCorrector, {
+		correct: (text: string) => envCorrectTranscript(llmConfig, text),
+	});
 	// F2: the ai-provider plugin's PlatformLlm capability wins over env
 	// providers when a platform-default endpoint is configured; the
 	// wrapped engine is the (b) env fallback → (c) heuristic path.
@@ -690,6 +701,17 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// layer build instead of typing an error channel every consumer
 	// would have to erase.
 	const PipelineRegistryLive = pipelineRegistryLive(plugins).pipe(Layer.orDie);
+	// Orchestrator registry (P-120 cutover): every plugin manifest's
+	// `orchestrations` packs — pipeline.transcript's
+	// consultation-transcript OrchestrationDef twin today — collected
+	// in topo order alongside PipelineRegistryLive. `builtinKinds`
+	// seeds the engine vocabulary (ai/emit/gate/poll/subworkflow)
+	// ahead of pack kinds so manifest defs may reference them; pack
+	// kinds that shadow a builtin id fail layer build loudly. Same
+	// orDie contract: registration failures are programming errors.
+	const OrchestratorRegistryLive = orchestratorRegistryLive(plugins, builtinKinds).pipe(
+		Layer.orDie,
+	);
 	const core = Layer.mergeAll(
 		BotLive,
 		CaptchaLive,
@@ -718,6 +740,8 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		RoutesLive,
 		MiddlewareStagesLive,
 		PipelineRegistryLive,
+		OrchestratorRegistryLive,
+		EnvCorrectorLive,
 		// External document-ref target registry (T-149): entity owners
 		// register existence checkers into this shared instance from
 		// their service layers; DocumentStore resolves entity refs
@@ -1015,76 +1039,26 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		);
 
 	/**
-	 * LLM transcript cleanup (P-017) — a thin shell over the
-	 * `consultation-transcript` pipeline pack (pipeline.transcript
-	 * plugin): ASR-error gating through the platform DECISION endpoint,
-	 * reversible-edit correction through the platform GENERATIVE
-	 * endpoint, env providers as the pack's own last stage (injected
-	 * as run config — plugins cannot read env). System path — no
-	 * principal; returns null when unconfigured or on failure
-	 * (correctedTranscript stays null). The pipeline never rejects:
-	 * stages degrade to disabled state inside the pack and run errors
-	 * are caught here.
+	 * LLM transcript cleanup (P-017, P-120 cutover) — a thin shell over
+	 * the `consultation-transcript` cleanup chain: ASR-error gating
+	 * through the platform DECISION endpoint, reversible-edit
+	 * correction through the platform GENERATIVE endpoint, env
+	 * providers as the pack's own last stage (injected as run config —
+	 * plugins cannot read env). OrchestratorRegistry is preferred
+	 * (the OrchestrationDef twin contributed via `orchestrations`);
+	 * PipelineRegistry remains the transition fallback — see
+	 * ./transcript-cleanup.ts for the probe order and the envCorrect
+	 * function-in-config caveat. System path — no principal; returns
+	 * null when unconfigured or on failure. The run never rejects:
+	 * stages degrade to disabled state inside the pack/orchestration
+	 * and run errors are caught in the effect.
 	 */
 	const correctTranscript = (input: {
 		readonly text: string;
 		readonly segments?: readonly { readonly text: string }[];
 	}) =>
 		runtime.runPromise(
-			Effect.gen(function* () {
-				if (input.text.trim() === "") return null;
-				const registryOpt = yield* Effect.serviceOption(PipelineRegistry);
-				/* v8 ignore next -- PipelineRegistryLive is unconditional in the core layer */
-				if (Option.isNone(registryOpt)) return null;
-				const registry = registryOpt.value;
-				/* v8 ignore next -- pipelineRegistryLive always registers the transcript pack */
-				if (!registry.has("consultation-transcript")) return null;
-				const result = yield* registry
-					.run(
-						"consultation-transcript",
-						{
-							text: input.text,
-							...(input.segments !== undefined ? { segments: input.segments } : {}),
-						},
-						{
-							[ENV_CORRECTOR_KEY]: (text: string) => envCorrectTranscript(llmConfig, text),
-						},
-					)
-					.pipe(
-						/* v8 ignore next -- every pack stage is onError:"skip" and the id is has()-guarded, so run cannot fail typed */
-						Effect.catch((error) =>
-							Effect.logWarning("transcript pipeline failed", {
-								error: String(error),
-							}).pipe(Effect.as(null)),
-						),
-						/* v8 ignore next -- stage defects degrade inside the pack; last-resort net */
-						Effect.catchDefect((defect) =>
-							Effect.logWarning("transcript pipeline failed", {
-								error: String(defect),
-							}).pipe(Effect.as(null)),
-						),
-					);
-				/* v8 ignore next -- result is null only via the ignored catch arms above */
-				if (result === null) return null;
-				const cleanup = result.state.cleanup as
-					| {
-							readonly enabled?: unknown;
-							readonly corrected?: unknown;
-							readonly engine?: unknown;
-					  }
-					| undefined;
-				if (
-					cleanup?.enabled !== true ||
-					typeof cleanup.corrected !== "string" ||
-					typeof cleanup.engine !== "string"
-				) {
-					return null;
-				}
-				// Same contract as the legacy paths: trimmed text, and an
-				// empty correction is no correction.
-				const corrected = cleanup.corrected.trim();
-				return corrected === "" ? null : { corrected, engine: `pipeline:${cleanup.engine}` };
-			}),
+			correctTranscriptEffect(input, (text) => envCorrectTranscript(llmConfig, text)),
 		);
 
 	/**

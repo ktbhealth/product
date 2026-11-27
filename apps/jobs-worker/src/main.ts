@@ -14,15 +14,18 @@
  *   JOBS_BATCH   — messages per poll, default 10
  *   DATABASE_URL — job_runs projection store (default: the dev:node app
  *     db at apps/web/data/app.db so the /platform queue console sees
- *     Redis-consumed runs); JOBS_DB=off disables the projection.
+ *     Redis-consumed runs); JOBS_DB=off disables the projection AND
+ *     the orchestrator.step registration (durable runs need the
+ *     orchestration_* tables in the same db).
  */
 
-import { jobHandlers } from "@ktb/jobs-port";
+import { jobHandlers, makeJobs } from "@ktb/jobs-port";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
 import { batchSizeFromEnv } from "./env.ts";
 import { openWorkerDb } from "./db.ts";
 import { registerWorkerHandlers } from "./handlers.ts";
+import { makeOrchestrationWorker } from "./orchestration.ts";
 import { runJobWorker } from "./worker.ts";
 
 registerWorkerHandlers();
@@ -31,6 +34,21 @@ const transport = await createRedisJobsTransport({
 	url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
 	...(process.env.JOBS_QUEUE !== undefined ? { queue: process.env.JOBS_QUEUE } : {}),
 });
+
+const db = openWorkerDb();
+if (db !== undefined) {
+	// orchestrator.step re-enqueues itself through the same transport;
+	// makeJobs also writes the job_runs projection rows the /platform
+	// queue console reads. See orchestration.ts for the dev-mode gaps
+	// (no plugin packs, registry-only ambientContext).
+	const jobs = makeJobs({ send: (envelope) => transport.send(envelope), db });
+	makeOrchestrationWorker({ db, jobs }).registerStepHandler();
+	console.log("jobs worker: orchestrator.step registered");
+} else {
+	console.log(
+		"jobs worker: JOBS_DB=off — orchestrator.step not registered (durable runs need the orchestration_* tables)",
+	);
+}
 
 const ac = new AbortController();
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
@@ -42,7 +60,7 @@ try {
 	await runJobWorker({
 		transport,
 		handlers: jobHandlers,
-		db: openWorkerDb(),
+		db,
 		batchSize: batchSizeFromEnv(process.env.JOBS_BATCH),
 		signal: ac.signal,
 	});

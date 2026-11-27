@@ -215,6 +215,17 @@ export interface ConsultationMessages {
 		readonly accessUnsent: (email: string) => string;
 		readonly accessInvalidEmail: string;
 		readonly accessFailed: string;
+		/** Up-front access card under the patient picker (T-258). */
+		readonly accessCardTitle: string;
+		readonly accessCardNone: (patient: string) => string;
+		readonly accessCardHasAccess: (patient: string) => string;
+		readonly accessSendOnSave: string;
+		readonly accessSkip: string;
+		readonly accessEmailLabel: string;
+		/** Quick-create: ask whether to send access, then the email. */
+		readonly newPatientAccessQuestion: string;
+		readonly accessYes: string;
+		readonly accessNo: string;
 		readonly dialogSavedBody: (args: {
 			id: number;
 			patientName: string | null;
@@ -515,6 +526,21 @@ const en: ConsultationMessages = {
 		),
 		accessInvalidEmail: "Enter a valid email address.",
 		accessFailed: "Could not send the access email. Please try again.",
+		accessCardTitle: "Patient access to this consultation",
+		accessCardNone: paramMessage("en", "{patient} doesn't have patient portal access yet.", [
+			"patient",
+		]),
+		accessCardHasAccess: paramMessage(
+			"en",
+			"{patient} already has portal access — this consultation shows up there once saved.",
+			["patient"],
+		),
+		accessSendOnSave: "Send access by email when saving",
+		accessSkip: "Don't send for now",
+		accessEmailLabel: "Patient email",
+		newPatientAccessQuestion: "Send consultation access by email?",
+		accessYes: "Yes",
+		accessNo: "No",
 		dialogSavedBody: ({ id, patientName, updated, consented }) =>
 			`Consultation #${id}${patientName ? ` for ${patientName}` : ""} was ${updated ? "updated" : "saved"} with the reviewed anamnesis.${consented ? " Patient consent recorded." : ""}`,
 		saveSessionExpired: "session expired. Reload the page",
@@ -816,6 +842,21 @@ const ptBR: ConsultationMessages = {
 		),
 		accessInvalidEmail: "Informe um e-mail válido.",
 		accessFailed: "Não foi possível enviar o e-mail de acesso. Tente novamente.",
+		accessCardTitle: "Acesso do paciente à consulta",
+		accessCardNone: paramMessage("pt-BR", "{patient} ainda não tem acesso ao portal do paciente.", [
+			"patient",
+		]),
+		accessCardHasAccess: paramMessage(
+			"pt-BR",
+			"{patient} já tem acesso ao portal — a consulta aparece lá assim que for salva.",
+			["patient"],
+		),
+		accessSendOnSave: "Enviar acesso por e-mail ao salvar",
+		accessSkip: "Não enviar agora",
+		accessEmailLabel: "E-mail do paciente",
+		newPatientAccessQuestion: "Enviar acesso à consulta por e-mail?",
+		accessYes: "Sim",
+		accessNo: "Não",
 		dialogSavedBody: ({ id, patientName, updated, consented }) =>
 			`A consulta #${id}${patientName ? ` de ${patientName}` : ""} foi ${updated ? "atualizada" : "salva"} com a anamnese revisada.${consented ? " Consentimento do paciente registrado." : ""}`,
 		saveSessionExpired: "sessão expirada. Recarregue a página",
@@ -1121,6 +1162,21 @@ const es: ConsultationMessages = {
 		),
 		accessInvalidEmail: "Ingresa un correo válido.",
 		accessFailed: "No se pudo enviar el correo de acceso. Inténtalo de nuevo.",
+		accessCardTitle: "Acceso del paciente a la consulta",
+		accessCardNone: paramMessage("es", "{patient} aún no tiene acceso al portal del paciente.", [
+			"patient",
+		]),
+		accessCardHasAccess: paramMessage(
+			"es",
+			"{patient} ya tiene acceso al portal — la consulta aparecerá allí al guardarla.",
+			["patient"],
+		),
+		accessSendOnSave: "Enviar acceso por correo al guardar",
+		accessSkip: "No enviar por ahora",
+		accessEmailLabel: "Correo del paciente",
+		newPatientAccessQuestion: "¿Enviar acceso a la consulta por correo?",
+		accessYes: "Sí",
+		accessNo: "No",
 		dialogSavedBody: ({ id, patientName, updated, consented }) =>
 			`La consulta #${id}${patientName ? ` de ${patientName}` : ""} fue ${updated ? "actualizada" : "guardada"} con la anamnesis revisada.${consented ? " Consentimiento del paciente registrado." : ""}`,
 		saveSessionExpired: "sesión expirada. Recargue la página",

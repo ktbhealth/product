@@ -2,6 +2,7 @@ import type { AgendaApi, AppointmentDraft } from "./views/index.ts";
 import type { AppointmentStatus } from "./schema.ts";
 import {
 	createAppointmentFn,
+	listAppointmentsFn,
 	setAppointmentStatusFn,
 	startAppointmentFn,
 	updateAppointmentFn,
@@ -18,4 +19,5 @@ export const agendaApi: AgendaApi = {
 	setStatus: (id: number, status: AppointmentStatus) =>
 		setAppointmentStatusFn({ data: { id, status } }),
 	start: (id: number) => startAppointmentFn({ data: { id } }),
+	list: (from: Date, to: Date) => listAppointmentsFn({ data: { from, to } }),
 };

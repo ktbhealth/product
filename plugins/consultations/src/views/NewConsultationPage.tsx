@@ -59,6 +59,14 @@ import { SAMPLE_TRANSCRIPT } from "@ktb/anamnesis";
 import { encryptToBlob } from "@ktb/crypto/stream";
 import { birthDateFromAge, errorMessage, type PatientErrors } from "@ktb/patients/record";
 import {
+	type AccessChoice,
+	type AccessStanding,
+	defaultChoice,
+	looksLikeEmail,
+	NewPatientAccessQuestion,
+	PatientAccessCard,
+} from "./-patient-access.tsx";
+import {
 	needsServerFallback,
 	type Transcriber,
 	type TranscriptionBackend,
@@ -83,6 +91,14 @@ import {
 	type ConsultationZk,
 	type GrantInput,
 } from "../zk.ts";
+
+/** Portal-access state for the save dialog — "ask" renders the retry form. */
+type AccessOutcome = {
+	readonly patientId: number;
+	readonly email: string;
+	readonly status: "ask" | "sending" | "sent" | "unsent";
+	readonly error: string | null;
+};
 
 function fmtElapsed(totalSec: number) {
 	const m = Math.floor(totalSec / 60);
@@ -169,6 +185,7 @@ export interface NewConsultationApi {
 export function NewConsultationPage({
 	initialPatients,
 	initialPatientId,
+	resumeConsultationId,
 	api,
 	backend,
 	i18n,
@@ -180,6 +197,10 @@ export function NewConsultationPage({
 	initialPatients: Array<{ id: number; name: string }>;
 	/** Preselect a patient (e.g. "New consultation" from the patient record). */
 	initialPatientId?: number;
+	/** Pre-created record to fill instead of minting a new one — the
+	 * agenda's "start consult" shell (T-257). The first save writes the
+	 * transcript into it; ZK tenants skip it (the shell has no DEK). */
+	resumeConsultationId?: number;
 	api: NewConsultationApi;
 	backend: TranscriptionBackend;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -211,14 +232,22 @@ export function NewConsultationPage({
 	const [saveDialog, setSaveDialog] = useState<
 		{ kind: "ok"; id: number; updated: boolean } | { kind: "error"; message: string } | null
 	>(null);
-	// Portal access question, asked in the save dialog: set once a saved
-	// consultation is linked to a patient who has no portal access yet.
-	const [access, setAccess] = useState<{
-		patientId: number;
-		email: string;
-		status: "ask" | "sending" | "sent" | "unsent";
-		error: string | null;
-	} | null>(null);
+	// Portal access outcome shown in the save dialog: the up-front choice
+	// lands here as sent/unsent, or as an "ask" retry form when the invite
+	// failed or the up-front lookup was unavailable.
+	const [access, setAccess] = useState<AccessOutcome | null>(null);
+	// T-258: the access decision is made up front, per patient —
+	// standings come from patientAccess, choices from the card.
+	const accessEnabled =
+		typeof api.patientAccess === "function" && typeof api.invitePatient === "function";
+	const [standings, setStandings] = useState<Readonly<Record<number, AccessStanding>>>({});
+	// Patients whose standing was already requested (or is known locally).
+	const accessLookedUp = useRef(new Set<number>());
+	const [choices, setChoices] = useState<Readonly<Record<number, AccessChoice>>>({});
+	const [newPatientAccess, setNewPatientAccess] = useState<AccessChoice>({
+		send: true,
+		email: "",
+	});
 	const [error, setError] = useState<string | null>(null);
 	const [meetUrl, setMeetUrl] = useState("");
 	const [liveId, setLiveId] = useState<number | null>(null);
@@ -295,6 +324,25 @@ export function NewConsultationPage({
 		);
 		return () => clearInterval(i);
 	}, [dictating]);
+
+	// Look up the picked patient's portal standing once (T-258). Results
+	// are keyed by patient, so a late answer for a patient the doctor
+	// already switched away from is harmless; until it lands the card
+	// stays hidden and a save asks after the fact.
+	useEffect(() => {
+		if (patientId === null || !accessEnabled || accessLookedUp.current.has(patientId)) return;
+		accessLookedUp.current.add(patientId);
+		void api.patientAccess!({ data: patientId })
+			.then((r): AccessStanding =>
+				r === null
+					? { status: "unknown" }
+					: r.hasAccess
+						? { status: "has-access" }
+						: { status: "none", email: r.email },
+			)
+			.catch((): AccessStanding => ({ status: "unknown" }))
+			.then((standing) => setStandings((s) => ({ ...s, [patientId]: standing })));
+	}, [patientId, accessEnabled, api]);
 
 	// Poll a live bot consultation — transcript grows as events arrive.
 	useEffect(() => {
@@ -626,7 +674,8 @@ export function NewConsultationPage({
 		setSaving(true);
 		try {
 			// a consultation already saved/live is updated, never duplicated
-			const existing = liveId ?? savedId;
+			const resumeId = zk ? null : (resumeConsultationId ?? null);
+			const existing = liveId ?? savedId ?? resumeId;
 			let id: number | null = existing;
 			if (existing) {
 				let data: Parameters<NewConsultationApi["attachAnamnesis"]>[0]["data"];
@@ -656,6 +705,9 @@ export function NewConsultationPage({
 						// null clears a previously linked patient; undefined
 						// would keep it (tri-state on the wire).
 						patientId,
+						// The resumed shell holds no transcript yet — this
+						// browser's is the record's (bot-fed rows keep theirs).
+						...(existing === resumeId ? { transcript } : {}),
 					};
 				}
 				const r = await api.attachAnamnesis({ data });
@@ -698,17 +750,8 @@ export function NewConsultationPage({
 			// encrypts with the record DEK first, so no plaintext audio ever
 			// leaves the device (fail-closed when the grant is missing).
 			void uploadSessionAudio(id);
-			// The consultation is saved either way: a failed lookup only
-			// means the access question is not asked.
-			const standing =
-				patientId !== null && api.patientAccess && api.invitePatient
-					? await api.patientAccess({ data: patientId }).catch(() => null)
-					: null;
-			setAccess(
-				patientId !== null && standing && !standing.hasAccess
-					? { patientId, email: standing.email ?? "", status: "ask", error: null }
-					: null,
-			);
+			// The consultation is saved either way: access only adds to it.
+			setAccess(await accessAfterSave());
 			setSaveDialog({ kind: "ok", id, updated: Boolean(existing) });
 		} catch (e) {
 			setSaveDialog({
@@ -720,18 +763,15 @@ export function NewConsultationPage({
 		}
 	}
 
-	async function sendAccess(e: FormEvent) {
-		e.preventDefault();
-		/* v8 ignore next -- the form only renders with a pending question and an invite api */
-		if (!access || !api.invitePatient) return;
-		const invitee = access.patientId;
-		const email = access.email.trim();
-		if (!email || access.status === "sending") return;
-		setAccess({ ...access, status: "sending", error: null });
-		const res = await api
-			.invitePatient({ data: { patientId: invitee, email } })
-			.catch(() => ({ ok: false as const, error: "failed" }));
-		setAccess({
+	/** Grant portal access + send the email; a success marks the patient
+	 * as having access so a re-save never invites twice. */
+	async function invite(invitee: number, email: string): Promise<AccessOutcome> {
+		const res = await api.invitePatient!({ data: { patientId: invitee, email } }).catch(() => ({
+			ok: false as const,
+			error: "failed",
+		}));
+		if (res.ok) setStandings((s) => ({ ...s, [invitee]: { status: "has-access" } }));
+		return {
 			patientId: invitee,
 			email,
 			status: res.ok ? (res.emailed ? "sent" : "unsent") : "ask",
@@ -740,7 +780,47 @@ export function NewConsultationPage({
 				: res.error === "invalid_email"
 					? nc.accessInvalidEmail
 					: nc.accessFailed,
-		});
+		};
+	}
+
+	/**
+	 * Act on the up-front access decision (T-258): send when the doctor
+	 * chose to, stay quiet when they declined. An unusable email or a
+	 * failed invite comes back as the dialog's retry form; an unknown
+	 * standing falls back to asking after the fact.
+	 */
+	async function accessAfterSave(): Promise<AccessOutcome | null> {
+		if (patientId === null || !accessEnabled) return null;
+		const standing = standings[patientId];
+		if (standing?.status === "has-access") return null;
+		if (standing?.status === "none") {
+			const choice = choices[patientId] ?? defaultChoice(standing.email);
+			if (!choice.send) return null;
+			const email = choice.email.trim();
+			if (!looksLikeEmail(email)) {
+				return {
+					patientId,
+					email,
+					status: "ask",
+					error: email === "" ? null : nc.accessInvalidEmail,
+				};
+			}
+			return invite(patientId, email);
+		}
+		const late = await api.patientAccess!({ data: patientId }).catch(() => null);
+		return late && !late.hasAccess
+			? { patientId, email: late.email ?? "", status: "ask", error: null }
+			: null;
+	}
+
+	async function sendAccess(e: FormEvent) {
+		e.preventDefault();
+		/* v8 ignore next -- the form only renders with a pending question and an invite api */
+		if (!access || !api.invitePatient) return;
+		const email = access.email.trim();
+		if (!email || access.status === "sending") return;
+		setAccess({ ...access, status: "sending", error: null });
+		setAccess(await invite(access.patientId, email));
 	}
 
 	function updateSection(key: AnamnesisSectionKey, content: string) {
@@ -900,12 +980,32 @@ export function NewConsultationPage({
 									setPatients((prev) => [...prev, { id: p.id, name: p.name }]);
 									setPatientId(p.id);
 									setQuickCreatedId(p.id);
+									// A brand-new patient has no portal access — carry the
+									// quick-create answer into their access card (T-258);
+									// "Yes" without a usable email stays undecided.
+									const email = newPatientAccess.email.trim();
+									accessLookedUp.current.add(p.id);
+									setStandings((s) => ({ ...s, [p.id]: { status: "none", email: null } }));
+									setChoices((c) => ({
+										...c,
+										[p.id]: { send: newPatientAccess.send && looksLikeEmail(email), email },
+									}));
+									setNewPatientAccess({ send: true, email: "" });
 									setPatientName("");
 									setPatientAge("");
 								}}
 							>
 								{nc.addPatient}
 							</Button>
+							{accessEnabled && patientName.trim() !== "" ? (
+								<div className="basis-full">
+									<NewPatientAccessQuestion
+										choice={newPatientAccess}
+										onChange={setNewPatientAccess}
+										nc={nc}
+									/>
+								</div>
+							) : null}
 							{patientError ? <FieldError className="text-xs">{patientError}</FieldError> : null}
 							{quickCreatedId !== null && quickCreatedId === patientId ? (
 								<Link
@@ -930,6 +1030,20 @@ export function NewConsultationPage({
 							{nc.consentDeclaration}
 						</label>
 					</div>
+					{patientId !== null && standings[patientId] !== undefined ? (
+						<PatientAccessCard
+							patientName={accessPatientName}
+							standing={standings[patientId]}
+							choice={
+								choices[patientId] ??
+								defaultChoice(
+									standings[patientId].status === "none" ? standings[patientId].email : null,
+								)
+							}
+							onChange={(choice) => setChoices((c) => ({ ...c, [patientId]: choice }))}
+							nc={nc}
+						/>
+					) : null}
 
 					{/* capture source — ZK tenants have no server audio/transcript
 					 * path, so upload and the meet bot stay hidden (T-145/T-147). */}

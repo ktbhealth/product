@@ -66,6 +66,26 @@ describe("ClinicianConsultationRecordPage", () => {
 		});
 	});
 
+	it("resumes an agenda shell: its patient wins over ?patientId (T-257)", () => {
+		mocks.search.current = { patientId: "9" };
+		render(
+			<ClinicianConsultationRecordPage
+				data={{ view: "new", patients, resume: { consultationId: 5, patientId: 7 } }}
+				ctx={ctx}
+			/>,
+		);
+		expect(mocks.props.current).toMatchObject({ initialPatientId: 7, resumeConsultationId: 5 });
+		mocks.props.current = undefined;
+		// An unlinked shell keeps the ?patientId preselection.
+		render(
+			<ClinicianConsultationRecordPage
+				data={{ view: "new", patients, resume: { consultationId: 5, patientId: null } }}
+				ctx={ctx}
+			/>,
+		);
+		expect(mocks.props.current).toMatchObject({ initialPatientId: 9, resumeConsultationId: 5 });
+	});
+
 	it("ignores a missing or invalid ?patientId", () => {
 		for (const search of [undefined, {}, { patientId: "abc" }, { patientId: "0" }]) {
 			mocks.search.current = search;

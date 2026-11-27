@@ -32,6 +32,10 @@ export interface AttachAnamnesisInput {
 	readonly engine: string;
 	/** Tri-state: undefined keeps the link, null clears it, id re-links. */
 	readonly patientId?: number | null;
+	/** Absent keeps the stored transcript (bot-fed live rows fill it
+	 * server-side); present replaces it — a pre-created shell (agenda
+	 * start, T-257) gets its browser-side transcript on first save. */
+	readonly transcript?: string;
 	readonly version?: SignedVersion;
 }
 

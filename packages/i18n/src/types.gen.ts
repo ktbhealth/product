@@ -11,9 +11,11 @@ export type I18nKey =
 	| "agenda.actions.noShow"
 	| "agenda.actions.start"
 	| "agenda.actions.started"
+	| "agenda.detailsTitle"
 	| "agenda.durationMin"
 	| "agenda.empty"
 	| "agenda.form.cancel"
+	| "agenda.form.conflict"
 	| "agenda.form.date"
 	| "agenda.form.durationMin"
 	| "agenda.form.note"
@@ -22,8 +24,12 @@ export type I18nKey =
 	| "agenda.form.required"
 	| "agenda.form.save"
 	| "agenda.form.time"
+	| "agenda.moreCount"
 	| "agenda.newAppointment"
+	| "agenda.newAt"
+	| "agenda.nextMonth"
 	| "agenda.nextWeek"
+	| "agenda.previousMonth"
 	| "agenda.previousWeek"
 	| "agenda.sidebarLabel"
 	| "agenda.startingSoon"
@@ -34,6 +40,9 @@ export type I18nKey =
 	| "agenda.status.scheduled"
 	| "agenda.title"
 	| "agenda.today"
+	| "agenda.views.list"
+	| "agenda.views.month"
+	| "agenda.views.week"
 	| "agenda.zk.lockedName"
 	| "app.capture_desc"
 	| "app.capture_error_no_audio"
@@ -583,15 +592,23 @@ export type I18nKey =
 	| "consultations.list.statsToday"
 	| "consultations.list.title"
 	| "consultations.list.unlinkedPatient"
+	| "consultations.newConsultation.accessCardHasAccess"
+	| "consultations.newConsultation.accessCardNone"
+	| "consultations.newConsultation.accessCardTitle"
+	| "consultations.newConsultation.accessEmailLabel"
 	| "consultations.newConsultation.accessEmailPlaceholder"
 	| "consultations.newConsultation.accessFailed"
 	| "consultations.newConsultation.accessHint"
 	| "consultations.newConsultation.accessInvalidEmail"
+	| "consultations.newConsultation.accessNo"
 	| "consultations.newConsultation.accessNotNow"
 	| "consultations.newConsultation.accessQuestion"
 	| "consultations.newConsultation.accessSend"
+	| "consultations.newConsultation.accessSendOnSave"
 	| "consultations.newConsultation.accessSent"
+	| "consultations.newConsultation.accessSkip"
 	| "consultations.newConsultation.accessUnsent"
+	| "consultations.newConsultation.accessYes"
 	| "consultations.newConsultation.addPatient"
 	| "consultations.newConsultation.agePlaceholder"
 	| "consultations.newConsultation.ageRequired"
@@ -628,6 +645,7 @@ export type I18nKey =
 	| "consultations.newConsultation.modeLabel"
 	| "consultations.newConsultation.modeLive"
 	| "consultations.newConsultation.modelUnavailable"
+	| "consultations.newConsultation.newPatientAccessQuestion"
 	| "consultations.newConsultation.newPatientAgeLabel"
 	| "consultations.newConsultation.newPatientNameLabel"
 	| "consultations.newConsultation.newPatientPlaceholder"
@@ -1776,6 +1794,55 @@ export type I18nKey =
 	| "patients.zk.decryptFailed"
 	| "patients.zk.lockedHint"
 	| "patients.zk.lockedRecord"
+	| "pipeline.applyParams"
+	| "pipeline.backToList"
+	| "pipeline.cancel"
+	| "pipeline.colDescription"
+	| "pipeline.colId"
+	| "pipeline.colNodes"
+	| "pipeline.colUpdated"
+	| "pipeline.colVersion"
+	| "pipeline.connectConfirm"
+	| "pipeline.connectEventType"
+	| "pipeline.connectTitle"
+	| "pipeline.defDescription"
+	| "pipeline.defId"
+	| "pipeline.defSection"
+	| "pipeline.defVersion"
+	| "pipeline.deleteNode"
+	| "pipeline.description"
+	| "pipeline.editorEditTitle"
+	| "pipeline.editorMissing"
+	| "pipeline.editorNewTitle"
+	| "pipeline.empty"
+	| "pipeline.kindAiEcho"
+	| "pipeline.kindAiModel"
+	| "pipeline.kindAiTemplate"
+	| "pipeline.kindEmitEvents"
+	| "pipeline.kindGateEquals"
+	| "pipeline.kindGateFailEvent"
+	| "pipeline.kindGatePassEvent"
+	| "pipeline.kindGatePath"
+	| "pipeline.kindsLoading"
+	| "pipeline.newPipeline"
+	| "pipeline.nodeEmits"
+	| "pipeline.nodeId"
+	| "pipeline.nodeKind"
+	| "pipeline.nodeOn"
+	| "pipeline.nodeParams"
+	| "pipeline.nodeParamsInvalid"
+	| "pipeline.nodeParamsJson"
+	| "pipeline.nodeSection"
+	| "pipeline.onNodeError"
+	| "pipeline.onNodeErrorContinue"
+	| "pipeline.onNodeErrorHalt"
+	| "pipeline.paletteHint"
+	| "pipeline.paletteTitle"
+	| "pipeline.save"
+	| "pipeline.saved"
+	| "pipeline.saveFailed"
+	| "pipeline.selectNodeHint"
+	| "pipeline.title"
 	| "portal.backToApp"
 	| "portal.overview"
 	| "portal.signOut"
@@ -2426,6 +2493,7 @@ export interface I18nTypedT {
 	(key: "agenda.actions.noShow"): Effect.Effect<string>;
 	(key: "agenda.actions.start"): Effect.Effect<string>;
 	(key: "agenda.actions.started"): Effect.Effect<string>;
+	(key: "agenda.detailsTitle"): Effect.Effect<string>;
 	(
 		key: "agenda.durationMin",
 		params: {
@@ -2434,6 +2502,7 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "agenda.empty"): Effect.Effect<string>;
 	(key: "agenda.form.cancel"): Effect.Effect<string>;
+	(key: "agenda.form.conflict"): Effect.Effect<string>;
 	(key: "agenda.form.date"): Effect.Effect<string>;
 	(key: "agenda.form.durationMin"): Effect.Effect<string>;
 	(key: "agenda.form.note"): Effect.Effect<string>;
@@ -2442,8 +2511,22 @@ export interface I18nTypedT {
 	(key: "agenda.form.required"): Effect.Effect<string>;
 	(key: "agenda.form.save"): Effect.Effect<string>;
 	(key: "agenda.form.time"): Effect.Effect<string>;
+	(
+		key: "agenda.moreCount",
+		params: {
+			count: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "agenda.newAppointment"): Effect.Effect<string>;
+	(
+		key: "agenda.newAt",
+		params: {
+			time: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "agenda.nextMonth"): Effect.Effect<string>;
 	(key: "agenda.nextWeek"): Effect.Effect<string>;
+	(key: "agenda.previousMonth"): Effect.Effect<string>;
 	(key: "agenda.previousWeek"): Effect.Effect<string>;
 	(key: "agenda.sidebarLabel"): Effect.Effect<string>;
 	(
@@ -2459,6 +2542,9 @@ export interface I18nTypedT {
 	(key: "agenda.status.scheduled"): Effect.Effect<string>;
 	(key: "agenda.title"): Effect.Effect<string>;
 	(key: "agenda.today"): Effect.Effect<string>;
+	(key: "agenda.views.list"): Effect.Effect<string>;
+	(key: "agenda.views.month"): Effect.Effect<string>;
+	(key: "agenda.views.week"): Effect.Effect<string>;
 	(key: "agenda.zk.lockedName"): Effect.Effect<string>;
 	(key: "app.capture_desc"): Effect.Effect<string>;
 	(key: "app.capture_error_no_audio"): Effect.Effect<string>;
@@ -3117,10 +3203,25 @@ export interface I18nTypedT {
 	(key: "consultations.list.statsToday"): Effect.Effect<string>;
 	(key: "consultations.list.title"): Effect.Effect<string>;
 	(key: "consultations.list.unlinkedPatient"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessCardHasAccess",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessCardNone",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessCardTitle"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessEmailLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessEmailPlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessFailed"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessHint"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessInvalidEmail"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessNo"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessNotNow"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessQuestion",
@@ -3129,18 +3230,21 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessSend"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessSendOnSave"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessSent",
 		params: {
 			email: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessSkip"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessUnsent",
 		params: {
 			email: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessYes"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.addPatient"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.agePlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.ageRequired"): Effect.Effect<string>;
@@ -3218,6 +3322,7 @@ export interface I18nTypedT {
 			message: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.newPatientAccessQuestion"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientAgeLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientNameLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientPlaceholder"): Effect.Effect<string>;
@@ -4796,6 +4901,60 @@ export interface I18nTypedT {
 	(key: "patients.zk.decryptFailed"): Effect.Effect<string>;
 	(key: "patients.zk.lockedHint"): Effect.Effect<string>;
 	(key: "patients.zk.lockedRecord"): Effect.Effect<string>;
+	(key: "pipeline.applyParams"): Effect.Effect<string>;
+	(key: "pipeline.backToList"): Effect.Effect<string>;
+	(key: "pipeline.cancel"): Effect.Effect<string>;
+	(key: "pipeline.colDescription"): Effect.Effect<string>;
+	(key: "pipeline.colId"): Effect.Effect<string>;
+	(key: "pipeline.colNodes"): Effect.Effect<string>;
+	(key: "pipeline.colUpdated"): Effect.Effect<string>;
+	(key: "pipeline.colVersion"): Effect.Effect<string>;
+	(key: "pipeline.connectConfirm"): Effect.Effect<string>;
+	(key: "pipeline.connectEventType"): Effect.Effect<string>;
+	(key: "pipeline.connectTitle"): Effect.Effect<string>;
+	(key: "pipeline.defDescription"): Effect.Effect<string>;
+	(key: "pipeline.defId"): Effect.Effect<string>;
+	(key: "pipeline.defSection"): Effect.Effect<string>;
+	(key: "pipeline.defVersion"): Effect.Effect<string>;
+	(key: "pipeline.deleteNode"): Effect.Effect<string>;
+	(key: "pipeline.description"): Effect.Effect<string>;
+	(
+		key: "pipeline.editorEditTitle",
+		params: {
+			id: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "pipeline.editorMissing"): Effect.Effect<string>;
+	(key: "pipeline.editorNewTitle"): Effect.Effect<string>;
+	(key: "pipeline.empty"): Effect.Effect<string>;
+	(key: "pipeline.kindAiEcho"): Effect.Effect<string>;
+	(key: "pipeline.kindAiModel"): Effect.Effect<string>;
+	(key: "pipeline.kindAiTemplate"): Effect.Effect<string>;
+	(key: "pipeline.kindEmitEvents"): Effect.Effect<string>;
+	(key: "pipeline.kindGateEquals"): Effect.Effect<string>;
+	(key: "pipeline.kindGateFailEvent"): Effect.Effect<string>;
+	(key: "pipeline.kindGatePassEvent"): Effect.Effect<string>;
+	(key: "pipeline.kindGatePath"): Effect.Effect<string>;
+	(key: "pipeline.kindsLoading"): Effect.Effect<string>;
+	(key: "pipeline.newPipeline"): Effect.Effect<string>;
+	(key: "pipeline.nodeEmits"): Effect.Effect<string>;
+	(key: "pipeline.nodeId"): Effect.Effect<string>;
+	(key: "pipeline.nodeKind"): Effect.Effect<string>;
+	(key: "pipeline.nodeOn"): Effect.Effect<string>;
+	(key: "pipeline.nodeParams"): Effect.Effect<string>;
+	(key: "pipeline.nodeParamsInvalid"): Effect.Effect<string>;
+	(key: "pipeline.nodeParamsJson"): Effect.Effect<string>;
+	(key: "pipeline.nodeSection"): Effect.Effect<string>;
+	(key: "pipeline.onNodeError"): Effect.Effect<string>;
+	(key: "pipeline.onNodeErrorContinue"): Effect.Effect<string>;
+	(key: "pipeline.onNodeErrorHalt"): Effect.Effect<string>;
+	(key: "pipeline.paletteHint"): Effect.Effect<string>;
+	(key: "pipeline.paletteTitle"): Effect.Effect<string>;
+	(key: "pipeline.save"): Effect.Effect<string>;
+	(key: "pipeline.saved"): Effect.Effect<string>;
+	(key: "pipeline.saveFailed"): Effect.Effect<string>;
+	(key: "pipeline.selectNodeHint"): Effect.Effect<string>;
+	(key: "pipeline.title"): Effect.Effect<string>;
 	(key: "portal.backToApp"): Effect.Effect<string>;
 	(key: "portal.overview"): Effect.Effect<string>;
 	(key: "portal.signOut"): Effect.Effect<string>;

@@ -56,11 +56,13 @@ export async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, 
 		engine: string;
 		status: string;
 		patientId?: number | null;
+		transcript?: string;
 	} = {
 		anamnesis: serializeAnamnesis(data.anamnesis),
 		engine: data.engine,
 		status: "done",
 	};
+	if (data.transcript !== undefined) set.transcript = data.transcript;
 	if (data.patientId === null) set.patientId = null;
 	else if (data.patientId !== undefined) set.patientId = data.patientId;
 	const rows = await db

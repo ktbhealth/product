@@ -6,7 +6,15 @@ import { Schema } from "effect";
 import { ensureDoctorUser, runAs } from "@ktb/server-fns";
 
 import { APPOINTMENT_STATUSES, type AppointmentStatus } from "./schema.ts";
-import { Appointments, type AppointmentRow } from "./service.ts";
+import type { Forbidden } from "@ktb/authz";
+
+import {
+	Appointments,
+	type AppointmentConflict,
+	type AppointmentListItem,
+	type AppointmentRow,
+} from "./service.ts";
+import { MAX_LIST_RANGE_DAYS } from "./window.ts";
 
 // Agenda plugin server functions: plugin-owned like the route modules —
 // handlers reach the app runtime through @ktb/server-fns (no host
@@ -50,12 +58,61 @@ const StatusInput = Schema.Struct({
 
 const IdInput = Schema.Struct({ id: Schema.Number });
 
+/** `from`/`to` arrive as ISO strings or epoch ms over the wire. */
+const normalizeRange = (input: unknown): unknown => {
+	if (input === null || typeof input !== "object") return input;
+	const o = { ...(input as Record<string, unknown>) };
+	for (const key of ["from", "to"] as const) {
+		if (typeof o[key] === "string" || typeof o[key] === "number") o[key] = new Date(o[key]);
+	}
+	return o;
+};
+
+const RangeInput = Schema.Struct({ from: Schema.Date, to: Schema.Date });
+
+export type ListAppointmentsFnResult =
+	| { readonly ok: true; readonly appointments: readonly AppointmentListItem[] }
+	| { readonly ok: false };
+
+/**
+ * Appointments in [from, to] for calendar ranges outside the loader
+ * window (T-259) — month grids, far-off weeks. Inverted or wider than
+ * MAX_LIST_RANGE_DAYS ranges are refused rather than clamped.
+ */
+export const listAppointmentsFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => Schema.decodeUnknownSync(RangeInput)(normalizeRange(input)))
+	.handler(async ({ data }): Promise<ListAppointmentsFnResult> => {
+		const span = data.to.getTime() - data.from.getTime();
+		if (span < 0 || span > MAX_LIST_RANGE_DAYS * 86_400_000) return { ok: false };
+		const user = await ensureDoctorUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const appointments = yield* Appointments;
+				const rows = yield* appointments.list(user.id, data);
+				return { ok: true, appointments: rows } as const;
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
+		);
+	});
+
 export type AppointmentFnResult =
 	| { readonly ok: true; readonly appointment: AppointmentRow }
-	| { readonly ok: false };
+	| { readonly ok: false; readonly reason?: "conflict"; readonly conflictingId?: number };
 
 const asResult = (row: AppointmentRow | null): AppointmentFnResult =>
 	row === null ? { ok: false } : { ok: true, appointment: row };
+
+/** Write denials collapse to `{ ok: false }`; a double-booking keeps its
+ * reason so the form can say why instead of a generic failure. */
+const collapseWriteErrors = <R>(
+	effect: Effect.Effect<AppointmentFnResult, Forbidden | AppointmentConflict, R>,
+) =>
+	effect.pipe(
+		Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const)),
+		Effect.catchTag("AppointmentConflict", (e) =>
+			Effect.succeed({ ok: false, reason: "conflict", conflictingId: e.conflictingId } as const),
+		),
+	);
 
 export const createAppointmentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(CreateInput)(normalizeStartsAt(input)))
@@ -63,11 +120,13 @@ export const createAppointmentFn = createServerFn({ method: "POST" })
 		const user = await ensureDoctorUser();
 		return runAs(
 			user,
-			Effect.gen(function* () {
-				const appointments = yield* Appointments;
-				const row = yield* appointments.create(user.id, data);
-				return asResult(row);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
+			collapseWriteErrors(
+				Effect.gen(function* () {
+					const appointments = yield* Appointments;
+					const row = yield* appointments.create(user.id, data);
+					return asResult(row);
+				}),
+			),
 		);
 	});
 
@@ -78,11 +137,13 @@ export const updateAppointmentFn = createServerFn({ method: "POST" })
 		const { id, ...patch } = data;
 		return runAs(
 			user,
-			Effect.gen(function* () {
-				const appointments = yield* Appointments;
-				const row = yield* appointments.update(user.id, id, patch);
-				return asResult(row);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
+			collapseWriteErrors(
+				Effect.gen(function* () {
+					const appointments = yield* Appointments;
+					const row = yield* appointments.update(user.id, id, patch);
+					return asResult(row);
+				}),
+			),
 		);
 	});
 

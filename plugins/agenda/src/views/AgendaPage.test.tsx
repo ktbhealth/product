@@ -75,7 +75,13 @@ vi.mock("@ktbhealth/ui/components/select", async () => {
 	};
 });
 
-import { AgendaPage, AgendaPortalPage, type AgendaListItem } from "./AgendaPage.tsx";
+import {
+	AgendaPage,
+	AgendaPortalPage,
+	type AgendaApi,
+	type AgendaListItem,
+	type AppointmentWriteResult,
+} from "./AgendaPage.tsx";
 
 const api = () => ({
 	create: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({ ok: true })),
@@ -365,6 +371,24 @@ describe("AgendaPage", () => {
 		await waitFor(() => expect(screen.getByText("Required")).toBeTruthy());
 	});
 
+	it("the create dialog names a double-booking instead of the generic error", async () => {
+		const a = {
+			...api(),
+			create: vi.fn<() => Promise<AppointmentWriteResult>>(async () => ({
+				ok: false,
+				reason: "conflict",
+			})),
+		};
+		render(<AgendaPage appointments={[]} patients={[{ id: 1, name: "Ana" }]} api={a} />);
+		fireEvent.click(screen.getByText("New appointment"));
+		await waitFor(() => expect(screen.getByText("Save")).toBeTruthy());
+		fireEvent.click(screen.getByText("Ana"));
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() =>
+			expect(screen.getByRole("alert").textContent).toBe("This time overlaps another appointment."),
+		);
+	});
+
 	it("the edit dialog closes via cancel", async () => {
 		render(
 			<AgendaPage appointments={[appt({})]} patients={[{ id: 1, name: "Ana" }]} api={api()} />,
@@ -427,6 +451,171 @@ describe("AgendaPage", () => {
 	});
 });
 
+describe("AgendaPage calendar views (T-259)", () => {
+	type ListFn = NonNullable<AgendaApi["list"]>;
+	const tab = (name: string) => screen.getByRole("tab", { name });
+	/** Today at hh:mm, local time. */
+	const todayAt = (h: number, m = 0) => {
+		const d = new Date();
+		d.setHours(h, m, 0, 0);
+		return d;
+	};
+
+	it("switches between list, week and month with matching navigation", () => {
+		render(<AgendaPage appointments={[]} patients={[]} api={api()} />);
+		expect(tab("List").getAttribute("aria-selected")).toBe("true");
+		fireEvent.click(tab("Week"));
+		expect(tab("Week").getAttribute("aria-selected")).toBe("true");
+		expect(screen.getAllByLabelText("New appointment at 09:00").length).toBe(7);
+		const weekLabel = screen.getByTestId("range-label").textContent;
+		fireEvent.click(screen.getByLabelText("Next week"));
+		expect(screen.getByTestId("range-label").textContent).not.toBe(weekLabel);
+		fireEvent.click(tab("Month"));
+		expect(document.querySelectorAll("[data-day]").length).toBe(42);
+		fireEvent.click(screen.getByText("Today"));
+		const monthLabel = screen.getByTestId("range-label").textContent;
+		fireEvent.click(screen.getByLabelText("Next month"));
+		expect(screen.getByTestId("range-label").textContent).not.toBe(monthLabel);
+		fireEvent.click(screen.getByLabelText("Previous month"));
+		fireEvent.click(screen.getByText("Today"));
+		expect(screen.getByTestId("range-label").textContent).toBe(monthLabel);
+	});
+
+	it("clicking an empty week slot opens a new appointment prefilled at that time", async () => {
+		const a = api();
+		render(
+			<AgendaPage
+				appointments={[]}
+				patients={[{ id: 1, name: "Ana" }]}
+				api={a}
+				initialView="week"
+			/>,
+		);
+		const today = todayAt(0);
+		const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+		const column = document.querySelector(`[data-day="${key}"]`) as HTMLElement;
+		fireEvent.click(within(column).getByLabelText("New appointment at 14:30"));
+		await waitFor(() => expect(screen.getByText("Save")).toBeTruthy());
+		expect((screen.getByLabelText("Date") as HTMLInputElement).value).toBe(key);
+		expect((screen.getByLabelText("Time") as HTMLInputElement).value).toBe("14:30");
+		fireEvent.click(screen.getByText("Ana"));
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() =>
+			expect(a.create).toHaveBeenCalledWith(expect.objectContaining({ startsAt: todayAt(14, 30) })),
+		);
+	});
+
+	it("a week block opens the details dialog with the appointment's actions", async () => {
+		const a = api();
+		const row = appt({ id: 7, patientName: "Bia", startsAt: todayAt(23, 0) });
+		render(<AgendaPage appointments={[row]} patients={[]} api={a} initialView="week" />);
+		fireEvent.click(screen.getByRole("button", { name: "23:00 Bia" }));
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText(/Appointment ·/)).toBeTruthy();
+		fireEvent.click(within(dialog).getByText("Confirm"));
+		await waitFor(() => expect(a.setStatus).toHaveBeenCalledWith(7, "confirmed"));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	});
+
+	it("the details dialog closes on Escape", async () => {
+		const row = appt({ id: 7, patientName: "Bia", startsAt: todayAt(23, 0) });
+		render(<AgendaPage appointments={[row]} patients={[]} api={api()} initialView="week" />);
+		fireEvent.click(screen.getByRole("button", { name: "23:00 Bia" }));
+		await screen.findByRole("dialog");
+		fireEvent.keyDown(document.body, { key: "Escape" });
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	});
+
+	it("editing from the details dialog swaps it for the edit form", async () => {
+		const row = appt({ id: 7, patientName: "Bia", startsAt: todayAt(23, 0) });
+		render(
+			<AgendaPage
+				appointments={[row]}
+				patients={[{ id: 1, name: "Bia" }]}
+				api={api()}
+				initialView="week"
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "23:00 Bia" }));
+		const dialog = await screen.findByRole("dialog");
+		fireEvent.click(within(dialog).getByLabelText("Edit"));
+		await waitFor(() => expect(screen.queryByText(/Appointment ·/)).toBeNull());
+		expect((screen.getByLabelText("Time") as HTMLInputElement).value).toBe("23:00");
+	});
+
+	it("the list orders a day's appointments by time whatever the loader order", () => {
+		render(
+			<AgendaPage
+				appointments={[
+					appt({ id: 2, patientName: "Late", startsAt: todayAt(23, 30) }),
+					appt({ id: 1, patientName: "Early", startsAt: todayAt(23, 0) }),
+				]}
+				patients={[]}
+				api={api()}
+			/>,
+		);
+		const text = document.body.textContent ?? "";
+		expect(text.indexOf("Early")).toBeLessThan(text.indexOf("Late"));
+	});
+
+	it("picking a month day opens that day's week", () => {
+		render(<AgendaPage appointments={[]} patients={[]} api={api()} initialView="month" />);
+		const cells = document.querySelectorAll("[data-day]");
+		fireEvent.click(cells[cells.length - 1]!);
+		expect(tab("Week").getAttribute("aria-selected")).toBe("true");
+		const last = cells[cells.length - 1]!.getAttribute("data-day");
+		expect(document.querySelector(`[data-day="${last}"]`)).toBeTruthy();
+	});
+
+	it("fetches ranges outside the loader window and refetches after a change", async () => {
+		const far = new Date();
+		far.setMonth(far.getMonth() + 3, 15);
+		far.setHours(10, 0, 0, 0);
+		const list = vi.fn<ListFn>(async () => ({
+			ok: true,
+			appointments: [appt({ id: 99, patientName: "Far", startsAt: far })],
+		}));
+		const a = { ...api(), list };
+		render(<AgendaPage appointments={[]} patients={[]} api={a} initialView="month" />);
+		// The 6-week grid already spills past the loader window.
+		await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+		for (let i = 0; i < 3; i += 1) fireEvent.click(screen.getByLabelText("Next month"));
+		await screen.findByText("Far");
+		const [from, to] = list.mock.calls.at(-1)!;
+		expect(to.getTime() - from.getTime()).toBe(42 * 86_400_000);
+		const calls = list.mock.calls.length;
+		// A status change from the week view refetches the visible range.
+		fireEvent.click(screen.getByText("Far").closest("button")!);
+		fireEvent.click(await screen.findByRole("button", { name: "10:00 Far" }));
+		fireEvent.click(within(await screen.findByRole("dialog")).getByText("Confirm"));
+		await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(calls));
+	});
+
+	it("keeps showing loader rows when a range fetch fails or no list api is wired", async () => {
+		const list = vi
+			.fn<ListFn>(async () => ({ ok: false }))
+			.mockResolvedValueOnce({ ok: false })
+			.mockRejectedValueOnce(new Error("network"));
+		const row = appt({ id: 3, patientName: "Near", startsAt: todayAt(23, 30) });
+		render(
+			<AgendaPage
+				appointments={[row]}
+				patients={[]}
+				api={{ ...api(), list }}
+				initialView="month"
+			/>,
+		);
+		await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+		fireEvent.click(screen.getByLabelText("Next month"));
+		await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+		fireEvent.click(screen.getByLabelText("Previous month"));
+		expect(screen.getByText("Near")).toBeTruthy();
+		cleanup();
+		render(<AgendaPage appointments={[row]} patients={[]} api={api()} initialView="month" />);
+		expect(screen.getByText("Near")).toBeTruthy();
+	});
+});
+
 describe("AgendaPortalPage", () => {
 	it("unwraps loader data and wires the doctor portal base", () => {
 		render(
@@ -460,7 +649,7 @@ describe("AgendaPortalPage", () => {
 		await waitFor(() => expect(agendaApiMocks.start).toHaveBeenCalledWith(1));
 		await waitFor(() =>
 			expect(routerMocks.navigate).toHaveBeenCalledWith({
-				to: "/portal/doctor/consultations/42",
+				to: "/portal/doctor/consultations/42/record",
 			}),
 		);
 	});

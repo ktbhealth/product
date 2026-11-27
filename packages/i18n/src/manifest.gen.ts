@@ -742,6 +742,9 @@ export const I18N_MANIFEST = {
 		"form.required": {
 			params: [],
 		},
+		"form.conflict": {
+			params: [],
+		},
 		"status.scheduled": {
 			params: [],
 		},
@@ -779,6 +782,40 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"zk.lockedName": {
+			params: [],
+		},
+		"views.list": {
+			params: [],
+		},
+		"views.week": {
+			params: [],
+		},
+		"views.month": {
+			params: [],
+		},
+		previousMonth: {
+			params: [],
+		},
+		nextMonth: {
+			params: [],
+		},
+		moreCount: {
+			params: [
+				{
+					name: "count",
+				},
+			],
+			template: "+{count} more",
+		},
+		newAt: {
+			params: [
+				{
+					name: "time",
+				},
+			],
+			template: "New appointment at {time}",
+		},
+		detailsTitle: {
 			params: [],
 		},
 		startingSoon: {
@@ -2117,6 +2154,44 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"newConsultation.accessFailed": {
+			params: [],
+		},
+		"newConsultation.accessCardTitle": {
+			params: [],
+		},
+		"newConsultation.accessCardNone": {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template: "{patient} doesn't have patient portal access yet.",
+		},
+		"newConsultation.accessCardHasAccess": {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template:
+				"{patient} already has portal access — this consultation shows up there once saved.",
+		},
+		"newConsultation.accessSendOnSave": {
+			params: [],
+		},
+		"newConsultation.accessSkip": {
+			params: [],
+		},
+		"newConsultation.accessEmailLabel": {
+			params: [],
+		},
+		"newConsultation.newPatientAccessQuestion": {
+			params: [],
+		},
+		"newConsultation.accessYes": {
+			params: [],
+		},
+		"newConsultation.accessNo": {
 			params: [],
 		},
 		"newConsultation.saveSessionExpired": {
@@ -6092,6 +6167,160 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"intake.dataUseConsent": {
+			params: [],
+		},
+	},
+	pipeline: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newPipeline: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colVersion: {
+			params: [],
+		},
+		colDescription: {
+			params: [],
+		},
+		colNodes: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		backToList: {
+			params: [],
+		},
+		editorNewTitle: {
+			params: [],
+		},
+		editorEditTitle: {
+			params: [
+				{
+					name: "id",
+				},
+			],
+			template: "Orchestration {id}",
+		},
+		editorMissing: {
+			params: [],
+		},
+		defSection: {
+			params: [],
+		},
+		defId: {
+			params: [],
+		},
+		defVersion: {
+			params: [],
+		},
+		defDescription: {
+			params: [],
+		},
+		onNodeError: {
+			params: [],
+		},
+		onNodeErrorHalt: {
+			params: [],
+		},
+		onNodeErrorContinue: {
+			params: [],
+		},
+		paletteTitle: {
+			params: [],
+		},
+		paletteHint: {
+			params: [],
+		},
+		nodeSection: {
+			params: [],
+		},
+		selectNodeHint: {
+			params: [],
+		},
+		nodeId: {
+			params: [],
+		},
+		nodeKind: {
+			params: [],
+		},
+		nodeOn: {
+			params: [],
+		},
+		nodeEmits: {
+			params: [],
+		},
+		nodeParams: {
+			params: [],
+		},
+		nodeParamsJson: {
+			params: [],
+		},
+		nodeParamsInvalid: {
+			params: [],
+		},
+		applyParams: {
+			params: [],
+		},
+		deleteNode: {
+			params: [],
+		},
+		connectTitle: {
+			params: [],
+		},
+		connectEventType: {
+			params: [],
+		},
+		connectConfirm: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		kindAiTemplate: {
+			params: [],
+		},
+		kindAiModel: {
+			params: [],
+		},
+		kindAiEcho: {
+			params: [],
+		},
+		kindGatePath: {
+			params: [],
+		},
+		kindGateEquals: {
+			params: [],
+		},
+		kindGatePassEvent: {
+			params: [],
+		},
+		kindGateFailEvent: {
+			params: [],
+		},
+		kindEmitEvents: {
+			params: [],
+		},
+		kindsLoading: {
 			params: [],
 		},
 	},
