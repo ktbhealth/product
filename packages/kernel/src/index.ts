@@ -38,6 +38,13 @@ export {
 	warnUnknownChromeRegions,
 } from "./chrome.ts";
 export {
+	defineDefKind,
+	type DefKind,
+	type DefKindOwner,
+	type DefKindSpec,
+	type DefRegistry,
+} from "./def-kind.ts";
+export {
 	collectContributions,
 	collectKindContributions,
 	ELEMENT_KINDS_KIND,

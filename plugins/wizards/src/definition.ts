@@ -1,17 +1,8 @@
 import * as Context from "effect/Context";
-import type { JsonObject } from "effect/Schema";
 import type { JsonSchemaObject } from "@ktb/json-schema";
 import { assertSchema } from "@ktb/json-schema";
 import type { FormFieldUi } from "@ktb/forms";
-import {
-	buildDefOwnerIndex,
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type DefOwnerIndex,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind, type DefOwnerIndex } from "@ktb/kernel";
 
 import {
 	assertCondition,
@@ -49,19 +40,6 @@ import {
  * completion id is the escape hatch for domain logic, resolved
  * through the WizardHooks registry (./hooks.ts).
  */
-
-/** The registered contribution kind for wizard definitions. */
-export const WIZARD_DEF_KIND: ContributionKindDescriptor = {
-	id: "wizard.def",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	// app-host.client: defs are JSON data the browser runner consumes
-	// (ctx.plugins on page surfaces). Emitters must mirror
-	// `contributions` in client.ts — see module docstring.
-	// wizards.services: the run service resolves DB defs + validates
-	// client-supplied snapshots against the same contract.
-	consumers: ["app-host.client", "wizards.services", "plugin-manager"],
-	ordering: "topo",
-};
 
 /** Wizard ids double as URL segments — keep them slug-safe. */
 export const WIZARD_ID_PATTERN = SLUG_PATTERN;
@@ -297,11 +275,38 @@ export const assertWizardDefinition = (value: unknown, context: string): WizardD
 };
 
 /**
+ * The `wizard.def` contribution pipeline — kind descriptor, define /
+ * contribution / to-def / collect / registry builders — owned by
+ * `defineDefKind` (@ktb/kernel). Two deliberate deviations from the
+ * sibling kinds, preserved from the hand-rolled version: manifest
+ * entries carry NO `version` (defs version implicitly with the
+ * plugin), and `collect` performs no duplicate-id check — DB-backed
+ * `wizard_defs` rows share the id namespace downstream, where the
+ * run service arbitrates.
+ */
+const wizardDefKind = defineDefKind<WizardDefinition, "wizards">({
+	id: "wizard.def",
+	// app-host.client: defs are JSON data the browser runner consumes
+	// (ctx.plugins on page surfaces). Emitters must mirror
+	// `contributions` in client.ts — see module docstring.
+	// wizards.services: the run service resolves DB defs + validates
+	// client-supplied snapshots against the same contract.
+	consumers: ["app-host.client", "wizards.services", "plugin-manager"],
+	assert: assertWizardDefinition,
+	defId: (def) => def.id,
+	noun: "wizard",
+	field: "wizards",
+	version: () => undefined,
+});
+
+/** The registered contribution kind for wizard definitions. */
+export const WIZARD_DEF_KIND = wizardDefKind.KIND;
+
+/**
  * Build a typed definition — asserts immediately so packaging bugs
  * surface at module load, not at first render.
  */
-export const defineWizard = (def: WizardDefinition): WizardDefinition =>
-	assertWizardDefinition(def, `wizard "${String((def as { id?: unknown }).id)}"`);
+export const defineWizard = wizardDefKind.define;
 
 /**
  * Build the manifest entry a plugin adds to `contributions`:
@@ -315,33 +320,17 @@ export const defineWizard = (def: WizardDefinition): WizardDefinition =>
  * in the plugin's `src/client.ts` — the runner reads the client
  * registry.
  */
-export const wizardDefContribution = (def: WizardDefinition): PluginContribution => ({
-	kind: WIZARD_DEF_KIND.id,
-	id: def.id,
-	// Defs are pure JSON by construction (JsonSchema subset + JSON
-	// conditions/completions) — the cast bridges the typed view onto
-	// the serializable contract, same as formDefContribution.
-	meta: def as unknown as JsonObject,
-});
+export const wizardDefContribution = wizardDefKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * {@link assertWizardDefinition}. `owner` falls back to the
  * contributing plugin id. */
-export const toWizardDefinition = (
-	entry: PluginContribution,
-	pluginId: string,
-): WizardDefinition => {
-	const def = assertWizardDefinition(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toWizardDefinition = wizardDefKind.toDef;
 
 /** Collect every `wizard.def` contribution across `plugins` (expected
  * in topo order — pass the output of `orderPlugins`/`ctx.plugins`). */
-export const collectWizardDefinitions = (plugins: readonly Plugin[]): readonly WizardDefinition[] =>
-	collectKindContributions(plugins, WIZARD_DEF_KIND).map(({ plugin, payload }) =>
-		toWizardDefinition(payload as PluginContribution, plugin.id),
-	);
+export const collectWizardDefinitions = wizardDefKind.collect;
 
 /**
  * The ordered wizard registry the composition root provides to the
@@ -366,12 +355,7 @@ export class WizardDefinitions extends Context.Service<
 >()("@ktb/wizards/WizardDefinitions") {}
 
 /** Build the `WizardDefinitions` service value for a plugin graph. */
-export const makeWizardDefinitions = (
-	plugins: readonly Plugin[],
-): { readonly wizards: readonly WizardDefinition[]; readonly ownerIndex: DefOwnerIndex } => ({
-	wizards: collectWizardDefinitions(plugins),
-	ownerIndex: buildDefOwnerIndex(plugins),
-});
+export const makeWizardDefinitions = wizardDefKind.makeRegistry;
 
 /** Extract the wizard id from a `/wizards/<id>` request path — the
  * runner page's wildcard descriptor passes the full path as `data`.

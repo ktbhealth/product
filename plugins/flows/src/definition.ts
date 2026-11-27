@@ -1,15 +1,6 @@
 import * as Context from "effect/Context";
-import type { JsonObject } from "effect/Schema";
 
-import {
-	buildDefOwnerIndex,
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type DefOwnerIndex,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind, type DefOwnerIndex } from "@ktb/kernel";
 import {
 	assertCondition,
 	COLLECTION_NAME_RE,
@@ -53,17 +44,6 @@ import {
  * the `hook` action id is the escape hatch for domain logic,
  * resolved through the `FlowsHooks` registry (./hooks.ts).
  */
-
-/** The registered contribution kind for flow definitions. */
-export const FLOW_DEF_KIND: ContributionKindDescriptor = {
-	id: "flow.def",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	// app-host.server: the Flows service resolves defs through
-	// FlowDefinitions. plugin-manager: defs are JSON data tooling may
-	// enumerate via ctx.plugins.
-	consumers: ["app-host.server", "plugin-manager"],
-	ordering: "topo",
-};
 
 /** Flow ids are diagnostic keys (logs, hook handles, wire payloads) —
  * slug-safe. */
@@ -323,12 +303,32 @@ export const assertFlowDef = (value: unknown, context: string): FlowDef => {
 };
 
 /**
+ * The `flow.def` contribution pipeline — kind descriptor, define /
+ * contribution / to-def / collect / registry builders — owned by
+ * `defineDefKind` (@ktb/kernel). Flow ids are the uniqueness key.
+ */
+const flowDefKind = defineDefKind<FlowDef, "flows">({
+	id: "flow.def",
+	// app-host.server: the Flows service resolves defs through
+	// FlowDefinitions. plugin-manager: defs are JSON data tooling may
+	// enumerate via ctx.plugins.
+	consumers: ["app-host.server", "plugin-manager"],
+	assert: assertFlowDef,
+	defId: (def) => def.id,
+	noun: "flow",
+	field: "flows",
+	uniqueKey: (def) => def.id,
+});
+
+/** The registered contribution kind for flow definitions. */
+export const FLOW_DEF_KIND = flowDefKind.KIND;
+
+/**
  * Declare a flow. Everything is data — the result is
  * JSON-serializable by construction so it can be dropped into
  * `PluginContribution.meta` unchanged.
  */
-export const defineFlow = (def: FlowDef): FlowDef =>
-	assertFlowDef(def, `flow "${String((def as { id?: unknown }).id)}"`);
+export const defineFlow = flowDefKind.define;
 
 /**
  * Build the manifest entry a plugin adds to `contributions`:
@@ -339,21 +339,13 @@ export const defineFlow = (def: FlowDef): FlowDef =>
  *
  * `meta` carries the whole definition (JSON data); `id` is the flow id.
  */
-export const flowDefContribution = (def: FlowDef): PluginContribution => ({
-	kind: FLOW_DEF_KIND.id,
-	id: def.id,
-	version: "1",
-	meta: def as unknown as JsonObject,
-});
+export const flowDefContribution = flowDefKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * {@link assertFlowDef}. `owner` falls back to the contributing
  * plugin id. */
-export const toFlowDefinition = (entry: PluginContribution, pluginId: string): FlowDef => {
-	const def = assertFlowDef(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toFlowDefinition = flowDefKind.toDef;
 
 /**
  * Collect every `flow.def` contribution across `plugins` (expected
@@ -361,19 +353,7 @@ export const toFlowDefinition = (entry: PluginContribution, pluginId: string): F
  * Duplicate flow ids are a packaging bug — this throws rather than
  * letting the first contribution silently shadow the rest.
  */
-export const collectFlowDefinitions = (plugins: readonly Plugin[]): readonly FlowDef[] => {
-	const collected = collectKindContributions(plugins, FLOW_DEF_KIND).map(({ plugin, payload }) =>
-		toFlowDefinition(payload as PluginContribution, plugin.id),
-	);
-	const seen = new Set<string>();
-	for (const def of collected) {
-		if (seen.has(def.id)) {
-			throw new Error(`duplicate flow id "${def.id}" contributed by multiple plugins`);
-		}
-		seen.add(def.id);
-	}
-	return collected;
-};
+export const collectFlowDefinitions = flowDefKind.collect;
 
 /**
  * The ordered flow registry the composition root provides to the
@@ -394,9 +374,4 @@ export class FlowDefinitions extends Context.Service<
 >()("@ktb/flows/FlowDefinitions") {}
 
 /** Build the `FlowDefinitions` service value for a plugin graph. */
-export const makeFlowDefinitions = (
-	plugins: readonly Plugin[],
-): { readonly flows: readonly FlowDef[]; readonly ownerIndex: DefOwnerIndex } => ({
-	flows: collectFlowDefinitions(plugins),
-	ownerIndex: buildDefOwnerIndex(plugins),
-});
+export const makeFlowDefinitions = flowDefKind.makeRegistry;
