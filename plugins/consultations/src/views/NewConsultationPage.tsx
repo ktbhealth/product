@@ -1345,7 +1345,17 @@ export function NewConsultationPage({
 				 * header carries navigation + capture-source tabs; patient,
 				 * consent and the audio test live inside the room itself. ---- */
 				<div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
-					<div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 lg:px-8">
+					{/* single stage header — source tabs, notices, picker and
+					 * the unsupported-browser note all live here */}
+					<header className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 lg:px-8">
+						{sourceTabs}
+						{patientPickerOpen ? patientPicker : null}
+						{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
+						<div className="ml-auto flex min-w-0 flex-1 basis-full flex-col gap-2 empty:hidden">
+							{draftNotices}
+						</div>
+					</header>
+					<div className="flex shrink-0 items-center px-4 pt-1.5 lg:px-8">
 						<Link
 							to={portalPath("/consultations")}
 							className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -1353,15 +1363,7 @@ export function NewConsultationPage({
 							<ArrowLeftIcon />
 							{t.detail.back}
 						</Link>
-						{sourceTabs}
-						{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
 					</div>
-					{draftNotices}
-					{patientPickerOpen ? (
-						<div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 lg:px-8">
-							{patientPicker}
-						</div>
-					) : null}
 					<PreconsultationRoom
 						className="min-h-0 flex-1"
 						physician={{ name: physician ?? t.speakers.doctor }}
