@@ -584,15 +584,23 @@ export type I18nKey =
 	| "consultations.list.statsToday"
 	| "consultations.list.title"
 	| "consultations.list.unlinkedPatient"
+	| "consultations.newConsultation.accessCardHasAccess"
+	| "consultations.newConsultation.accessCardNone"
+	| "consultations.newConsultation.accessCardTitle"
+	| "consultations.newConsultation.accessEmailLabel"
 	| "consultations.newConsultation.accessEmailPlaceholder"
 	| "consultations.newConsultation.accessFailed"
 	| "consultations.newConsultation.accessHint"
 	| "consultations.newConsultation.accessInvalidEmail"
+	| "consultations.newConsultation.accessNo"
 	| "consultations.newConsultation.accessNotNow"
 	| "consultations.newConsultation.accessQuestion"
 	| "consultations.newConsultation.accessSend"
+	| "consultations.newConsultation.accessSendOnSave"
 	| "consultations.newConsultation.accessSent"
+	| "consultations.newConsultation.accessSkip"
 	| "consultations.newConsultation.accessUnsent"
+	| "consultations.newConsultation.accessYes"
 	| "consultations.newConsultation.addPatient"
 	| "consultations.newConsultation.agePlaceholder"
 	| "consultations.newConsultation.ageRequired"
@@ -629,6 +637,7 @@ export type I18nKey =
 	| "consultations.newConsultation.modeLabel"
 	| "consultations.newConsultation.modeLive"
 	| "consultations.newConsultation.modelUnavailable"
+	| "consultations.newConsultation.newPatientAccessQuestion"
 	| "consultations.newConsultation.newPatientAgeLabel"
 	| "consultations.newConsultation.newPatientNameLabel"
 	| "consultations.newConsultation.newPatientPlaceholder"
@@ -3119,10 +3128,25 @@ export interface I18nTypedT {
 	(key: "consultations.list.statsToday"): Effect.Effect<string>;
 	(key: "consultations.list.title"): Effect.Effect<string>;
 	(key: "consultations.list.unlinkedPatient"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessCardHasAccess",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessCardNone",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessCardTitle"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessEmailLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessEmailPlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessFailed"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessHint"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessInvalidEmail"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessNo"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessNotNow"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessQuestion",
@@ -3131,18 +3155,21 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessSend"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessSendOnSave"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessSent",
 		params: {
 			email: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessSkip"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessUnsent",
 		params: {
 			email: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.accessYes"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.addPatient"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.agePlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.ageRequired"): Effect.Effect<string>;
@@ -3220,6 +3247,7 @@ export interface I18nTypedT {
 			message: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.newPatientAccessQuestion"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientAgeLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientNameLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientPlaceholder"): Effect.Effect<string>;

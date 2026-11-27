@@ -2122,6 +2122,44 @@ export const I18N_MANIFEST = {
 		"newConsultation.accessFailed": {
 			params: [],
 		},
+		"newConsultation.accessCardTitle": {
+			params: [],
+		},
+		"newConsultation.accessCardNone": {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template: "{patient} doesn't have patient portal access yet.",
+		},
+		"newConsultation.accessCardHasAccess": {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template:
+				"{patient} already has portal access — this consultation shows up there once saved.",
+		},
+		"newConsultation.accessSendOnSave": {
+			params: [],
+		},
+		"newConsultation.accessSkip": {
+			params: [],
+		},
+		"newConsultation.accessEmailLabel": {
+			params: [],
+		},
+		"newConsultation.newPatientAccessQuestion": {
+			params: [],
+		},
+		"newConsultation.accessYes": {
+			params: [],
+		},
+		"newConsultation.accessNo": {
+			params: [],
+		},
 		"newConsultation.saveSessionExpired": {
 			params: [],
 		},
