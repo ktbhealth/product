@@ -95,16 +95,26 @@ export function LoginPage({
 			// profile, then goes through the verification step — but only
 			// when this deployment can actually send the email.
 			await ensureDoctorProfileFn();
-			window.location.assign(emailEnabled ? "/verify-email" : "/");
+			window.location.assign(emailEnabled ? "/verify-email" : "/portal/doctor");
 			return;
 		}
-		// Straight in when there is exactly one doctor to act as, the
-		// chooser when there are several. An account with no doctor profile
-		// is a patient account: it only has the patient portal.
+		// Straight into the clinical portal the account belongs to —
+		// owners land on the doctor instance, delegated-only accounts on
+		// the secretary one (the rule /doctors/select applies). An
+		// account with no doctor profile is a patient account: it only
+		// has the patient portal.
 		const context = await doctorContextFn();
-		const profiles = context?.profiles.length;
+		if (context === null) {
+			window.location.assign("/doctors/select");
+			return;
+		}
+		const profiles = context.profiles;
 		window.location.assign(
-			profiles === 0 ? "/portal/patient" : profiles === 1 ? "/" : "/doctors/select",
+			profiles.length === 0
+				? "/portal/patient"
+				: profiles.some((p) => p.role === "owner")
+					? "/portal/doctor"
+					: "/portal/secretary",
 		);
 	};
 
