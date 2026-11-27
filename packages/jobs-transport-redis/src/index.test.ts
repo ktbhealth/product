@@ -20,6 +20,10 @@ const fakeRedis = () => {
 			list.unshift(value);
 			return list.length;
 		},
+		rPush: async (_key, value) => {
+			list.push(value);
+			return list.length;
+		},
 		brPop: async () => {
 			const v = list.pop();
 			return v === undefined ? null : (["ktb:jobs", v] as const);
@@ -64,7 +68,41 @@ describe("createRedisJobsTransport", () => {
 		await new Promise((r) => setTimeout(r, 0));
 		expect(list).toHaveLength(1);
 		const [again] = await t.receive();
-		expect(again?.body).toEqual(envelope("j2"));
+		expect(again?.body).toMatchObject(envelope("j2"));
+		await t.close();
+	});
+
+	it("retry() increments attempts on the requeued envelope and reports it", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("j3"));
+		const [first] = await t.receive();
+		expect(first?.attempts).toBe(1);
+		first?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		const [second] = await t.receive();
+		expect(second?.attempts).toBe(2);
+		second?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		const [third] = await t.receive();
+		expect(third?.attempts).toBe(3);
+		await t.close();
+	});
+
+	it("retry() requeues via RPUSH so the retried message is popped next", async () => {
+		const { client, list } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("old"));
+		await t.send(envelope("retried"));
+		// list is [retried(left/newest), old(right/oldest)]; BRPOP pops old first.
+		const [first] = await t.receive();
+		expect(first?.body).toMatchObject({ id: "old" });
+		first?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		// RPUSH put "old" at the tail — it must be popped before "retried".
+		const [next] = await t.receive();
+		expect(next?.body).toMatchObject({ id: "old" });
+		expect(next?.attempts).toBe(2);
 		await t.close();
 	});
 
@@ -115,6 +153,9 @@ describe("createRedisJobsTransport", () => {
 		const entries: string[] = [JSON.stringify(envelope("poison"))];
 		const client: RedisLike = {
 			lPush: async () => {
+				throw new Error("redis down");
+			},
+			rPush: async () => {
 				throw new Error("redis down");
 			},
 			brPop: async () => (entries.length === 0 ? null : (["ktb:jobs", entries.pop()!] as const)),
