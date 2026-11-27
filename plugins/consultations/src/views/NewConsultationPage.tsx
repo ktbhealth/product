@@ -1321,41 +1321,48 @@ export function NewConsultationPage({
 				}
 			/>
 
-			<PatientContextBar
-				className="shrink-0"
-				name={selectedPatient?.name ?? nc.unlinked}
-				meta={[
-					...(selectedPatient ? [`${t.list.patientRecord} #${selectedPatient.id}`] : []),
-					...(selectedPatientAge !== undefined ? [nc.yearsOld(selectedPatientAge)] : []),
-				]}
-				chips={
-					<>
-						<Badge
-							variant="secondary"
-							className={`text-[10px] ring-1 ${consented ? BADGE_TONES.green : BADGE_TONES.neutral}`}
+			{!showRoom ? (
+				<PatientContextBar
+					className="shrink-0"
+					name={selectedPatient?.name ?? nc.unlinked}
+					meta={[
+						...(selectedPatient ? [`${t.list.patientRecord} #${selectedPatient.id}`] : []),
+						...(selectedPatientAge !== undefined ? [nc.yearsOld(selectedPatientAge)] : []),
+					]}
+					chips={
+						<>
+							<Badge
+								variant="secondary"
+								className={`text-[10px] ring-1 ${consented ? BADGE_TONES.green : BADGE_TONES.neutral}`}
+							>
+								{consented ? t.list.consent : t.detail.consentNotRecorded}
+							</Badge>
+							{live ? (
+								<Badge variant="destructive" className="text-[10px]">
+									<span className="size-1.5 animate-pulse rounded-full bg-destructive-foreground" />
+									{fmtElapsed(elapsedSec)}
+								</Badge>
+							) : null}
+							{anamnesis ? (
+								<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.blue}`}>
+									{t.common.anamnesis}
+								</Badge>
+							) : null}
+						</>
+					}
+					actions={
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => setAnamnesisOpen(true)}
 						>
-							{consented ? t.list.consent : t.detail.consentNotRecorded}
-						</Badge>
-						{live ? (
-							<Badge variant="destructive" className="text-[10px]">
-								<span className="size-1.5 animate-pulse rounded-full bg-destructive-foreground" />
-								{fmtElapsed(elapsedSec)}
-							</Badge>
-						) : null}
-						{anamnesis ? (
-							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.blue}`}>
-								{t.common.anamnesis}
-							</Badge>
-						) : null}
-					</>
-				}
-				actions={
-					<Button type="button" variant="outline" size="sm" onClick={() => setAnamnesisOpen(true)}>
-						<SparklesIcon data-icon="inline-start" />
-						{nc.anamnesisDrawer}
-					</Button>
-				}
-			/>
+							<SparklesIcon data-icon="inline-start" />
+							{nc.anamnesisDrawer}
+						</Button>
+					}
+				/>
+			) : null}
 
 			{showRoom ? (
 				/* ---- pre-consultation room: the green-room stage gates the
