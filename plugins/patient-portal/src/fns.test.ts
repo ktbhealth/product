@@ -14,7 +14,10 @@ const mocks = vi.hoisted(() => ({
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => mocks);
+vi.mock("@ktb/server-fns", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/server-fns")>()),
+	...mocks,
+}));
 
 import { Forbidden } from "@ktb/authz";
 import { Audit } from "@ktb/audit";

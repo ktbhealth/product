@@ -4,7 +4,8 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import { eq } from "drizzle-orm";
 
-import { Accounts, DoctorProfiles, PatientProfiles, type CreateAccountResult } from "@ktb/auth";
+import { Accounts, type CreateAccountResult } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles } from "@ktb/server-fns";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 

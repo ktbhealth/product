@@ -21,7 +21,8 @@ const mocks = vi.hoisted(() => ({
 // Same fake as fns-attach-input.test.ts: handlers run as plain async
 // fns and the validator is applied to the incoming `data`.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => ({
+vi.mock("@ktb/server-fns", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/server-fns")>()),
 	ensureDoctorUser: mocks.ensureDoctorUser,
 	ensureSessionUser: vi.fn(async () => ({ id: "u1" })),
 	getDoctorAccess: vi.fn(),

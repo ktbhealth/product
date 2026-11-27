@@ -27,7 +27,8 @@ vi.mock("@tanstack/react-start", () => ({
 		return api;
 	},
 }));
-vi.mock("@ktb/server-fns", () => ({
+vi.mock("@ktb/server-fns", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/server-fns")>()),
 	ensureDoctorUser: mocks.ensureDoctorUser,
 	runAs: mocks.runAs,
 }));

@@ -997,7 +997,6 @@
     "plugins/audit": {
       "name": "@ktb/audit",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1244,7 +1243,6 @@
     "plugins/doctors": {
       "name": "@ktb/doctors",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1858,7 +1856,6 @@
       "name": "@ktb/patient-access",
       "dependencies": {
         "@ktb/audit": "workspace:*",
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -2016,11 +2013,11 @@
     "plugins/portal": {
       "name": "@ktb/portal",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
         "effect": "4.1.2",
@@ -2168,7 +2165,6 @@
     "plugins/secretaries": {
       "name": "@ktb/secretaries",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/auth-plugin": "workspace:*",
         "@ktb/authz": "workspace:*",

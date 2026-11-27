@@ -10,7 +10,6 @@
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
-		"@ktb/auth": "workspace:*",
 		"@ktb/auth-better": "workspace:*",
 		"@ktb/auth-plugin": "workspace:*",
 		"@ktb/authz": "workspace:*",

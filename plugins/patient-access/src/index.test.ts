@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { PatientAuditAccess } from "@ktb/audit";
-import { PatientProfiles } from "@ktb/auth";
+import { PatientProfiles } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
