@@ -2300,6 +2300,14 @@ describe("NewConsultationPage", () => {
 			});
 		});
 
+		it("audio settings gear opens the device dialog", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getByRole("button", { name: "Audio settings" }));
+			expect(await screen.findByText("Audio settings")).toBeTruthy();
+			expect(screen.getByText("Input device")).toBeTruthy();
+		});
+
 		it("audio test warms the transcription engine", async () => {
 			const user = userEvent.setup();
 			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);

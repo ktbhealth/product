@@ -11,7 +11,7 @@ export function createTabAudioTranscriber(): Transcriber {
 
 /** Whisper-backed TranscriptionBackend — injected into views by the host. */
 export const whisperBackend: TranscriptionBackend = {
-	mic: createWhisperMicTranscriber,
+	mic: (options) => createWhisperMicTranscriber(options?.deviceId),
 	tab: createWhisperTabTranscriber,
 	status: whisperStatus,
 	subscribe: subscribeWhisper,

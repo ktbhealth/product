@@ -75,8 +75,14 @@ export interface TranscriptionStatus {
  * implementations (whisper worker, future engines) are injected by the
  * composition root — never imported by domain packages.
  */
+export interface TranscriptionSourceOptions {
+	/** Preferred capture device id (an `audioinput` deviceId). Adapters
+	 * that cannot select devices ignore it. */
+	readonly deviceId?: string;
+}
+
 export interface TranscriptionBackend {
-	mic(): Transcriber;
+	mic(options?: TranscriptionSourceOptions): Transcriber;
 	tab(): Transcriber;
 	status(): TranscriptionStatus;
 	subscribe(fn: (m: TranscriptionEngineMessage) => void): () => void;

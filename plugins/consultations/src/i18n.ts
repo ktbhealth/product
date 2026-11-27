@@ -446,6 +446,10 @@ export interface ConsultationMessages {
 		readonly connectionStable: string;
 		/** Close button on the patient picker shown from the room. */
 		readonly pickerDone: string;
+		/** Gear button dialog in the room's preview strip. */
+		readonly audioSettingsTitle: string;
+		readonly inputDevice: string;
+		readonly systemDefaultDevice: string;
 		readonly live: string;
 		readonly paused: string;
 		readonly ended: string;
@@ -911,6 +915,9 @@ const en: ConsultationMessages = {
 		encryption: "End-to-end encrypted",
 		connectionStable: "Stable connection",
 		pickerDone: "Done",
+		audioSettingsTitle: "Audio settings",
+		inputDevice: "Input device",
+		systemDefaultDevice: "System default",
 		live: "LIVE",
 		paused: "PAUSED",
 		ended: "ENDED",
@@ -1380,6 +1387,9 @@ const ptBR: ConsultationMessages = {
 		encryption: "Criptografado de ponta a ponta",
 		connectionStable: "Conexão estável",
 		pickerDone: "Concluir",
+		audioSettingsTitle: "Configurações de áudio",
+		inputDevice: "Dispositivo de entrada",
+		systemDefaultDevice: "Padrão do sistema",
 		live: "AO VIVO",
 		paused: "PAUSADA",
 		ended: "ENCERRADA",
@@ -1850,6 +1860,9 @@ const es: ConsultationMessages = {
 		encryption: "Cifrado de extremo a extremo",
 		connectionStable: "Conexión estable",
 		pickerDone: "Listo",
+		audioSettingsTitle: "Configuración de audio",
+		inputDevice: "Dispositivo de entrada",
+		systemDefaultDevice: "Predeterminado del sistema",
 		live: "EN VIVO",
 		paused: "PAUSADA",
 		ended: "FINALIZADA",

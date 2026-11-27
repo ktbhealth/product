@@ -231,9 +231,13 @@ function rmsOf(data: Float32Array): number {
 	return Math.sqrt(sum / data.length);
 }
 
-const micStream = () =>
+const micStream = (deviceId?: string) =>
 	navigator.mediaDevices.getUserMedia({
-		audio: { echoCancellation: true, noiseSuppression: true },
+		audio: {
+			echoCancellation: true,
+			noiseSuppression: true,
+			...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+		},
 	});
 
 const tabStream = async () => {
@@ -245,8 +249,8 @@ const tabStream = async () => {
 	return s;
 };
 
-export function createWhisperMicTranscriber(): Transcriber {
-	return new WhisperTranscriber(micStream);
+export function createWhisperMicTranscriber(deviceId?: string): Transcriber {
+	return new WhisperTranscriber(() => micStream(deviceId));
 }
 
 export function createWhisperTabTranscriber(): Transcriber {

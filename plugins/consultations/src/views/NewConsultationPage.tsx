@@ -336,6 +336,13 @@ export function NewConsultationPage({
 	const [modality, setModality] = useState<PreconsultationModality>("in-person");
 	const [roomDone, setRoomDone] = useState(false);
 	const [patientPickerOpen, setPatientPickerOpen] = useState(false);
+	// Room audio settings: the picked input device feeds both the audio
+	// test and the real mic capture (`null` = system default). The mic
+	// toggle is preview-only — nothing is captured before Start.
+	const [micDeviceId, setMicDeviceId] = useState<string | null>(null);
+	const [audioDevices, setAudioDevices] = useState<{ id: string; label: string }[]>([]);
+	const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
+	const [micMuted, setMicMuted] = useState(false);
 	// mm:ss stamps for transcript lines appended during capture —
 	// parallel to the non-empty lines, trimmed when the text shrinks.
 	const [rowTimes, setRowTimes] = useState<number[]>([]);
@@ -382,15 +389,22 @@ export function NewConsultationPage({
 	}, []);
 
 	useEffect(() => {
-		const tr = backend.mic();
+		const tr = backend.tab();
+		tabRef.current = tr;
+		return () => tr.stop();
+	}, []);
+
+	// The mic transcriber is rebuilt when the room's device picker
+	// changes — only reachable pre-capture, so no live session is lost.
+	useEffect(() => {
+		const tr = backend.mic({ deviceId: micDeviceId ?? undefined });
 		transcriberRef.current = tr;
-		tabRef.current = backend.tab();
 		setSupported(tr.supported);
 		return () => {
 			tr.stop();
-			tabRef.current?.stop();
+			transcriberRef.current = null;
 		};
-	}, []);
+	}, [micDeviceId]);
 
 	// elapsed clock while any capture is live — header timer + row stamps
 	useEffect(() => {
@@ -1170,6 +1184,41 @@ export function NewConsultationPage({
 		...(selectedPatientAge !== undefined ? { age: selectedPatientAge } : {}),
 		...(selectedPatient ? { recordNumber: selectedPatient.id } : {}),
 	};
+	// Enumerate audio inputs for the room's device picker — in-person
+	// mic capture only; telemedicine captures the meeting tab instead.
+	// Labels stay blank until mic permission is granted, so the list is
+	// refreshed on `devicechange` (plug/unplug, permission grant).
+	useEffect(() => {
+		if (!showRoom || modality !== "in-person") return;
+		const md = typeof navigator === "undefined" ? undefined : navigator.mediaDevices;
+		if (!md?.enumerateDevices) return;
+		let cancelled = false;
+		const refresh = () => {
+			void md
+				.enumerateDevices()
+				.then((list) => {
+					if (cancelled) return;
+					const mics = list
+						.filter((d) => d.kind === "audioinput")
+						.map((d, i) => ({
+							id: d.deviceId,
+							label: d.label || `Microphone ${i + 1}`,
+						}));
+					setAudioDevices([
+						{ id: "default", label: lf.systemDefaultDevice },
+						...mics.filter((d) => d.id !== "default"),
+					]);
+				})
+				.catch(() => {});
+		};
+		refresh();
+		md.addEventListener("devicechange", refresh);
+		return () => {
+			cancelled = true;
+			md.removeEventListener("devicechange", refresh);
+		};
+	}, [showRoom, modality, lf.systemDefaultDevice]);
+
 	const liveTurns = liveConsultationTurns(chatRows, {
 		doctor: t.speakers.doctor,
 		patient: t.speakers.patient,
@@ -1292,7 +1341,11 @@ export function NewConsultationPage({
 		let audioCtx: AudioContext | null = null;
 		try {
 			stream = await navigator.mediaDevices.getUserMedia({
-				audio: { echoCancellation: true, noiseSuppression: true },
+				audio: {
+					echoCancellation: true,
+					noiseSuppression: true,
+					...(micDeviceId ? { deviceId: { exact: micDeviceId } } : {}),
+				},
 			});
 			audioCtx = new AudioContext();
 			const source = audioCtx.createMediaStreamSource(stream);
@@ -1512,6 +1565,62 @@ export function NewConsultationPage({
 		</PickerDialog>
 	);
 
+	// Gear button in the room's preview strip — input device picker plus
+	// a shortcut into the real mic test. Only meaningful for in-person
+	// mic capture; telemedicine hears the meeting tab instead.
+	const audioSettingsDialog = (
+		<PickerDialog
+			open={audioSettingsOpen}
+			onOpenChange={(open) => {
+				if (!open) setAudioSettingsOpen(false);
+			}}
+		>
+			<PickerDialogContent className="sm:max-w-md">
+				<PickerDialogHeader>
+					<PickerDialogTitle>{lf.audioSettingsTitle}</PickerDialogTitle>
+				</PickerDialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="flex flex-col gap-1.5">
+						<Label
+							id="audio-device-label"
+							className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+						>
+							{lf.inputDevice}
+						</Label>
+						<Select
+							value={micDeviceId ?? "default"}
+							onValueChange={(v) => setMicDeviceId(v === "default" ? null : String(v))}
+							items={audioDevices.map((d) => ({ label: d.label, value: d.id }))}
+						>
+							<SelectTrigger aria-labelledby="audio-device-label" className="border-border">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{audioDevices.map((d) => (
+									<SelectItem key={d.id} value={d.id}>
+										{d.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+					<div className="flex justify-end">
+						<Button
+							type="button"
+							size="sm"
+							onClick={() => {
+								setAudioSettingsOpen(false);
+								void runAudioTest();
+							}}
+						>
+							{lf.testAudio}
+						</Button>
+					</div>
+				</div>
+			</PickerDialogContent>
+		</PickerDialog>
+	);
+
 	return (
 		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
 			<PageHeader
@@ -1585,6 +1694,7 @@ export function NewConsultationPage({
 							 * exactly like the catalog demo; navigation + account
 							 * live in the room header's actions slot */}
 							{patientPickerDialog}
+							{audioSettingsDialog}
 							{draft || restoredUrl ? (
 								<div className="absolute top-20 right-3 z-10 flex w-80 flex-col gap-2">
 									{draftNotices}
@@ -1611,6 +1721,14 @@ export function NewConsultationPage({
 								onPostpone={() => setMode("dictation")}
 								onChangePatient={() => setPatientPickerOpen(true)}
 								onAudioTest={() => void runAudioTest()}
+								onAudioSettings={() => setAudioSettingsOpen(true)}
+								micMuted={micMuted}
+								onMicToggle={() => setMicMuted((m) => !m)}
+								devices={
+									modality === "in-person" && audioDevices.length > 0 ? audioDevices : undefined
+								}
+								selectedDeviceId={micDeviceId ?? "default"}
+								onDeviceChange={(id) => setMicDeviceId(id === "default" ? null : id)}
 								vuLevel={audioTestLevel}
 								telemetry={{ encryptionLabel: lf.encryption }}
 								headerActions={
