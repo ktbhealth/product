@@ -248,7 +248,8 @@ export const JobsLive = (deps: JobsDeps): Layer.Layer<Jobs> => Layer.succeed(Job
 /** The slice of a queue message the consumer needs (workerd Message /
  * dev:node LocalQueueMessage both satisfy this). `attempts` is the
  * transport-reported delivery count when the broker tracks one
- * (Cloudflare Queues does; the Redis list transport does not). */
+ * (Cloudflare Queues and the Redis list transport do; dev:node's
+ * SQLite queue enforces its own attempt budget instead). */
 export interface JobMessageLike {
 	readonly body: unknown;
 	readonly attempts?: number;
