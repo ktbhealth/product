@@ -83,6 +83,7 @@ vi.mock("@tanstack/react-router", async () => {
 				{ href: typeof props.to === "string" ? props.to : "#", ...props },
 				props.children as never,
 			),
+		useNavigate: () => vi.fn(async () => {}),
 	};
 });
 const zkMocks = vi.hoisted(() => ({

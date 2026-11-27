@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -1504,6 +1504,9 @@ export function NewConsultationPage({
 
 	// Account menu for the room header — the fullscreen stage hides the
 	// portal shell, so session info + portal navigation live here.
+	// SPA navigations (same mechanism the portal sidebar uses) — a full
+	// reload through location.assign lands on the error boundary.
+	const navigate = useNavigate();
 	const userMenu = user ? (
 		<DropdownMenu>
 			<DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground">
@@ -1523,18 +1526,16 @@ export function NewConsultationPage({
 				</DropdownMenuLabel>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
-					{/* Full navigations like the shell user menu — the room
-					 * stage is portaled, so plain links are unreliable here. */}
-					<DropdownMenuItem onClick={() => window.location.assign(portalPath(""))}>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("") })}>
 						Portal home
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => window.location.assign(portalPath("/patients"))}>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("/patients") })}>
 						Patients
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => window.location.assign(portalPath("/consultations"))}>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("/consultations") })}>
 						Consultations
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => window.location.assign(portalPath("/review"))}>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("/review") })}>
 						Review queue
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
