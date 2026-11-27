@@ -53,7 +53,7 @@ const DDL = GROUPS_DDL + AUDIT_TEST_DDL;
 // seeded through the D1 shim's exec (the drizzle insert would demand
 // every notNull column of the real table).
 const CONSULTATIONS_DDL = `
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
 INSERT INTO consultations (id, patient_id) VALUES (10, 5), (11, 6), (12, NULL);
 `;
 const PATIENT_DDL = GROUPS_DDL + AUDIT_TEST_DDL + CONSULTATIONS_DDL;

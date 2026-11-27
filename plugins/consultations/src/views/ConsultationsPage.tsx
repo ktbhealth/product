@@ -1,6 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
+import {
+	BadgeCheckIcon,
+	CalendarDaysIcon,
+	ClipboardCheckIcon,
+	ClipboardListIcon,
+	DownloadIcon,
+	LockIcon,
+} from "lucide-react";
 
 import {
 	factContent,
@@ -106,7 +113,31 @@ export interface ConsultationListItem {
 	/** Raw stored `anamnesis` column (T-145): plaintext JSON for non-ZK
 	 * rows, a `v1.` envelope under ZK — decrypted client-side. */
 	anamnesis?: string | null;
+	/** Review stamps (PL-022) — absent on rows from older callers. */
+	anamnesisVersion?: number | null;
+	transcriptReviewedAt?: Date | null;
+	anamnesisReviewedAt?: Date | null;
+	anamnesisReviewedVersion?: number | null;
+	deferredUntil?: Date | null;
 }
+
+/** Parked: deferred stamp still in the future. */
+const isDeferred = (c: ConsultationListItem, now: number) =>
+	c.deferredUntil != null && new Date(c.deferredUntil).getTime() > now;
+
+/** Anamnesis approval binds the version it stamped — a later edit bumps
+ * `anamnesisVersion` and the stamp turns stale instead of lying. */
+const anamnesisApproved = (c: ConsultationListItem) =>
+	c.anamnesisReviewedVersion != null && c.anamnesisReviewedVersion === c.anamnesisVersion;
+
+const anamnesisStale = (c: ConsultationListItem) =>
+	!anamnesisApproved(c) && c.anamnesisReviewedAt != null && c.anamnesisVersion != null;
+
+/** Nothing left for the physician to sign: the anamnesis is approved on
+ * its current version, or — transcript-only rows — the transcript was
+ * confirmed. */
+const reviewDone = (c: ConsultationListItem) =>
+	c.hasAnamnesis ? anamnesisApproved(c) : c.transcriptReviewedAt != null;
 
 export function ConsultationsPage({
 	consultations,
@@ -141,6 +172,13 @@ export function ConsultationsPage({
 	const [statusFilter, setStatusFilter] = useState<"all" | "live" | "done">("all");
 	const [sourceFilter, setSourceFilter] = useState("all");
 	const [anamnesisFilter, setAnamnesisFilter] = useState<"all" | "with" | "without">("all");
+	const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "reviewed" | "deferred">(
+		"all",
+	);
+	// Single "now" for the defer comparison across stats/filters/badges —
+	// a mount-time snapshot: a still-parked row re-enters pending on the
+	// next data refresh, not mid-render.
+	const [now] = useState(() => Date.now());
 
 	// Client-side decrypt under ZK (T-145): rows without a grant stay
 	// ciphered and render a locked row; decrypted rows get their
@@ -189,10 +227,14 @@ export function ConsultationsPage({
 	const stats = useMemo(
 		() => ({
 			today: display.filter((c) => sameLocalDay(c.createdAt, new Date())).length,
-			live: display.filter((c) => c.status === "live").length,
-			review: [...facets.values()].filter((f) => f.lowConfidence > 0).length,
+			// Physician-signed rows — the progress counter paired with the
+			// pending queue below. "live" was dropped: capture status is
+			// transient, not a workflow stat (the Status facet still filters it).
+			reviewed: display.filter(reviewDone).length,
+			// Real physician review queue (PL-022): unsigned and not parked.
+			review: display.filter((c) => !reviewDone(c) && !isDeferred(c, now)).length,
 		}),
-		[display, facets],
+		[display, now],
 	);
 
 	const shown = useMemo(() => {
@@ -200,6 +242,9 @@ export function ConsultationsPage({
 		return display.filter((c) => {
 			if (filter === "anamnesis" && !c.hasAnamnesis) return false;
 			if (filter === "pending" && c.hasAnamnesis) return false;
+			if (reviewFilter === "pending" && (reviewDone(c) || isDeferred(c, now))) return false;
+			if (reviewFilter === "reviewed" && (!reviewDone(c) || isDeferred(c, now))) return false;
+			if (reviewFilter === "deferred" && !isDeferred(c, now)) return false;
 			if (statusFilter !== "all" && c.status !== statusFilter) return false;
 			if (sourceFilter !== "all" && c.source !== sourceFilter) return false;
 			if (anamnesisFilter === "with" && !c.hasAnamnesis) return false;
@@ -212,7 +257,7 @@ export function ConsultationsPage({
 				.filter(Boolean)
 				.some((t) => (t as string).toLowerCase().includes(needle));
 		});
-	}, [display, q, filter, statusFilter, sourceFilter, anamnesisFilter]);
+	}, [display, q, filter, statusFilter, sourceFilter, anamnesisFilter, reviewFilter, now]);
 
 	const columns: Column<ConsultationListItem>[] = [
 		{
@@ -235,13 +280,16 @@ export function ConsultationsPage({
 					);
 				}
 				const cell = (
-					<span className="flex items-center gap-3">
+					<span className="flex max-w-96 items-center gap-3">
 						<Avatar className="size-9">
 							<AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-semibold text-primary">
 								{initials(c.patientName)}
 							</AvatarFallback>
 						</Avatar>
-						<span className="min-w-0">
+						{/* whitespace-normal overrides the td's nowrap so the
+						 * preview wraps inside the width cap instead of stretching
+						 * the column to the full complaint/transcript text. */}
+						<span className="min-w-0 whitespace-normal">
 							<span className="flex flex-wrap items-baseline gap-x-2">
 								<Link
 									to={portalPath(`/consultations/${c.id}`)}
@@ -316,6 +364,24 @@ export function ConsultationsPage({
 							</ToneBadge>
 						) : null}
 						{c.consentAt ? <ToneBadge tone="green">{t.list.consent}</ToneBadge> : null}
+						{isDeferred(c, now) ? (
+							<ToneBadge tone="blue">
+								{t.list.deferredBadge(
+									new Date(c.deferredUntil!).toLocaleDateString(locale, {
+										day: "numeric",
+										month: "short",
+									}),
+								)}
+							</ToneBadge>
+						) : anamnesisApproved(c) ? (
+							<ToneBadge tone="green">
+								{t.list.reviewedBadge(c.anamnesisReviewedVersion!)}
+							</ToneBadge>
+						) : anamnesisStale(c) ? (
+							<ToneBadge tone="blue">{t.list.staleBadge(c.anamnesisVersion!)}</ToneBadge>
+						) : c.transcriptReviewedAt ? (
+							<ToneBadge tone="blue">{t.list.transcriptReviewedBadge}</ToneBadge>
+						) : null}
 					</span>
 				),
 		},
@@ -343,7 +409,7 @@ export function ConsultationsPage({
 	];
 
 	return (
-		<TablePage messages={viewsMessages(locale)}>
+		<TablePage messages={viewsMessages(locale)} className="max-w-none">
 			<TablePage.Header
 				title={t.list.title}
 				description={consultations.length === 0 ? t.list.none : t.list.count(consultations.length)}
@@ -374,15 +440,20 @@ export function ConsultationsPage({
 					<div className="grid grid-cols-3 gap-3">
 						{(
 							[
-								[t.list.statsToday, stats.today],
-								[t.list.statsLiveNow, stats.live],
-								[t.list.statsNeedsReview, stats.review],
+								[t.list.statsToday, stats.today, CalendarDaysIcon],
+								[t.list.statsReviewed, stats.reviewed, BadgeCheckIcon],
+								[t.list.statsNeedsReview, stats.review, ClipboardCheckIcon],
 							] as const
-						).map(([label, value]) => (
+						).map(([label, value, Icon]) => (
 							<Card key={label} size="sm">
-								<CardContent className="flex flex-col gap-0.5">
-									<span className="text-2xl font-semibold tabular-nums">{value}</span>
-									<span className="text-xs text-muted-foreground">{label}</span>
+								<CardContent className="flex items-center gap-3">
+									<span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+										<Icon className="size-5" />
+									</span>
+									<span className="flex flex-col gap-0.5">
+										<span className="text-2xl font-semibold tabular-nums">{value}</span>
+										<span className="text-xs text-muted-foreground">{label}</span>
+									</span>
 								</CardContent>
 							</Card>
 						))}
@@ -392,6 +463,7 @@ export function ConsultationsPage({
 							<SearchInput
 								value={q}
 								onChange={setQ}
+								className="w-64 sm:w-96"
 								placeholder={t.list.searchPlaceholder}
 								aria-label={t.list.searchLabel}
 							/>
@@ -416,6 +488,7 @@ export function ConsultationsPage({
 									onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
 								>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterAll}>
+										<span className="text-muted-foreground">{t.list.facetStatus}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -426,6 +499,7 @@ export function ConsultationsPage({
 								</Select>
 								<Select value={sourceFilter} onValueChange={(v) => setSourceFilter(String(v))}>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterSourceAll}>
+										<span className="text-muted-foreground">{t.list.facetSource}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -442,12 +516,28 @@ export function ConsultationsPage({
 									onValueChange={(v) => setAnamnesisFilter(v as typeof anamnesisFilter)}
 								>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterAnamnesisAll}>
+										<span className="text-muted-foreground">{t.list.facetAnamnesis}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="all">{t.list.filterAnamnesisAll}</SelectItem>
 										<SelectItem value="with">{t.list.filterAnamnesisWith}</SelectItem>
 										<SelectItem value="without">{t.list.filterAnamnesisWithout}</SelectItem>
+									</SelectContent>
+								</Select>
+								<Select
+									value={reviewFilter}
+									onValueChange={(v) => setReviewFilter(v as typeof reviewFilter)}
+								>
+									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterReviewAll}>
+										<span className="text-muted-foreground">{t.list.facetReview}:</span>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">{t.list.filterReviewAll}</SelectItem>
+										<SelectItem value="pending">{t.list.filterReviewPending}</SelectItem>
+										<SelectItem value="reviewed">{t.list.filterReviewDone}</SelectItem>
+										<SelectItem value="deferred">{t.list.filterReviewDeferred}</SelectItem>
 									</SelectContent>
 								</Select>
 							</>

@@ -1,6 +1,16 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon, QuoteIcon } from "lucide-react";
+import {
+	ArrowLeftIcon,
+	CalendarIcon,
+	CheckIcon,
+	ClipboardListIcon,
+	DownloadIcon,
+	LockIcon,
+	QuoteIcon,
+} from "lucide-react";
+import type { Locale as CalendarLocale } from "react-day-picker";
+import { enUS, es, ptBR } from "react-day-picker/locale";
 
 import { IntegrityBadge } from "@ktb/integrity/badge";
 import { anamnesisToText, factContent } from "@ktb/anamnesis";
@@ -14,13 +24,16 @@ import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import {
 	Empty,
+	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
+import { Calendar } from "@ktbhealth/ui/components/calendar";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import { Popover, PopoverContent, PopoverTrigger } from "@ktbhealth/ui/components/popover";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 
 import type { ConsultationIntegrityReport } from "../index.ts";
@@ -80,6 +93,12 @@ export interface ConsultationDetail {
 	serverTranscript: string | null;
 	correctedTranscript: string | null;
 	enhancementEngine: string | null;
+	/** Review stamps (PL-022) — absent on rows from older callers. */
+	anamnesisVersion?: number | null;
+	transcriptReviewedAt?: Date | null;
+	anamnesisReviewedAt?: Date | null;
+	anamnesisReviewedVersion?: number | null;
+	deferredUntil?: Date | null;
 }
 
 /** Raw history rows for the client-side ZK history build (T-145). */
@@ -97,9 +116,28 @@ export interface ConsultationDetailApi {
 	getConsultation(input: { data: number }): Promise<ConsultationAudioInfo | null>;
 	/** Integrity re-verification for the anamnesis badge (T-139). */
 	verifyIntegrity?(input: { data: number }): Promise<ConsultationIntegrityReport | null>;
+	/** Review stamps (PL-022). */
+	reviewTranscript?(input: { data: number }): Promise<{ ok: boolean }>;
+	approveAnamnesis?(input: { data: number }): Promise<{ ok: boolean }>;
+	deferConsultation?(input: {
+		data: { id: number; until: Date | string | null };
+	}): Promise<{ ok: boolean }>;
+	/** "Approve & next" — the next unsigned record in the queue. */
+	nextPendingReview?(input: { data: number }): Promise<{ id: number | null }>;
+	/** Draft + attach an anamnesis for a transcript-only record. */
+	generateAnamnesis?(input: {
+		data: { consultationId: number; transcript: string; patientId?: number };
+	}): Promise<{ ok: boolean }>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
+
+/** react-day-picker locales per app locale (PL-022 defer calendar). */
+const CALENDAR_LOCALES: Record<string, CalendarLocale> = {
+	en: enUS,
+	"pt-BR": ptBR,
+	es,
+};
 
 export function ConsultationDetailPage({
 	c,
@@ -131,7 +169,92 @@ export function ConsultationDetailPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
+	const navigate = useNavigate();
+	const router = useRouter();
 	const [toast, setToast] = useState<ToastData | null>(null);
+
+	// Review stamps (PL-022) — optimistic local overrides applied after
+	// each mutation; the row's columns are the server-side truth.
+	const [review, setReview] = useState({
+		transcriptAt: c.transcriptReviewedAt ?? null,
+		anamnesisAt: c.anamnesisReviewedAt ?? null,
+		anamnesisVersion: c.anamnesisReviewedVersion ?? null,
+		deferredUntil: c.deferredUntil ?? null,
+	});
+	const [busy, setBusy] = useState(false);
+	const [deferOpen, setDeferOpen] = useState(false);
+	const isDeferred = review.deferredUntil !== null && new Date(review.deferredUntil) > new Date();
+	const anamnesisApproved =
+		review.anamnesisVersion !== null && review.anamnesisVersion === c.anamnesisVersion;
+	const anamnesisStale =
+		!anamnesisApproved && review.anamnesisAt !== null && c.anamnesisVersion !== null;
+	const shortDate = (d: Date | string) =>
+		new Date(d).toLocaleDateString(locale, { day: "numeric", month: "short" });
+
+	const run = async (fn: () => Promise<{ ok: boolean }>, done: () => void) => {
+		/* v8 ignore next -- every caller is disabled while busy; this is belt-and-braces */
+		if (busy) return;
+		setBusy(true);
+		try {
+			if ((await fn()).ok) done();
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const confirmTranscript = () =>
+		void run(
+			() => api!.reviewTranscript!({ data: c.id }),
+			() => setReview((s) => ({ ...s, transcriptAt: new Date() })),
+		);
+
+	const approveAnamnesis = (goNext: boolean) =>
+		void run(
+			() => api!.approveAnamnesis!({ data: c.id }),
+			() => {
+				setReview((s) => ({
+					...s,
+					anamnesisAt: new Date(),
+					anamnesisVersion: c.anamnesisVersion ?? null,
+				}));
+				setToast({ id: Date.now(), text: t.detail.approvedToast });
+				if (goNext && api?.nextPendingReview) {
+					void api.nextPendingReview({ data: c.id }).then((next) => {
+						if (next.id !== null) {
+							void navigate({ to: portalPath(`/consultations/${next.id}`) });
+						} else {
+							setToast({ id: Date.now(), text: t.detail.queueDoneToast });
+							void navigate({ to: portalPath("/consultations") });
+						}
+					});
+				}
+			},
+		);
+
+	const defer = (until: Date | null) =>
+		void run(
+			() =>
+				api!.deferConsultation!({
+					// ISO on the wire — Date instances may not survive the fn
+					// serializer as a `DateFromString`-decodable input.
+					data: { id: c.id, until: until === null ? null : until.toISOString() },
+				}),
+			() => setReview((s) => ({ ...s, deferredUntil: until })),
+		);
+
+	const generateAnamnesis = () =>
+		void run(
+			() =>
+				api!.generateAnamnesis!({
+					data: {
+						consultationId: c.id,
+						// Non-null: the button only renders when v.transcript?.trim().
+						transcript: v.transcript!,
+						...(v.patientId === null ? {} : { patientId: v.patientId }),
+					},
+				}),
+			() => void router.invalidate(),
+		);
 
 	// Client-side decrypt under ZK (T-145): the stored envelopes become
 	// plaintext fields; a missing/failed grant renders the locked page.
@@ -238,7 +361,7 @@ export function ConsultationDetailPage({
 	const live = useConsultationAudio(api && pipelineActive ? api.getConsultation : undefined, c.id);
 	// `dec` overlays the client-decrypted fields under ZK; `live` the
 	// polled audio-pipeline state — never active under ZK (T-147).
-	const v = { ...c, ...(live ?? {}), ...(dec ?? {}) };
+	const v = { ...c, ...live, ...dec };
 	// Clickable transcript evidence: at most one section's grounding
 	// sentences are marked up in the transcript at a time; turning a
 	// section on also scrolls the ScrollArea to the first match.
@@ -310,7 +433,7 @@ export function ConsultationDetailPage({
 	}
 
 	return (
-		<PageContainer>
+		<PageContainer className="max-w-none">
 			{/* PageHeader renders any ReactNode, but its `title` prop type
 			    collides with the HTML `title` attribute upstream — cast the
 			    h1 so the page keeps a single heading landmark. */}
@@ -353,6 +476,46 @@ export function ConsultationDetailPage({
 							<ArrowLeftIcon data-icon="inline-start" />
 							{t.detail.back}
 						</Button>
+						{api?.deferConsultation ? (
+							<Popover open={deferOpen} onOpenChange={setDeferOpen}>
+								<PopoverTrigger render={<Button variant="outline" size="sm" />}>
+									<CalendarIcon data-icon="inline-start" />
+									{isDeferred
+										? t.detail.deferredUntil(shortDate(review.deferredUntil!))
+										: t.detail.deferLabel}
+								</PopoverTrigger>
+								<PopoverContent className="w-auto p-0" align="end">
+									<Calendar
+										mode="single"
+										locale={CALENDAR_LOCALES[locale]}
+										selected={isDeferred ? new Date(review.deferredUntil!) : undefined}
+										disabled={{ before: new Date() }}
+										onSelect={(date) => {
+											if (date) {
+												defer(date);
+												setDeferOpen(false);
+											}
+										}}
+									/>
+									{isDeferred ? (
+										<div className="border-t border-border p-2">
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												disabled={busy}
+												onClick={() => {
+													defer(null);
+													setDeferOpen(false);
+												}}
+											>
+												{t.detail.deferResume}
+											</Button>
+										</div>
+									) : null}
+								</PopoverContent>
+							</Popover>
+						) : null}
 						{v.anamnesis ? (
 							<>
 								<Button type="button" variant="outline" onClick={copy}>
@@ -403,6 +566,9 @@ export function ConsultationDetailPage({
 						<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
 					)}
 					{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
+					{isDeferred ? (
+						<Chip tone="blue">{t.detail.deferredUntil(shortDate(review.deferredUntil!))}</Chip>
+					) : null}
 					{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
 					{history && history.count > 0 ? (
 						<Chip>{t.detail.previousConsultations(history.count)}</Chip>
@@ -435,12 +601,45 @@ export function ConsultationDetailPage({
 				{/* ---------- anamnesis ---------- */}
 				<Card>
 					<CardHeader className="border-b">
-						<CardTitle>{t.common.anamnesis}</CardTitle>
+						<div className="flex items-center justify-between gap-2">
+							<CardTitle>{t.common.anamnesis}</CardTitle>
+							<span className="flex items-center gap-2">
+								{anamnesisStale ? (
+									<Chip tone="blue">{t.detail.anamnesisStale(c.anamnesisVersion!)}</Chip>
+								) : null}
+								{anamnesisApproved ? (
+									<Chip tone="green">{t.detail.anamnesisApproved(review.anamnesisVersion!)}</Chip>
+								) : v.anamnesis && api?.approveAnamnesis ? (
+									<>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											disabled={busy}
+											onClick={() => approveAnamnesis(false)}
+										>
+											<CheckIcon data-icon="inline-start" />
+											{t.detail.approveAnamnesis}
+										</Button>
+										{api.nextPendingReview ? (
+											<Button
+												type="button"
+												size="sm"
+												disabled={busy}
+												onClick={() => approveAnamnesis(true)}
+											>
+												{t.detail.approveAndNext}
+											</Button>
+										) : null}
+									</>
+								) : null}
+							</span>
+						</div>
 					</CardHeader>
 					<CardContent>
 						{v.anamnesis ? (
 							<ScrollArea className="h-[70vh]">
-								<div className="divide-y divide-border">
+								<div className="divide-y divide-border pr-4">
 									{(
 										Object.keys(t.sections).filter(
 											(k) => k !== "historico",
@@ -459,6 +658,7 @@ export function ConsultationDetailPage({
 																type="button"
 																variant="ghost"
 																size="sm"
+																className="aria-pressed:bg-info/10 aria-pressed:text-info"
 																aria-pressed={evidence?.section === key}
 																title={t.detail.evidenceTitle}
 																onClick={() =>
@@ -516,6 +716,15 @@ export function ConsultationDetailPage({
 									<EmptyTitle>{t.detail.noAnamnesisTitle}</EmptyTitle>
 									<EmptyDescription>{t.detail.noAnamnesisDescription}</EmptyDescription>
 								</EmptyHeader>
+								{/* ZK extract is the client-side BYOK path (T-146) —
+								 * the server adapter is non-ZK only. */}
+								{!zk && api?.generateAnamnesis && v.transcript?.trim() ? (
+									<EmptyContent>
+										<Button type="button" size="sm" disabled={busy} onClick={generateAnamnesis}>
+											{t.detail.generateAnamnesis}
+										</Button>
+									</EmptyContent>
+								) : null}
 							</Empty>
 						)}
 					</CardContent>
@@ -524,7 +733,25 @@ export function ConsultationDetailPage({
 				{/* ---------- side: transcript ---------- */}
 				<Card className="lg:sticky lg:top-20">
 					<CardHeader className="border-b">
-						<CardTitle>{t.common.transcript}</CardTitle>
+						<div className="flex items-center justify-between gap-2">
+							<CardTitle>{t.common.transcript}</CardTitle>
+							{review.transcriptAt ? (
+								<Chip tone="green">
+									{t.detail.transcriptConfirmed(shortDate(review.transcriptAt))}
+								</Chip>
+							) : api?.reviewTranscript ? (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									disabled={busy}
+									onClick={confirmTranscript}
+								>
+									<CheckIcon data-icon="inline-start" />
+									{t.detail.confirmTranscript}
+								</Button>
+							) : null}
+						</div>
 					</CardHeader>
 					<CardContent>
 						<ScrollArea className="h-[70vh]">

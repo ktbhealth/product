@@ -539,3 +539,91 @@ export const recordConsentFn = createServerFn({ method: "POST" })
 			}),
 		);
 	});
+
+// ---------- review state (PL-022) ----------
+
+/** Stamp "transcript confirmed" — `null`/`{ ok: false }` on denial. */
+export const reviewTranscriptFn = createServerFn({ method: "POST" })
+	.validator((id: number) => decodeNumber(id))
+	.handler(async ({ data: id }) => {
+		const user = await getDoctorUser();
+		if (!user) return { ok: false };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				const ok = yield* consultations.reviewTranscript(id, user.id).pipe(
+					Effect.as(true),
+					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+				);
+				return { ok };
+			}),
+		);
+	});
+
+/** Stamp "anamnesis approved" bound to the current version — `null`/`{ ok: false }` on denial. */
+export const approveAnamnesisFn = createServerFn({ method: "POST" })
+	.validator((id: number) => decodeNumber(id))
+	.handler(async ({ data: id }) => {
+		const user = await getDoctorUser();
+		if (!user) return { ok: false };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				const ok = yield* consultations.approveAnamnesis(id, user.id).pipe(
+					Effect.as(true),
+					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+				);
+				return { ok };
+			}),
+		);
+	});
+
+const DeferInput = Schema.Struct({
+	id: Schema.Number,
+	/** ISO instant the record re-enters the review queue; null clears the
+	 * defer. Clients send `toISOString()`, but the wire serializer may
+	 * round-trip a `Date` instance — both are accepted. */
+	until: Schema.optionalKey(Schema.NullishOr(Schema.Union([Schema.Date, Schema.DateFromString]))),
+});
+const decodeDeferInput = Schema.decodeUnknownSync(DeferInput);
+
+/** Park (or unpark, `until: null`) a record from the review queue. */
+export const deferConsultationFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeDeferInput(input))
+	.handler(async ({ data }) => {
+		const user = await getDoctorUser();
+		if (!user) return { ok: false };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				const ok = yield* consultations
+					.deferConsultation(data.id, user.id, data.until ?? null)
+					.pipe(
+						Effect.as(true),
+						Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+					);
+				return { ok };
+			}),
+		);
+	});
+
+/** Next unsigned record in the caller's review queue — `{ id }` or `{ id: null }`. */
+export const nextPendingReviewFn = createServerFn({ method: "POST" })
+	.validator((id: number) => decodeNumber(id))
+	.handler(async ({ data: id }) => {
+		const user = await getDoctorUser();
+		if (!user) return { id: null };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				return yield* consultations.nextPendingReview(id, user.id).pipe(
+					Effect.map((next) => ({ id: next })),
+					Effect.catchTag("Forbidden", () => Effect.succeed({ id: null })),
+				);
+			}),
+		);
+	});

@@ -498,6 +498,13 @@
       "when": 1795728197635,
       "tag": "0071_hesitant_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1795754134216,
+      "tag": "0072_keen_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

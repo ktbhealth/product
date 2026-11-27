@@ -27,11 +27,15 @@ vi.mock("@ktb/vault/fns", () => ({
 	vaultGrantAccessFn: mocks.vaultGrantAccessFn,
 }));
 vi.mock("./fns.ts", () => ({
+	approveAnamnesisFn: vi.fn(),
 	attachAnamnesisFn: vi.fn(),
+	deferConsultationFn: vi.fn(),
 	extractAnamnesisFn: vi.fn(),
 	getConsultationFn: mocks.getConsultationFn,
 	getLiveConsultationFn: vi.fn(),
+	nextPendingReviewFn: vi.fn(),
 	recordConsentFn: vi.fn(),
+	reviewTranscriptFn: vi.fn(),
 	saveConsultationFn: vi.fn(),
 	verifyConsultationIntegrityFn: vi.fn(),
 }));
@@ -150,6 +154,45 @@ describe("api delegates forward to the server fns", () => {
 		expect(fns.getConsultationFn).toHaveBeenCalledWith({ data: 5 });
 		await newConsultationApi.portalReaders!({ data: 6 });
 		expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 6 });
+		await consultationDetailApi.reviewTranscript!({ data: 7 });
+		expect(fns.reviewTranscriptFn).toHaveBeenCalledWith({ data: 7 });
+		await consultationDetailApi.approveAnamnesis!({ data: 8 });
+		expect(fns.approveAnamnesisFn).toHaveBeenCalledWith({ data: 8 });
+		const until = new Date("2030-01-15T00:00:00Z");
+		await consultationDetailApi.deferConsultation!({ data: { id: 9, until } });
+		expect(fns.deferConsultationFn).toHaveBeenCalledWith({ data: { id: 9, until } });
+		await consultationDetailApi.nextPendingReview!({ data: 10 });
+		expect(fns.nextPendingReviewFn).toHaveBeenCalledWith({ data: 10 });
+	});
+});
+
+describe("consultationDetailApi.generateAnamnesis", () => {
+	const generate = () =>
+		consultationDetailApi.generateAnamnesis!({
+			data: { consultationId: 9, transcript: "paciente relata dor", patientId: 4 },
+		});
+
+	it("extracts then attaches the draft for the record", async () => {
+		const fns = await import("./fns.ts");
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue({
+			anamnesis: "v1.draft",
+			engine: "stub",
+		} as never);
+		vi.mocked(fns.attachAnamnesisFn).mockResolvedValue({ ok: true } as never);
+		await expect(generate()).resolves.toEqual({ ok: true });
+		expect(fns.extractAnamnesisFn).toHaveBeenCalledWith({
+			data: { transcript: "paciente relata dor", patientId: 4 },
+		});
+		expect(fns.attachAnamnesisFn).toHaveBeenCalledWith({
+			data: { consultationId: 9, anamnesis: "v1.draft", engine: "stub" },
+		});
+	});
+
+	it("fails without attaching when the extract returns null (ZK tenant)", async () => {
+		const fns = await import("./fns.ts");
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue(null as never);
+		await expect(generate()).resolves.toEqual({ ok: false });
+		expect(fns.attachAnamnesisFn).not.toHaveBeenCalled();
 	});
 });
 

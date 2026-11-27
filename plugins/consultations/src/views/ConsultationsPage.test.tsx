@@ -465,6 +465,102 @@ describe("ConsultationsPage", () => {
 		expect(screen.getByText("Bia")).toBeTruthy();
 	});
 
+	it("filters by review state through the select (PL-022)", async () => {
+		const user = userEvent.setup();
+		const tomorrow = new Date(Date.now() + 86_400_000);
+		render(
+			<ConsultationsPage
+				consultations={[
+					item({ id: 1, patientName: "Ana" }),
+					item({
+						id: 2,
+						patientName: "Bia",
+						anamnesisVersion: 2,
+						anamnesisReviewedAt: new Date(),
+						anamnesisReviewedVersion: 2,
+					}),
+					item({ id: 3, patientName: "Cia", deferredUntil: tomorrow }),
+					// Transcript-confirmed, no anamnesis — counts as reviewed.
+					item({
+						id: 4,
+						patientName: "Dia",
+						hasAnamnesis: false,
+						transcriptReviewedAt: new Date(),
+					}),
+				]}
+			/>,
+		);
+		await user.click(screen.getByLabelText("Any review state"));
+		await user.click(await screen.findByRole("option", { name: "Pending review" }));
+		expect(screen.getByText("Ana")).toBeTruthy();
+		expect(screen.queryByText("Bia")).toBeNull();
+		expect(screen.queryByText("Cia")).toBeNull();
+		expect(screen.queryByText("Dia")).toBeNull();
+		await user.click(screen.getByLabelText("Any review state"));
+		await user.click(await screen.findByRole("option", { name: "Reviewed" }));
+		expect(screen.queryByText("Ana")).toBeNull();
+		expect(screen.getByText("Bia")).toBeTruthy();
+		expect(screen.queryByText("Cia")).toBeNull();
+		expect(screen.getByText("Dia")).toBeTruthy();
+		await user.click(screen.getByLabelText("Any review state"));
+		await user.click(await screen.findByRole("option", { name: "Deferred" }));
+		expect(screen.queryByText("Ana")).toBeNull();
+		expect(screen.getByText("Cia")).toBeTruthy();
+		await user.click(screen.getByLabelText("Any review state"));
+		await user.click(await screen.findByRole("option", { name: "Any review state" }));
+		expect(screen.getByText("Ana")).toBeTruthy();
+		expect(screen.getByText("Bia")).toBeTruthy();
+		expect(screen.getByText("Cia")).toBeTruthy();
+		expect(screen.getByText("Dia")).toBeTruthy();
+	});
+
+	it("renders review badges on the status column (PL-022)", () => {
+		const tomorrow = new Date(Date.now() + 86_400_000);
+		render(
+			<ConsultationsPage
+				consultations={[
+					item({ id: 1, patientName: "Ana", deferredUntil: tomorrow }),
+					item({
+						id: 2,
+						patientName: "Bia",
+						anamnesisVersion: 2,
+						anamnesisReviewedAt: new Date(),
+						anamnesisReviewedVersion: 2,
+					}),
+					item({
+						id: 3,
+						patientName: "Cia",
+						anamnesisVersion: 3,
+						anamnesisReviewedAt: new Date(),
+						anamnesisReviewedVersion: 2,
+					}),
+					item({ id: 4, patientName: "Dia", transcriptReviewedAt: new Date() }),
+					item({ id: 5, patientName: "Eva" }),
+				]}
+			/>,
+		);
+		expect(screen.getByText(/Deferred until/)).toBeTruthy();
+		expect(screen.getByText("Reviewed v2")).toBeTruthy();
+		expect(screen.getByText("New version v3")).toBeTruthy();
+		expect(screen.getByText("Transcript confirmed")).toBeTruthy();
+		// A row with no stamps shows no review badge at all.
+		expect(screen.getAllByText("Transcript confirmed")).toHaveLength(1);
+	});
+
+	it("an expired defer does not count as deferred (PL-022)", async () => {
+		const user = userEvent.setup();
+		const yesterday = new Date(Date.now() - 86_400_000);
+		render(
+			<ConsultationsPage
+				consultations={[item({ id: 1, patientName: "Ana", deferredUntil: yesterday })]}
+			/>,
+		);
+		expect(screen.queryByText(/Deferred until/)).toBeNull();
+		await user.click(screen.getByLabelText("Any review state"));
+		await user.click(await screen.findByRole("option", { name: "Pending review" }));
+		expect(screen.getByText("Ana")).toBeTruthy();
+	});
+
 	it("renders a pulsing live badge for live rows", () => {
 		const { container } = render(<ConsultationsPage consultations={[item({ status: "live" })]} />);
 		const dot = container.querySelector(".animate-pulse");
@@ -580,7 +676,7 @@ describe("ConsultationsPage", () => {
 		expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/consultations/1" });
 	});
 
-	it("shows the stats strip with today/live/review counts", () => {
+	it("shows the stats strip with today/reviewed/review counts", () => {
 		const now = new Date();
 		const yesterday = new Date(now.getTime() - 86_400_000);
 		render(
@@ -593,27 +689,36 @@ describe("ConsultationsPage", () => {
 						status: "live",
 						anamnesis: anamnesisJson({ baixa: 3 }),
 					}),
-					item({ id: 2, patientName: "Bia", createdAt: yesterday }),
+					// Transcript-confirmed, no anamnesis — off the review queue.
+					item({
+						id: 2,
+						patientName: "Bia",
+						createdAt: yesterday,
+						hasAnamnesis: false,
+						transcriptReviewedAt: now,
+					}),
 				]}
 			/>,
 		);
 		const cards = document.querySelectorAll('[data-slot="card"]');
 		expect(cards).toHaveLength(3);
 		expect(cards[0]!.textContent).toContain("Today");
-		expect(cards[0]!.querySelector("span")!.textContent).toBe("1");
-		expect(cards[1]!.textContent).toContain("Live now");
-		expect(cards[1]!.querySelector("span")!.textContent).toBe("1");
+		expect(cards[0]!.querySelector(".tabular-nums")!.textContent).toBe("1");
+		expect(cards[1]!.textContent).toContain("Reviewed");
+		expect(cards[1]!.querySelector(".tabular-nums")!.textContent).toBe("1");
 		expect(cards[2]!.textContent).toContain("Needs review");
-		expect(cards[2]!.querySelector("span")!.textContent).toBe("1");
+		expect(cards[2]!.querySelector(".tabular-nums")!.textContent).toBe("1");
 	});
 
 	it("shows zeros in the stats strip when nothing matches", () => {
 		render(
 			<ConsultationsPage
 				consultations={[
+					// Parked + unsigned: not today, not reviewed, off the queue.
 					item({
 						createdAt: new Date("2020-01-01T10:00:00"),
 						anamnesis: anamnesisJson(),
+						deferredUntil: new Date(Date.now() + 86_400_000),
 					}),
 				]}
 			/>,
@@ -621,7 +726,7 @@ describe("ConsultationsPage", () => {
 		const cards = document.querySelectorAll('[data-slot="card"]');
 		expect(cards).toHaveLength(3);
 		for (const card of cards) {
-			expect(card.querySelector("span")!.textContent).toBe("0");
+			expect(card.querySelector(".tabular-nums")!.textContent).toBe("0");
 		}
 	});
 });

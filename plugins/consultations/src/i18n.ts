@@ -78,13 +78,30 @@ export interface ConsultationMessages {
 		readonly filterAnamnesisAll: string;
 		readonly filterAnamnesisWith: string;
 		readonly filterAnamnesisWithout: string;
+		/** Physician review-state facet (PL-022). */
+		readonly filterReviewAll: string;
+		readonly filterReviewPending: string;
+		readonly filterReviewDone: string;
+		readonly filterReviewDeferred: string;
+		/** Visible facet labels on the toolbar selects — the facet name
+		 * sits next to the current value so filters are discoverable
+		 * without opening each dropdown. */
+		readonly facetStatus: string;
+		readonly facetSource: string;
+		readonly facetAnamnesis: string;
+		readonly facetReview: string;
+		/** Review badges on the status column (PL-022). */
+		readonly deferredBadge: (date: string) => string;
+		readonly reviewedBadge: (version: number) => string;
+		readonly staleBadge: (version: number) => string;
+		readonly transcriptReviewedBadge: string;
 		/** Pulsing badge on in-progress rows. */
 		readonly liveNow: string;
 		/** Needs-review badge — count of `baixa`-confidence sections. */
 		readonly needsReview: (n: number) => string;
 		/** Stats strip labels above the list table. */
 		readonly statsToday: string;
-		readonly statsLiveNow: string;
+		readonly statsReviewed: string;
 		readonly statsNeedsReview: string;
 		/** Row hover-preview field labels. */
 		readonly previewComplaint: string;
@@ -110,12 +127,26 @@ export interface ConsultationMessages {
 		readonly evidenceTitle: string;
 		readonly noAnamnesisTitle: string;
 		readonly noAnamnesisDescription: string;
+		/** "Generate anamnesis" on the empty anamnesis card (transcript-only records). */
+		readonly generateAnamnesis: string;
 		/** Tamper-evidence badge labels (T-139) — mirrors IntegrityBadgeLabels. */
 		readonly integrity: {
 			readonly verified: string;
 			readonly tampered: string;
 			readonly unversioned: string;
 		};
+		/** Physician review stamps + actions (PL-022). */
+		readonly confirmTranscript: string;
+		readonly transcriptConfirmed: (date: string) => string;
+		readonly approveAnamnesis: string;
+		readonly approveAndNext: string;
+		readonly anamnesisApproved: (version: number) => string;
+		readonly anamnesisStale: (version: number) => string;
+		readonly deferLabel: string;
+		readonly deferResume: string;
+		readonly deferredUntil: (date: string) => string;
+		readonly approvedToast: string;
+		readonly queueDoneToast: string;
 	};
 	readonly transcriptPanel: {
 		readonly sourceServer: string;
@@ -374,6 +405,18 @@ const en: ConsultationMessages = {
 		filterAnamnesisAll: "Any anamnesis",
 		filterAnamnesisWith: "With anamnesis",
 		filterAnamnesisWithout: "Without anamnesis",
+		filterReviewAll: "Any review state",
+		filterReviewPending: "Pending review",
+		filterReviewDone: "Reviewed",
+		filterReviewDeferred: "Deferred",
+		facetStatus: "Status",
+		facetSource: "Source",
+		facetAnamnesis: "Anamnesis",
+		facetReview: "Review",
+		deferredBadge: paramMessage("en", "Deferred until {date}", ["date"]),
+		reviewedBadge: paramMessage("en", "Reviewed v{n}", ["n"]),
+		staleBadge: paramMessage("en", "New version v{n}", ["n"]),
+		transcriptReviewedBadge: "Transcript confirmed",
 		liveNow: "Live now",
 		needsReview: paramMessage(
 			"en",
@@ -381,7 +424,7 @@ const en: ConsultationMessages = {
 			["n"],
 		),
 		statsToday: "Today",
-		statsLiveNow: "Live now",
+		statsReviewed: "Reviewed",
 		statsNeedsReview: "Needs review",
 		previewComplaint: "Chief complaint",
 		previewPlan: "Plan",
@@ -409,11 +452,23 @@ const en: ConsultationMessages = {
 		evidenceTitle: "Transcript evidence",
 		noAnamnesisTitle: "No anamnesis saved",
 		noAnamnesisDescription: "This consultation does not have a saved anamnesis yet.",
+		generateAnamnesis: "Generate anamnesis",
 		integrity: {
 			verified: "Integrity verified",
 			tampered: "Integrity check failed",
 			unversioned: "Integrity not recorded",
 		},
+		confirmTranscript: "Confirm transcript",
+		transcriptConfirmed: paramMessage("en", "Confirmed {date}", ["date"]),
+		approveAnamnesis: "Approve anamnesis",
+		approveAndNext: "Approve & next",
+		anamnesisApproved: paramMessage("en", "Approved v{n}", ["n"]),
+		anamnesisStale: paramMessage("en", "New version v{n} pending", ["n"]),
+		deferLabel: "Defer review",
+		deferResume: "Back to the queue",
+		deferredUntil: paramMessage("en", "Deferred until {date}", ["date"]),
+		approvedToast: "Anamnesis approved",
+		queueDoneToast: "Review queue complete",
 	},
 	transcriptPanel: {
 		sourceServer: "server · whisper large-v3-turbo",
@@ -688,6 +743,18 @@ const ptBR: ConsultationMessages = {
 		filterAnamnesisAll: "Qualquer anamnese",
 		filterAnamnesisWith: "Com anamnese",
 		filterAnamnesisWithout: "Sem anamnese",
+		filterReviewAll: "Qualquer revisão",
+		filterReviewPending: "Revisão pendente",
+		filterReviewDone: "Revisadas",
+		filterReviewDeferred: "Adiadas",
+		facetStatus: "Status",
+		facetSource: "Origem",
+		facetAnamnesis: "Anamnese",
+		facetReview: "Revisão",
+		deferredBadge: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
+		reviewedBadge: paramMessage("pt-BR", "Revisada v{n}", ["n"]),
+		staleBadge: paramMessage("pt-BR", "Nova versão v{n}", ["n"]),
+		transcriptReviewedBadge: "Transcrição conferida",
 		liveNow: "Ao vivo agora",
 		needsReview: paramMessage(
 			"pt-BR",
@@ -695,7 +762,7 @@ const ptBR: ConsultationMessages = {
 			["n"],
 		),
 		statsToday: "Hoje",
-		statsLiveNow: "Ao vivo",
+		statsReviewed: "Revisadas",
 		statsNeedsReview: "Revisão pendente",
 		previewComplaint: "Queixa principal",
 		previewPlan: "Conduta",
@@ -724,11 +791,23 @@ const ptBR: ConsultationMessages = {
 		evidenceTitle: "Evidência no transcript",
 		noAnamnesisTitle: "Nenhuma anamnese salva",
 		noAnamnesisDescription: "Esta consulta ainda não tem uma anamnese salva.",
+		generateAnamnesis: "Gerar anamnese",
 		integrity: {
 			verified: "Integridade verificada",
 			tampered: "Falha na verificação de integridade",
 			unversioned: "Integridade não registrada",
 		},
+		confirmTranscript: "Conferir transcrição",
+		transcriptConfirmed: paramMessage("pt-BR", "Conferida em {date}", ["date"]),
+		approveAnamnesis: "Aprovar anamnese",
+		approveAndNext: "Aprovar e próxima",
+		anamnesisApproved: paramMessage("pt-BR", "Aprovada v{n}", ["n"]),
+		anamnesisStale: paramMessage("pt-BR", "Nova versão v{n} pendente", ["n"]),
+		deferLabel: "Adiar revisão",
+		deferResume: "Voltar para a fila",
+		deferredUntil: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
+		approvedToast: "Anamnese aprovada",
+		queueDoneToast: "Fila de revisão concluída",
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",
@@ -1006,6 +1085,18 @@ const es: ConsultationMessages = {
 		filterAnamnesisAll: "Cualquier anamnesis",
 		filterAnamnesisWith: "Con anamnesis",
 		filterAnamnesisWithout: "Sin anamnesis",
+		filterReviewAll: "Cualquier revisión",
+		filterReviewPending: "Revisión pendiente",
+		filterReviewDone: "Revisadas",
+		filterReviewDeferred: "Aplazadas",
+		facetStatus: "Estado",
+		facetSource: "Origen",
+		facetAnamnesis: "Anamnesis",
+		facetReview: "Revisión",
+		deferredBadge: paramMessage("es", "Aplazada hasta {date}", ["date"]),
+		reviewedBadge: paramMessage("es", "Revisada v{n}", ["n"]),
+		staleBadge: paramMessage("es", "Nueva versión v{n}", ["n"]),
+		transcriptReviewedBadge: "Transcripción confirmada",
 		liveNow: "En vivo ahora",
 		needsReview: paramMessage(
 			"es",
@@ -1013,7 +1104,7 @@ const es: ConsultationMessages = {
 			["n"],
 		),
 		statsToday: "Hoy",
-		statsLiveNow: "En vivo",
+		statsReviewed: "Revisadas",
 		statsNeedsReview: "Requiere revisión",
 		previewComplaint: "Motivo de consulta",
 		previewPlan: "Plan",
@@ -1042,11 +1133,23 @@ const es: ConsultationMessages = {
 		evidenceTitle: "Evidencia en la transcripción",
 		noAnamnesisTitle: "Ninguna anamnesis guardada",
 		noAnamnesisDescription: "Esta consulta aún no tiene una anamnesis guardada.",
+		generateAnamnesis: "Generar anamnesis",
 		integrity: {
 			verified: "Integridad verificada",
 			tampered: "Falló la verificación de integridad",
 			unversioned: "Integridad no registrada",
 		},
+		confirmTranscript: "Confirmar transcripción",
+		transcriptConfirmed: paramMessage("es", "Confirmada el {date}", ["date"]),
+		approveAnamnesis: "Aprobar anamnesis",
+		approveAndNext: "Aprobar y siguiente",
+		anamnesisApproved: paramMessage("es", "Aprobada v{n}", ["n"]),
+		anamnesisStale: paramMessage("es", "Nueva versión v{n} pendiente", ["n"]),
+		deferLabel: "Aplazar revisión",
+		deferResume: "Volver a la cola",
+		deferredUntil: paramMessage("es", "Aplazada hasta {date}", ["date"]),
+		approvedToast: "Anamnesis aprobada",
+		queueDoneToast: "Cola de revisión completada",
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",

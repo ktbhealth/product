@@ -54,6 +54,9 @@ import {
 	ownsBot,
 	recordConsent,
 	saveConsultation,
+	setAnamnesisReview,
+	setDeferred,
+	setTranscriptReview,
 } from "./lifecycle.ts";
 import {
 	consultationOwner,
@@ -61,6 +64,7 @@ import {
 	getLiveConsultation,
 	listAllConsultations,
 	listConsultations,
+	nextPendingReviewId,
 	type AdminConsultationRow,
 	portalConsultation,
 	portalConsultationRows,
@@ -197,6 +201,31 @@ export class Consultations extends Context.Service<
 			userId: string,
 		) => Effect.Effect<ConsultationIntegrityReport | null, Forbidden>;
 		readonly recordConsent: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
+		/**
+		 * "I confirmed the transcript matches the encounter" (PL-022) —
+		 * stamps `transcriptReviewedAt/By`. Raw evidence; no version
+		 * binding. Re-stamping re-stamps.
+		 */
+		readonly reviewTranscript: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
+		/**
+		 * "I approve this anamnesis into the record" (PL-022) — stamps
+		 * `anamnesisReviewedAt/By` bound to the row's current
+		 * `anamnesisVersion`; post-approval edits surface as a stale
+		 * badge on read. No-op when the row has no anamnesis yet.
+		 */
+		readonly approveAnamnesis: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
+		/** Park the record from the review queue until `until` (null = back to pending). */
+		readonly deferConsultation: (
+			id: number,
+			userId: string,
+			until: Date | null,
+		) => Effect.Effect<void, Forbidden>;
+		/** Next unsigned, unparked record in the caller's queue — the
+		 * "approve & next" target; null when the queue is done. */
+		readonly nextPendingReview: (
+			id: number,
+			userId: string,
+		) => Effect.Effect<number | null, Forbidden>;
 		/** Link a stored R2 audio object to the consultation (status "stored"). */
 		readonly attachAudio: (
 			userId: string,
@@ -812,6 +841,86 @@ export const ConsultationsLive = Layer.effect(
 					targetId: id,
 					tenantId: owner?.tenantId ?? null,
 				});
+			}),
+			reviewTranscript: Effect.fn("Consultations.reviewTranscript")(function* (
+				id: number,
+				userId: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.update");
+				const owner = yield* Effect.promise(() => consultationOwner(db, id));
+				if (owner !== null) {
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
+				}
+				const scope = yield* consultationScope(userId);
+				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
+				yield* Effect.logInfo("consultation transcript reviewed", { consultationId: id, userId });
+				yield* Effect.promise(() => setTranscriptReview(db, id, userId, scope));
+				yield* audit({
+					action: "consultations.transcript.review",
+					targetType: "consultation",
+					targetId: id,
+					tenantId: owner?.tenantId ?? null,
+				});
+			}),
+			approveAnamnesis: Effect.fn("Consultations.approveAnamnesis")(function* (
+				id: number,
+				userId: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.update");
+				const owner = yield* Effect.promise(() => consultationOwner(db, id));
+				if (owner !== null) {
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
+				}
+				// Approving an anamnesis that does not exist yet is meaningless —
+				// skip rather than stamping a null-version approval.
+				if (owner !== null && owner.anamnesisVersion === null) return;
+				const scope = yield* consultationScope(userId);
+				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
+				yield* Effect.logInfo("consultation anamnesis approved", {
+					consultationId: id,
+					userId,
+					version: owner?.anamnesisVersion,
+				});
+				yield* Effect.promise(() =>
+					setAnamnesisReview(db, id, userId, owner?.anamnesisVersion ?? null, scope),
+				);
+				yield* audit({
+					action: "consultations.anamnesis.approve",
+					targetType: "consultation",
+					targetId: id,
+					tenantId: owner?.tenantId ?? null,
+					detail: { version: owner?.anamnesisVersion },
+				});
+			}),
+			deferConsultation: Effect.fn("Consultations.deferConsultation")(function* (
+				id: number,
+				userId: string,
+				until: Date | null,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.update");
+				const owner = yield* Effect.promise(() => consultationOwner(db, id));
+				if (owner !== null) {
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
+				}
+				const scope = yield* consultationScope(userId);
+				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
+				yield* Effect.logInfo("consultation deferred", { consultationId: id, userId });
+				yield* Effect.promise(() => setDeferred(db, id, until, scope));
+				yield* audit({
+					action: "consultations.defer",
+					targetType: "consultation",
+					targetId: id,
+					tenantId: owner?.tenantId ?? null,
+					detail: until === null ? undefined : { until: until.toISOString() },
+				});
+			}),
+			nextPendingReview: Effect.fn("Consultations.nextPendingReview")(function* (
+				id: number,
+				userId: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.read");
+				const scope = yield* consultationScope(userId);
+				return yield* Effect.promise(() => nextPendingReviewId(db, scope, id));
 			}),
 			attachAudio: Effect.fn("Consultations.attachAudio")(function* (
 				userId: string,
