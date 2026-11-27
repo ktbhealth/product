@@ -22,7 +22,10 @@ vi.mock("#/lib/platform.ts", async () => {
 	const { PluginStates } = await import("@ktb/platform/plugin-states");
 	const states = {
 		isEnabled: () => Effect.succeed(true),
-		enabledIds: () => Effect.succeed(new Set<string>()),
+		// runPageMiddleware gates plugin-contributed stages on this set
+		// (per-id for pkg-less plugins) — every fixture plugin is on.
+		enabledIds: () =>
+			Effect.succeed(new Set(["first.routes", "second.routes", "redir.middleware"])),
 		config: () => Effect.succeed(undefined),
 		setEnabled: () => Effect.void,
 		setConfig: () => Effect.void,

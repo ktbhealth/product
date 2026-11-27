@@ -33,8 +33,8 @@ import {
 import { PortalAudience } from "@ktb/portal";
 import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
-import { PluginStates } from "@ktb/platform/plugin-states";
 import type { MiddlewareContext, Page, PanelPage } from "@ktb/kernel";
+import { cachedEnabledIds } from "./enabled-ids.ts";
 import { runPageMiddleware } from "./middleware.ts";
 import { Schema } from "effect";
 import { ensureDoctorUser, getDoctorUser, getSessionAccount, getSessionUser } from "#/lib/auth.ts";
@@ -149,25 +149,6 @@ const cachedListEnabledLocales = (db: DbClient): Promise<EnabledLocaleRows> => {
 		return rows;
 	});
 };
-
-let enabledIdsCache: { readonly at: number; readonly ids: ReadonlySet<string> } | undefined;
-
-/** `PluginStates.enabledIds` is uncached upstream (a `plugin_state`
- * select per call, and plugin_states rows are global) — share the same
- * TTL cache so the root loader's pluginStatesFn + i18nRouteFn don't
- * each pay a query per navigation. Plugin enable toggles are admin
- * actions; same staleness trade-off as the locale list. */
-const cachedEnabledIds = (): Effect.Effect<ReadonlySet<string>, never, PluginStates> =>
-	Effect.gen(function* () {
-		const now = Date.now();
-		if (enabledIdsCache !== undefined && now - enabledIdsCache.at < ROUTE_CACHE_TTL_MS) {
-			return enabledIdsCache.ids;
-		}
-		const states = yield* PluginStates;
-		const ids = yield* states.enabledIds();
-		enabledIdsCache = { at: now, ids };
-		return ids;
-	});
 
 export const i18nRouteFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) =>
