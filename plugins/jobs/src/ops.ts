@@ -6,7 +6,7 @@ import type { Forbidden } from "@ktb/authz";
 import { Consultations, type AudioJobRow } from "@ktb/consultations";
 import { PlatformAdmin } from "@ktb/platform";
 import {
-	getServerRuntime,
+	runtimeProbe,
 	type AudioStorageStats,
 	type QueueDepth,
 	type ServerRuntime,
@@ -44,9 +44,10 @@ type StatProbe<A> = (runtime: ServerRuntime) => (() => Promise<A | null>) | unde
  */
 const probe = <A>(pick: StatProbe<A>) =>
 	Effect.promise(async (): Promise<A | null> => {
+		const read = runtimeProbe(pick);
+		if (read === undefined) return null;
 		try {
-			const read = pick(getServerRuntime());
-			return read === undefined ? null : await read();
+			return await read();
 		} catch {
 			return null;
 		}

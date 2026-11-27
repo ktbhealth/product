@@ -416,6 +416,62 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("collapses a throwing jobKinds read to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				jobKinds: () => {
+					throw new Error("kinds exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.scheduleKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses throwing schedule writes to unavailable", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [],
+					create: async () => {
+						throw new Error("insert exploded");
+					},
+					update: async () => {
+						throw new Error("update exploded");
+					},
+					remove: async () => {
+						throw new Error("delete exploded");
+					},
+					runNow: async () => null,
+				},
+			},
+		);
+		expect(
+			await asPrincipal(runtime, (a) => a.createSchedule({ kind: "k" }), "admin@x.com"),
+		).toEqual({ ok: false, reason: "unavailable" });
+		expect(
+			await asPrincipal(
+				runtime,
+				(a) => a.updateSchedule("id", { status: "active" }),
+				"admin@x.com",
+			),
+		).toEqual({ ok: false, reason: "unavailable" });
+		expect(await asPrincipal(runtime, (a) => a.deleteSchedule("id"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "unavailable",
+		});
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("maps scheduler failures to invalid and not-found results", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(

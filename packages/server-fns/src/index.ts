@@ -17,6 +17,7 @@ export {
 	resetServerRuntime,
 	run,
 	runAs,
+	runtimeProbe,
 	setServerRuntime,
 	type CronJobInfo,
 	type CronRunInfo,

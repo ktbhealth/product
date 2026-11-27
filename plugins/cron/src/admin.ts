@@ -7,7 +7,7 @@ import { Db } from "@ktb/db";
 import { listJobRuns, type JobRecord } from "@ktb/jobs-port";
 import { PlatformAdmin } from "@ktb/platform";
 import {
-	getServerRuntime,
+	runtimeProbe,
 	type CronJobInfo,
 	type CronRunResult,
 	type ScheduleDeleteResult,
@@ -82,7 +82,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<readonly CronJobInfo[] | null> => {
 							try {
-								const read = getServerRuntime().crons;
+								const read = runtimeProbe((r) => r.crons);
 								return read === undefined ? null : await read.list();
 							} catch {
 								return null;
@@ -109,14 +109,8 @@ export const CronAdminLive = Layer.effect(
 				platformAdmin.requireAdmin().pipe(
 					Effect.andThen(
 						Effect.promise(async (): Promise<CronRunNowResult> => {
-							let crons: NonNullable<ReturnType<typeof getServerRuntime>["crons"]>;
-							try {
-								const capability = getServerRuntime().crons;
-								if (capability === undefined) return { ok: false, reason: "unavailable" };
-								crons = capability;
-							} catch {
-								return { ok: false, reason: "unavailable" };
-							}
+							const crons = runtimeProbe((r) => r.crons);
+							if (crons === undefined) return { ok: false, reason: "unavailable" };
 							let result: CronRunResult | null;
 							try {
 								result = await crons.runNow(id);
@@ -135,7 +129,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<readonly ScheduledJobInfo[] | null> => {
 							try {
-								const capability = getServerRuntime().schedules;
+								const capability = runtimeProbe((r) => r.schedules);
 								return capability === undefined ? null : await capability.list();
 							} catch {
 								return null;
@@ -148,7 +142,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<readonly string[] | null> => {
 							try {
-								const read = getServerRuntime().jobKinds;
+								const read = runtimeProbe((r) => r.jobKinds);
 								return read === undefined ? null : read();
 							} catch {
 								return null;
@@ -161,7 +155,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<readonly SchedulableKindInfo[] | null> => {
 							try {
-								const read = getServerRuntime().schedulableKinds;
+								const read = runtimeProbe((r) => r.schedulableKinds);
 								return read === undefined ? null : read();
 							} catch {
 								return null;
@@ -174,7 +168,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<ScheduleWriteResult> => {
 							try {
-								const capability = getServerRuntime().schedules;
+								const capability = runtimeProbe((r) => r.schedules);
 								if (capability === undefined) return { ok: false, reason: "unavailable" };
 								return await capability.create(input);
 							} catch {
@@ -188,7 +182,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<ScheduleWriteResult> => {
 							try {
-								const capability = getServerRuntime().schedules;
+								const capability = runtimeProbe((r) => r.schedules);
 								if (capability === undefined) return { ok: false, reason: "unavailable" };
 								return await capability.update(id, patch);
 							} catch {
@@ -202,7 +196,7 @@ export const CronAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<ScheduleDeleteResult> => {
 							try {
-								const capability = getServerRuntime().schedules;
+								const capability = runtimeProbe((r) => r.schedules);
 								if (capability === undefined) return { ok: false, reason: "unavailable" };
 								return await capability.remove(id);
 							} catch {
@@ -215,14 +209,8 @@ export const CronAdminLive = Layer.effect(
 				platformAdmin.requireAdmin().pipe(
 					Effect.andThen(
 						Effect.promise(async (): Promise<CronRunNowResult> => {
-							let capability: NonNullable<ReturnType<typeof getServerRuntime>["schedules"]>;
-							try {
-								const found = getServerRuntime().schedules;
-								if (found === undefined) return { ok: false, reason: "unavailable" };
-								capability = found;
-							} catch {
-								return { ok: false, reason: "unavailable" };
-							}
+							const capability = runtimeProbe((r) => r.schedules);
+							if (capability === undefined) return { ok: false, reason: "unavailable" };
 							const result = await capability.runNow(id).catch(() => null);
 							if (result === null) return { ok: false, reason: "unknown-job" };
 							return result.ok
