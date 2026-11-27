@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 import * as Data from "effect/Data";
 
+import { makeRegistry } from "@ktb/kernel";
+
 /**
  * registry.ts — the eval contribution registry (P-070).
  *
@@ -112,29 +114,32 @@ const keyOf = (kind: ContributionKind, id: string): string => `${kind}:${id}`;
  * compose it inside their own Effect services; typed errors are thrown
  * (TaggedError), so `Effect.try`/`Effect.catch` can lift them. */
 export class ContributionRegistry {
-	private readonly entries = new Map<string, ContributionWithConfig>();
+	private readonly entries = makeRegistry<ContributionWithConfig>({
+		key: (c) => keyOf(c.kind, c.id),
+		duplicate: (_key, contribution) =>
+			new DuplicateContributionError({
+				kind: contribution.kind,
+				id: contribution.id,
+				version: contribution.version,
+			}),
+		// `unknown` stays unset: get() below throws UnknownContributionError
+		// itself so the typed error keeps its kind/id fields without
+		// re-parsing the composite key.
+	});
 
 	/** Register a contribution. Throws `DuplicateContributionError`
 	 * when the same kind+id is already registered. `validateConfig`
 	 * (P-078) rides along untouched — it is a runtime function, not
 	 * registry data. */
 	register(contribution: ContributionWithConfig): void {
-		const key = keyOf(contribution.kind, contribution.id);
-		if (this.entries.has(key)) {
-			throw new DuplicateContributionError({
-				kind: contribution.kind,
-				id: contribution.id,
-				version: contribution.version,
-			});
-		}
-		this.entries.set(key, contribution);
+		this.entries.register(contribution);
 	}
 
 	/** Look up a contribution by kind+id. Throws
 	 * `UnknownContributionError` when absent. The returned type keeps
 	 * `validateConfig` visible (P-078). */
 	get(kind: ContributionKind, id: string): ContributionWithConfig {
-		const entry = this.entries.get(keyOf(kind, id));
+		const entry = this.entries.lookup(keyOf(kind, id));
 		if (entry === undefined) {
 			throw new UnknownContributionError({ kind, id });
 		}
@@ -146,7 +151,7 @@ export class ContributionRegistry {
 	 * validator-less contribution" as unverifiable, never silently
 	 * accepted. */
 	configValidator(kind: ContributionKind, id: string): ConfigValidator | undefined {
-		return this.entries.get(keyOf(kind, id))?.validateConfig;
+		return this.entries.lookup(keyOf(kind, id))?.validateConfig;
 	}
 
 	has(kind: ContributionKind, id: string): boolean {
@@ -156,7 +161,7 @@ export class ContributionRegistry {
 	/** All registered contributions, optionally filtered by kind, in
 	 * registration order. */
 	list(kind?: ContributionKind): readonly ContributionWithConfig[] {
-		const all = [...this.entries.values()];
+		const all = this.entries.list();
 		return kind === undefined ? all : all.filter((c) => c.kind === kind);
 	}
 }

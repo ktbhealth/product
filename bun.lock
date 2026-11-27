@@ -690,6 +690,7 @@
       "dependencies": {
         "@ktb/db": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
+        "@ktb/kernel": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
@@ -698,6 +699,7 @@
     "packages/pipeline": {
       "name": "@ktb/pipeline",
       "dependencies": {
+        "@ktb/kernel": "workspace:*",
         "effect": "4.1.2",
       },
     },
