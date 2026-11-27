@@ -505,6 +505,13 @@
       "when": 1795754134216,
       "tag": "0072_keen_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1795754899697,
+      "tag": "0073_foamy_masked_marvel",
+      "breakpoints": true
     }
   ]
 }
