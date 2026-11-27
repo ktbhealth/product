@@ -9,14 +9,15 @@
  * Delivery semantics: at-least-once, including worker crashes. The pop
  * is not destructive — `BLMOVE` parks the raw envelope on
  * `<queue>:pending` atomically with the dequeue, `ack()` removes it
- * (`LREM`) and `retry()` re-pushes it onto the queue head first, then
- * clears the pending copy. A SIGKILL/OOM/reboot mid-handle leaves the
- * envelope on the pending list; the consumer calls `requeuePending()`
- * once at startup to drain stale entries back onto the queue, so the
- * job is redelivered and its `job_runs` row unsticks from
- * "processing". There is no broker-side attempt counter — poison jobs
- * are bounded by the job_runs projection and handler idempotency, same
- * trust model as the dev:node SQLite queue.
+ * (`LREM`) and `retry()` re-pushes it onto the queue tail (RPUSH) so it
+ * is the next entry delivered, then clears the pending copy. A
+ * SIGKILL/OOM/reboot mid-handle leaves the envelope on the pending
+ * list; the consumer calls `requeuePending()` once at startup to drain
+ * stale entries back onto the queue, so the job is redelivered and its
+ * `job_runs` row unsticks from "processing". There is no broker-side
+ * attempt counter — poison jobs are bounded by the job_runs projection
+ * and handler idempotency, same trust model as the dev:node SQLite
+ * queue.
  *
  * Single-consumer assumption: `requeuePending()` is only safe at boot
  * before `receive()` starts — a second live consumer's in-flight
@@ -50,8 +51,11 @@ export interface RedisLike {
 		destinationSide: "LEFT" | "RIGHT",
 	): Promise<string | null>;
 	lRem(key: string, count: number, value: string): Promise<unknown>;
+	rPush(key: string, value: string): Promise<unknown>;
 	lLen(key: string): Promise<number>;
 	quit(): Promise<unknown>;
+	/** Hard socket teardown — optional on the injectable seam. */
+	destroy?(): void;
 }
 
 export interface RedisJobsTransportOptions {
@@ -87,6 +91,10 @@ export interface RedisJobsTransport {
 
 const DEFAULT_URL = "redis://127.0.0.1:6379";
 const DEFAULT_QUEUE = "ktb:jobs";
+// QUIT is queued through node-redis's offline command queue and only
+// flushes once the socket reconnects — bound it so close() never hangs
+// on an unreachable Redis, then destroy the socket outright.
+const CLOSE_TIMEOUT_MS = 1000;
 // Once the first message is in hand, batch-fill pops only wait briefly
 // for more — a partial batch must dispatch immediately, not stall for
 // the full blockSeconds before the consumer ever sees it.
@@ -127,8 +135,9 @@ export const createRedisJobsTransport = async (
 					// Re-push BEFORE clearing pending: a crash between the
 					// two leaves the pending copy for the reaper, never
 					// loses the job (at-least-once over exactly-once).
+					// RPUSH puts it at the tail — the next pop delivers it.
 					void (async () => {
-						await client.lPush(queue, body);
+						await client.rPush(queue, body);
 						await client.lRem(pending, 1, body);
 					})().catch(() => {});
 				},
@@ -160,7 +169,9 @@ export const createRedisJobsTransport = async (
 			return { pending: pendingCount, processing: inflight, done: 0, failed: 0 };
 		},
 		close: async () => {
-			await client.quit();
+			const timer = new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS).unref());
+			await Promise.race([client.quit().catch(() => {}), timer]);
+			client.destroy?.();
 		},
 	};
 };

@@ -43,6 +43,11 @@ const fakeRedis = () => {
 			listFor(key).unshift(value);
 			return 1;
 		},
+		rPush: async (key, value) => {
+			const l = listFor(key);
+			l.push(value);
+			return l.length;
+		},
 		blMove: async (source, destination, ss, ds, timeoutSeconds) => {
 			timeouts.push(timeoutSeconds);
 			return move(source, destination, ss, ds);
@@ -161,6 +166,23 @@ describe("createRedisJobsTransport", () => {
 		await t.close();
 	});
 
+	it("retry() re-queues ahead of the backlog — delivered on the next poll", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("first"));
+		await t.send(envelope("second"));
+		await t.send(envelope("third"));
+		const [msg] = await t.receive();
+		expect(msg?.body).toEqual(envelope("first"));
+		msg?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		const [again] = await t.receive();
+		expect(again?.body).toEqual(envelope("first"));
+		const [next] = await t.receive();
+		expect(next?.body).toEqual(envelope("second"));
+		await t.close();
+	});
+
 	it("malformed JSON surfaces as a string body (consumer marks poison)", async () => {
 		const { client, list } = fakeRedis();
 		list.push("not-json{");
@@ -237,6 +259,9 @@ describe("createRedisJobsTransport", () => {
 			lPush: async () => {
 				throw new Error("redis down");
 			},
+			rPush: async () => {
+				throw new Error("redis down");
+			},
 			blMove: async () => (entries.length === 0 ? null : entries.pop()!),
 			lMove: async () => null,
 			lRem: async () => 1,
@@ -246,7 +271,7 @@ describe("createRedisJobsTransport", () => {
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		const [msg] = await t.receive();
 		msg?.retry();
-		// Let the fire-and-forget lPush rejection settle through .catch.
+		// Let the fire-and-forget requeue rejection settle through .catch.
 		await flush();
 		await t.close();
 	});
@@ -265,6 +290,40 @@ describe("createRedisJobsTransport", () => {
 		const [msg] = await t.receive();
 		expect(msg?.body).toEqual(envelope("via-client"));
 		await t.close();
+	});
+
+	it("close() is bounded and destroys the client when quit() never resolves", async () => {
+		const destroy = vi.fn();
+		const client: RedisLike = {
+			lPush: async () => 0,
+			brPop: async () => null,
+			lLen: async () => 0,
+			// Simulates node-redis during reconnect: QUIT sits in the
+			// offline queue and the promise never settles.
+			quit: () => new Promise(() => {}),
+			destroy,
+		};
+		const t = await createRedisJobsTransport({ client });
+		await expect(t.close()).resolves.toBeUndefined();
+		expect(destroy).toHaveBeenCalledOnce();
+	});
+
+	it("close() destroys the client even when quit() succeeds", async () => {
+		const { client } = fakeRedis();
+		const destroy = vi.fn();
+		const t = await createRedisJobsTransport({ client: { ...client, destroy } });
+		await t.close();
+		expect(destroy).toHaveBeenCalledOnce();
+	});
+
+	it("close() resolves and destroys when quit() rejects", async () => {
+		const { client } = fakeRedis();
+		const destroy = vi.fn();
+		const t = await createRedisJobsTransport({
+			client: { ...client, quit: async () => Promise.reject(new Error("gone")), destroy },
+		});
+		await expect(t.close()).resolves.toBeUndefined();
+		expect(destroy).toHaveBeenCalledOnce();
 	});
 
 	it("falls back to default url, queue and block seconds", async () => {
