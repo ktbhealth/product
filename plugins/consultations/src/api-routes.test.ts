@@ -595,6 +595,19 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 			expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
 		}
 	});
+
+	it("404s when the object disappears between head and get", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
+		await post(id, new Uint8Array([1, 2, 3]), "audio/webm");
+		const original = fakeBucket.get;
+		fakeBucket.get = async () => null;
+		try {
+			expect((await get(id)).status).toBe(404);
+		} finally {
+			fakeBucket.get = original;
+		}
+	});
 });
 
 describe("GET /api/patients/:id/export", () => {

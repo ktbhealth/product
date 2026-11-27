@@ -56,8 +56,9 @@ import {
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { isDeferred, reviewDone, type ConsultationListItem } from "./ConsultationsPage.tsx";
 import type { ConsultationDetail, ConsultationDetailApi } from "./ConsultationDetailPage.tsx";
+import { PatientContextBar, SpeakerAvatar } from "./-chat.tsx";
 import { AudioTranscriptPanel, ConsultationAudioPlayer } from "./-transcript.tsx";
-import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
+import { BADGE_TONES, CONF_STYLE, speakerNumber, speakerTone } from "./-ui.ts";
 import { decryptConsultation, isEnvelope, parseAnamnesis, type ConsultationZk } from "../zk.ts";
 
 /** Whisper `avg_logprob` below this marks a segment as uncertain — the
@@ -210,14 +211,48 @@ export function ReviewModePage({
 	const transcriptOk = c.transcriptReviewedAt != null;
 	const anamnesisOk =
 		c.anamnesisReviewedVersion != null && c.anamnesisReviewedVersion === c.anamnesisVersion;
+	// Context-bar status chips — same semantics as the queue-rail chips:
+	// parked (deferred in the future), stale (approved anamnesis version
+	// no longer current) and the audio pipeline state.
+	const itemDeferred = c.deferredUntil != null && new Date(c.deferredUntil).getTime() > now;
+	const itemStale = c.anamnesisReviewedAt != null && c.anamnesisVersion != null && !anamnesisOk;
+	// `ConsultationDetail` carries no duration; the queue row does.
+	const audioDurationSec = queue.find((q) => q.id === c.id)?.audioDurationSec;
 
 	return (
 		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
-			<PageHeader
-				className="shrink-0"
-				title={c.patientName ?? `#${c.id}`}
+			<PageHeader className="shrink-0" title={t.review.title} />
+			<PatientContextBar
+				name={c.patientName ?? `#${c.id}`}
+				meta={[
+					<LocalDateTime key="created" value={c.createdAt} />,
+					...(audioDurationSec != null ? [fmtTime(audioDurationSec)] : []),
+				]}
+				chips={
+					<>
+						{itemDeferred ? (
+							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.neutral}`}>
+								{t.review.deferredTag}
+							</Badge>
+						) : null}
+						{itemStale ? (
+							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.blue}`}>
+								{t.list.staleBadge(c.anamnesisVersion!)}
+							</Badge>
+						) : null}
+						{c.audioKey === null ? (
+							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.neutral}`}>
+								{t.review.noAudioTag}
+							</Badge>
+						) : AUDIO_IN_FLIGHT.has(c.audioStatus) ? (
+							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.blue}`}>
+								{t.review.audioProcessingTag}
+							</Badge>
+						) : null}
+					</>
+				}
 				actions={
-					<div className="flex items-center gap-2">
+					<>
 						{api?.deferConsultation ? (
 							<DeferControl
 								c={c}
@@ -236,7 +271,7 @@ export function ReviewModePage({
 							<ArrowLeftIcon data-icon="inline-start" />
 							{t.review.queueLabel}
 						</Button>
-					</div>
+					</>
 				}
 			/>
 			<div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
@@ -544,6 +579,19 @@ function TranscriptStep({
 
 	const hasAudio = c.audioKey != null;
 	const rich = hasAudio && segments.length > 0;
+	// Speaker headers (P-118): SPEAKER_NN → localized "Speaker N"; named
+	// speakers keep their label — mirrors `AudioTranscriptPanel`.
+	const speakerLabel = (speaker: string): string => {
+		const n = speakerNumber(speaker);
+		return n !== null ? t.transcriptPanel.speakerN(n) : speaker;
+	};
+	/** Localized role chip for canonical speaker names; SPEAKER_NN and
+	 * unrecognized labels assert no role. */
+	const speakerRole = (speaker: string): string | null => {
+		if (speaker === "Doctor" || speaker === "Médico") return t.speakers.doctor;
+		if (speaker === "Patient" || speaker === "Paciente") return t.speakers.patient;
+		return null;
+	};
 	const uncertainIdxs = useMemo(
 		() =>
 			segments
@@ -787,16 +835,22 @@ function TranscriptStep({
 								)}
 							</div>
 							<ScrollArea className="min-h-0 flex-1">
-								<div className="space-y-0.5 pr-4">
+								<div className="space-y-1.5 pr-4">
 									{segments.map((s, i) => {
 										const edited = segEdits.get(i);
 										const shown = edited ?? s.text;
 										const uncertain = (s.avgLogprob ?? 0) < UNCERTAIN_LOGPROB;
+										// Chat grouping: the avatar + speaker header open a
+										// run of consecutive same-speaker rows; continuations
+										// indent to the avatar column so their bubbles stay
+										// aligned under the group they belong to.
+										const newSpeaker = i === 0 || s.speaker !== segments[i - 1]?.speaker;
+										const role = s.speaker !== undefined ? speakerRole(s.speaker) : null;
 										return (
 											<div
 												key={i}
 												ref={i === activeIdx ? activeRowRef : undefined}
-												className={`group flex gap-2 rounded-md px-2 py-1.5 text-sm leading-relaxed ${
+												className={`group flex gap-2.5 rounded-md px-2 py-1.5 ${
 													i === activeIdx ? "bg-primary/10" : ""
 												} ${
 													uncertain
@@ -806,39 +860,80 @@ function TranscriptStep({
 														: ""
 												}`}
 											>
-												<button
-													type="button"
-													onClick={() => seek(i)}
-													className="shrink-0 font-mono text-[10px] text-muted-foreground hover:text-foreground pt-1"
-													title={fmtTime(s.start)}
-												>
-													{fmtTime(s.start)}
-												</button>
-												{editing === i ? (
-													<div className="flex-1 space-y-2">
-														<textarea
-															className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-															rows={2}
-															value={draft}
-															onChange={(e) => setDraft(e.target.value)}
-														/>
-														<div className="flex gap-2">
-															<Button type="button" size="sm" disabled={busy} onClick={save}>
-																{t.review.saveEdit}
-															</Button>
-															<Button
-																type="button"
-																variant="ghost"
-																size="sm"
-																onClick={() => setEditing(null)}
-															>
-																{t.review.cancelEdit}
-															</Button>
-														</div>
-													</div>
+												{newSpeaker ? (
+													<SpeakerAvatar speaker={s.speaker} className="mt-0.5" />
 												) : (
-													<>
-														<span className="min-w-0 flex-1 cursor-pointer" onClick={() => seek(i)}>
+													<span aria-hidden="true" className="size-8 shrink-0" />
+												)}
+												<div className="min-w-0 flex-1 space-y-1">
+													<div className="flex items-center gap-2">
+														{newSpeaker ? (
+															<span className="text-xs font-semibold">
+																{s.speaker !== undefined
+																	? speakerLabel(s.speaker)
+																	: t.transcriptPanel.speakerUnknown}
+															</span>
+														) : null}
+														<button
+															type="button"
+															onClick={() => seek(i)}
+															className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums hover:text-foreground"
+															title={fmtTime(s.start)}
+														>
+															{fmtTime(s.start)}
+														</button>
+														{newSpeaker && role !== null ? (
+															<Badge
+																variant="secondary"
+																className={`text-[9px] ring-1 ${speakerTone(s.speaker!)}`}
+															>
+																{role}
+															</Badge>
+														) : null}
+														{api?.saveTranscriptEdits && editing !== i ? (
+															<button
+																type="button"
+																className="invisible ml-auto shrink-0 text-muted-foreground group-hover:visible hover:text-foreground"
+																title={t.review.editSegment}
+																onClick={() => {
+																	setDraft(shown);
+																	setEditing(i);
+																}}
+															>
+																<PencilIcon className="size-3.5" />
+															</button>
+														) : null}
+													</div>
+													{editing === i ? (
+														<div className="space-y-2">
+															<textarea
+																className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+																rows={2}
+																value={draft}
+																onChange={(e) => setDraft(e.target.value)}
+															/>
+															<div className="flex gap-2">
+																<Button type="button" size="sm" disabled={busy} onClick={save}>
+																	{t.review.saveEdit}
+																</Button>
+																<Button
+																	type="button"
+																	variant="ghost"
+																	size="sm"
+																	onClick={() => setEditing(null)}
+																>
+																	{t.review.cancelEdit}
+																</Button>
+															</div>
+														</div>
+													) : (
+														<div
+															className="w-fit max-w-full cursor-pointer rounded-2xl rounded-tl-none border bg-card px-3.5 py-2.5 text-sm leading-relaxed transition-colors hover:bg-muted/60"
+															onClick={() => seek(i)}
+															role="button"
+															tabIndex={0}
+															onKeyDown={(e) => (e.key === "Enter" ? seek(i) : undefined)}
+														>
 															{shown}
 															{edited != null ? (
 																<span className="ml-2 align-middle">
@@ -851,22 +946,9 @@ function TranscriptStep({
 																	</Badge>
 																</span>
 															) : null}
-														</span>
-														{api?.saveTranscriptEdits ? (
-															<button
-																type="button"
-																className="invisible shrink-0 pt-0.5 text-muted-foreground hover:text-foreground group-hover:visible"
-																title={t.review.editSegment}
-																onClick={() => {
-																	setDraft(shown);
-																	setEditing(i);
-																}}
-															>
-																<PencilIcon className="size-3.5" />
-															</button>
-														) : null}
-													</>
-												)}
+														</div>
+													)}
+												</div>
 											</div>
 										);
 									})}

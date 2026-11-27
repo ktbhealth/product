@@ -77,7 +77,8 @@ afterEach(cleanup);
 describe("ConsultationDetailPage", () => {
 	it("renders full detail with anamnesis and transcript", () => {
 		render(<ConsultationDetailPage c={detail({})} history={null} />);
-		expect(screen.getByText("Maria")).toBeTruthy();
+		// Name shows in the page heading and the patient context bar.
+		expect(screen.getAllByText("Maria").length).toBeGreaterThan(0);
 		expect(screen.getByText(/Consultation #10/)).toBeTruthy();
 		expect(screen.getByText(/engine: heuristic/)).toBeTruthy();
 		expect(screen.getByText(/Consent ✓/)).toBeTruthy();
@@ -92,9 +93,10 @@ describe("ConsultationDetailPage", () => {
 		const { container } = render(<ConsultationDetailPage c={detail({})} history={null} />);
 		expect(container.querySelector('[data-slot="page-container"]')).not.toBeNull();
 		expect(container.querySelector('[data-slot="page-header"]')).not.toBeNull();
-		// Meta card + anamnesis section cards + transcript card.
-		expect(screen.getByText("Details")).toBeTruthy();
-		expect(container.querySelectorAll('[data-slot="card"]').length).toBeGreaterThan(2);
+		// Transcript chat + anamnesis column cards; the status chips the
+		// old "Details" card carried now live in the patient context bar.
+		expect(screen.getByText("Browser voice")).toBeTruthy();
+		expect(container.querySelectorAll('[data-slot="card"]').length).toBeGreaterThanOrEqual(2);
 		// The transcript body scrolls inside a ScrollArea viewport.
 		expect(container.querySelector('[data-slot="scroll-area-viewport"]')).not.toBeNull();
 	});
@@ -294,7 +296,7 @@ describe("ConsultationDetailPage", () => {
 					zk={zk}
 				/>,
 			);
-			expect(await screen.findByText("Maria Dec")).toBeTruthy();
+			expect((await screen.findAllByText("Maria Dec")).length).toBeGreaterThan(0);
 			expect(await screen.findByText("decrypted transcript body")).toBeTruthy();
 			expect(await screen.findByText("Complaint: Dor")).toBeTruthy();
 			expect(await screen.findByText("Plan: Dipirona")).toBeTruthy();
@@ -332,7 +334,7 @@ describe("ConsultationDetailPage", () => {
 					zk={zk}
 				/>,
 			);
-			expect(await screen.findByText("Maria")).toBeTruthy();
+			expect((await screen.findAllByText("Maria")).length).toBeGreaterThan(0);
 		});
 
 		it("ignores late decrypt resolutions and rejections after unmount", async () => {
@@ -467,7 +469,8 @@ describe("ConsultationDetailPage", () => {
 				history={null}
 			/>,
 		);
-		expect(screen.getByText(/enhancing transcript/)).toBeTruthy();
+		// The status shows both as a context-bar chip and a panel badge.
+		expect(screen.getAllByText(/enhancing transcript/).length).toBeGreaterThan(0);
 		unmount();
 		render(
 			<ConsultationDetailPage
@@ -570,7 +573,7 @@ describe("ConsultationDetailPage", () => {
 		await act(async () => {});
 		expect(screen.queryByText("Integrity verified")).toBeNull();
 		expect(screen.queryByText("Integrity check failed")).toBeNull();
-		expect(screen.getByText("Maria")).toBeTruthy();
+		expect(screen.getAllByText("Maria").length).toBeGreaterThan(0);
 	});
 
 	it("renders transcript lines without speaker prefix and unknown speakers", () => {
@@ -1014,7 +1017,7 @@ describe("review stamps (PL-022)", () => {
 			/>,
 		);
 		expect(screen.getAllByText(/Deferred until/).length).toBeGreaterThan(0);
-		await user.click(screen.getAllByText(/Deferred until/)[0]!);
+		await user.click(screen.getByRole("button", { name: /Deferred until/ }));
 		await user.click(await screen.findByText("Back to the queue"));
 		expect(deferConsultation).toHaveBeenCalledWith({ data: { id: 10, until: null } });
 	});

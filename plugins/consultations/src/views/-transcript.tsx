@@ -32,6 +32,7 @@ import { Button } from "@ktbhealth/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES, speakerNumber, speakerTone } from "./-ui.ts";
+import { SpeakerChatRow } from "./-chat.tsx";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { TranscriptSegment } from "../segments.ts";
 
@@ -289,10 +290,12 @@ export interface SegmentEditing {
 }
 
 /**
- * Karaoke transcript view (PL-023): one timestamped row per ASR
- * segment, the row under the playhead highlighted live, click-to-seek.
- * Evidence `highlight` sentences still render as <mark> inside the
- * segment text.
+ * Karaoke transcript view (PL-023), chat-row style: consecutive
+ * same-speaker segments group under one `SpeakerChatRow` (avatar +
+ * name header), and each segment keeps its own mm:ss stamp inside the
+ * bubble — the line under the playhead highlights live, every line
+ * click-seeks. Evidence `highlight` sentences still render as <mark>
+ * inside the segment text.
  */
 function SegmentsKaraoke({
 	segments,
@@ -301,6 +304,7 @@ function SegmentsKaraoke({
 	onSeek,
 	editing,
 	speakerLabel,
+	unknownSpeaker,
 }: {
 	segments: readonly TranscriptSegment[];
 	/** Index of the segment under the playhead (-1 = none yet). */
@@ -308,8 +312,10 @@ function SegmentsKaraoke({
 	highlight?: readonly string[];
 	onSeek: (index: number) => void;
 	editing?: SegmentEditing;
-	/** Formats `speaker` for the badge (P-118). */
+	/** Formats `speaker` for the row header (P-118). */
 	speakerLabel: (speaker: string) => string;
+	/** Header name for segments with no diarized speaker. */
+	unknownSpeaker: string;
 }) {
 	const markRe = evidenceRegex(highlight);
 	const activeRef = useRef<HTMLButtonElement>(null);
@@ -318,116 +324,117 @@ function SegmentsKaraoke({
 		activeRef.current?.scrollIntoView({ block: "nearest" });
 		activeRowRef.current?.scrollIntoView({ block: "nearest" });
 	}, [active]);
-	// Editing adds buttons inside each row — the row becomes a div with
-	// clickable spans instead of one button (no nested interactives).
-	if (editing) {
-		return (
-			<div className="space-y-0.5">
-				{segments.map((s, i) => {
-					const edited = editing.segEdits.get(i);
-					const shown = edited ?? s.text;
-					return (
-						<div
-							key={i}
-							ref={i === active ? activeRowRef : undefined}
-							className={`group flex gap-2 rounded-md px-2 py-1.5 text-sm leading-relaxed transition-colors ${
-								i === active ? "bg-primary/10" : ""
-							}`}
-						>
-							<button
-								type="button"
-								onClick={() => onSeek(i)}
-								className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums hover:text-foreground"
-							>
-								{fmtTime(s.start)}
-							</button>
-							{s.speaker ? (
-								<Badge
-									variant="secondary"
-									className={`shrink-0 text-[9px] ring-1 ${speakerTone(s.speaker)}`}
+	// Speaker-turn grouping: consecutive segments attributed to the
+	// same speaker collapse into one avatar/name row — a monologue
+	// reads as a single chat turn instead of repeating the speaker on
+	// every ASR split.
+	const runs = useMemo(() => {
+		const out: { speaker?: string; items: { s: TranscriptSegment; i: number }[] }[] = [];
+		segments.forEach((s, i) => {
+			const last = out[out.length - 1];
+			if (last && last.speaker === s.speaker) last.items.push({ s, i });
+			else out.push({ speaker: s.speaker, items: [{ s, i }] });
+		});
+		return out;
+	}, [segments]);
+	return (
+		<div className="space-y-4">
+			{runs.map((run) => (
+				<SpeakerChatRow
+					key={run.items[0]!.i}
+					speaker={run.speaker}
+					name={run.speaker ? speakerLabel(run.speaker) : unknownSpeaker}
+				>
+					<div className="space-y-1.5">
+						{run.items.map(({ s, i }) => {
+							const edited = editing?.segEdits.get(i);
+							const shown = edited ?? s.text;
+							// Editing adds buttons inside each line — it becomes a
+							// div with clickable spans instead of one button (no
+							// nested interactives).
+							return editing ? (
+								<div
+									key={i}
+									ref={i === active ? activeRowRef : undefined}
+									className={`-mx-1 flex gap-2 rounded-md px-1 py-0.5 transition-colors ${
+										i === active ? "bg-primary/10" : ""
+									}`}
 								>
-									{speakerLabel(s.speaker)}
-								</Badge>
-							) : null}
-							{editing.editing === i ? (
-								<div className="flex-1 space-y-2">
-									<textarea
-										className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-										rows={2}
-										value={editing.draft}
-										onChange={(e) => editing.onDraft(e.target.value)}
-									/>
-									<div className="flex gap-2">
-										<Button
-											type="button"
-											size="sm"
-											disabled={editing.busy}
-											onClick={editing.onSave}
-										>
-											{editing.labels.save}
-										</Button>
-										<Button type="button" variant="ghost" size="sm" onClick={editing.onCancel}>
-											{editing.labels.cancel}
-										</Button>
-									</div>
-								</div>
-							) : (
-								<>
-									<span className="min-w-0 flex-1 cursor-pointer" onClick={() => onSeek(i)}>
-										{markRe ? markedText(shown, markRe) : shown}
-										{edited != null ? (
-											<span className="ml-2 align-middle">
-												<Badge
-													variant="secondary"
-													className={`text-[9px] ring-1 ${BADGE_TONES.blue}`}
-													title={s.text}
-												>
-													{editing.labels.editedTag}
-												</Badge>
-											</span>
-										) : null}
-									</span>
 									<button
 										type="button"
-										className="invisible shrink-0 pt-0.5 text-muted-foreground group-hover:visible hover:text-foreground"
-										title={editing.labels.edit}
-										onClick={() => editing.onStart(i)}
+										onClick={() => onSeek(i)}
+										className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums hover:text-foreground"
 									>
-										<PencilIcon className="size-3.5" />
+										{fmtTime(s.start)}
 									</button>
-								</>
-							)}
-						</div>
-					);
-				})}
-			</div>
-		);
-	}
-	return (
-		<div className="space-y-0.5">
-			{segments.map((s, i) => (
-				<button
-					key={i}
-					ref={i === active ? activeRef : undefined}
-					type="button"
-					onClick={() => onSeek(i)}
-					className={`flex w-full gap-2 rounded-md px-2 py-1.5 text-left text-sm leading-relaxed transition-colors ${
-						i === active ? "bg-primary/10" : "hover:bg-muted/50"
-					}`}
-				>
-					<span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
-						{fmtTime(s.start)}
-					</span>
-					{s.speaker ? (
-						<Badge
-							variant="secondary"
-							className={`shrink-0 text-[9px] ring-1 ${speakerTone(s.speaker)}`}
-						>
-							{speakerLabel(s.speaker)}
-						</Badge>
-					) : null}
-					<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
-				</button>
+									{editing.editing === i ? (
+										<div className="flex-1 space-y-2">
+											<textarea
+												className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+												rows={2}
+												value={editing.draft}
+												onChange={(e) => editing.onDraft(e.target.value)}
+											/>
+											<div className="flex gap-2">
+												<Button
+													type="button"
+													size="sm"
+													disabled={editing.busy}
+													onClick={editing.onSave}
+												>
+													{editing.labels.save}
+												</Button>
+												<Button type="button" variant="ghost" size="sm" onClick={editing.onCancel}>
+													{editing.labels.cancel}
+												</Button>
+											</div>
+										</div>
+									) : (
+										<>
+											<span className="min-w-0 flex-1 cursor-pointer" onClick={() => onSeek(i)}>
+												{markRe ? markedText(shown, markRe) : shown}
+												{edited != null ? (
+													<span className="ml-2 align-middle">
+														<Badge
+															variant="secondary"
+															className={`text-[9px] ring-1 ${BADGE_TONES.blue}`}
+															title={s.text}
+														>
+															{editing.labels.editedTag}
+														</Badge>
+													</span>
+												) : null}
+											</span>
+											<button
+												type="button"
+												className="invisible shrink-0 pt-0.5 text-muted-foreground group-hover:visible hover:text-foreground"
+												title={editing.labels.edit}
+												onClick={() => editing.onStart(i)}
+											>
+												<PencilIcon className="size-3.5" />
+											</button>
+										</>
+									)}
+								</div>
+							) : (
+								<button
+									key={i}
+									ref={i === active ? activeRef : undefined}
+									type="button"
+									onClick={() => onSeek(i)}
+									className={`-mx-1 flex w-full gap-2 rounded-md px-1 py-0.5 text-left transition-colors ${
+										i === active ? "bg-primary/10" : "hover:bg-muted/50"
+									}`}
+								>
+									<span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+										{fmtTime(s.start)}
+									</span>
+									<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
+								</button>
+							);
+						})}
+					</div>
+				</SpeakerChatRow>
 			))}
 		</div>
 	);
@@ -835,6 +842,7 @@ export function AudioTranscriptPanel({
 								onSeek={seek}
 								editing={segmentEditing}
 								speakerLabel={speakerLabel}
+								unknownSpeaker={t.transcriptPanel.speakerUnknown}
 							/>
 						</TabsContent>
 						<TabsContent value="changes" className="space-y-3 pt-2">
@@ -849,6 +857,7 @@ export function AudioTranscriptPanel({
 						onSeek={seek}
 						editing={segmentEditing}
 						speakerLabel={speakerLabel}
+						unknownSpeaker={t.transcriptPanel.speakerUnknown}
 					/>
 				)
 			) : tabbed ? (

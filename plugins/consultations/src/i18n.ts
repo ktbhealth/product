@@ -149,6 +149,9 @@ export interface ConsultationMessages {
 		readonly deferredUntil: (date: string) => string;
 		readonly approvedToast: string;
 		readonly queueDoneToast: string;
+		/** Patient-bar chip when the audio pipeline failed (the transcript
+		 * panel explains the fallback separately). */
+		readonly audioFailed: string;
 	};
 	/** Guided review mode (PL-023): queue rail + transcript/anamnesis steps. */
 	readonly review: {
@@ -209,6 +212,8 @@ export interface ConsultationMessages {
 		readonly noChanges: string;
 		readonly tabOriginal: string;
 		readonly speakerN: (n: number) => string;
+		/** Chat-row header name for segments with no diarized speaker. */
+		readonly speakerUnknown: string;
 	};
 	readonly newConsultation: {
 		readonly title: string;
@@ -326,6 +331,15 @@ export interface ConsultationMessages {
 		readonly transcriptionFailed: string;
 		readonly botFailed: (status: number) => string;
 		readonly patientFallback: string;
+		/** Chat-workspace additions: context-bar meta, transcript-header
+		 * controls, and the anamnesis drawer. */
+		readonly anamnesisDrawer: string;
+		readonly anamnesisDrawerDescription: string;
+		readonly stopCapture: string;
+		readonly copyTranscript: string;
+		readonly transcriptCopied: string;
+		readonly exportTranscript: string;
+		readonly yearsOld: (age: number) => string;
 	};
 	readonly admin: {
 		readonly title: string;
@@ -524,6 +538,7 @@ const en: ConsultationMessages = {
 		deferredUntil: paramMessage("en", "Deferred until {date}", ["date"]),
 		approvedToast: "Anamnesis approved",
 		queueDoneToast: "Review queue complete",
+		audioFailed: "audio failed",
 	},
 	review: {
 		title: "Review mode",
@@ -583,6 +598,7 @@ const en: ConsultationMessages = {
 		noChanges: "No differences between original and corrected.",
 		tabOriginal: "Original",
 		speakerN: paramMessage("en", "Speaker {n}", ["n"]),
+		speakerUnknown: "Speaker",
 	},
 	newConsultation: {
 		title: "New consultation",
@@ -717,6 +733,14 @@ const en: ConsultationMessages = {
 		transcriptionFailed: "transcription failed",
 		botFailed: paramMessage("en", "bot failed: HTTP {status}", ["status"]),
 		patientFallback: "patient",
+		anamnesisDrawer: "AI anamnesis",
+		anamnesisDrawerDescription:
+			"Structured draft generated from the transcript — review each section, then save.",
+		stopCapture: "Stop capture",
+		copyTranscript: "Copy transcript",
+		transcriptCopied: "Transcript copied to clipboard",
+		exportTranscript: "Download transcript (.txt)",
+		yearsOld: paramMessage("en", "{age} years", ["age"]),
 	},
 	admin: {
 		title: "Consultations",
@@ -915,6 +939,7 @@ const ptBR: ConsultationMessages = {
 		deferredUntil: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
 		approvedToast: "Anamnese aprovada",
 		queueDoneToast: "Fila de revisão concluída",
+		audioFailed: "falha no áudio",
 	},
 	review: {
 		title: "Modo de revisão",
@@ -974,6 +999,7 @@ const ptBR: ConsultationMessages = {
 		tabCorrected: "Corrigida",
 		tabOriginal: "Original",
 		speakerN: paramMessage("pt-BR", "Locutor {n}", ["n"]),
+		speakerUnknown: "Locutor",
 	},
 	newConsultation: {
 		title: "Nova consulta",
@@ -1111,6 +1137,14 @@ const ptBR: ConsultationMessages = {
 		transcriptionFailed: "falha na transcrição",
 		botFailed: paramMessage("pt-BR", "bot falhou: HTTP {status}", ["status"]),
 		patientFallback: "paciente",
+		anamnesisDrawer: "Anamnese IA",
+		anamnesisDrawerDescription:
+			"Rascunho estruturado gerado a partir da transcrição — revise cada seção e salve.",
+		stopCapture: "Parar captura",
+		copyTranscript: "Copiar transcrição",
+		transcriptCopied: "Transcrição copiada para a área de transferência",
+		exportTranscript: "Baixar transcrição (.txt)",
+		yearsOld: paramMessage("pt-BR", "{age} anos", ["age"]),
 	},
 	admin: {
 		title: "Consultas",
@@ -1311,6 +1345,7 @@ const es: ConsultationMessages = {
 		deferredUntil: paramMessage("es", "Aplazada hasta {date}", ["date"]),
 		approvedToast: "Anamnesis aprobada",
 		queueDoneToast: "Cola de revisión completada",
+		audioFailed: "falló el audio",
 	},
 	review: {
 		title: "Modo de revisión",
@@ -1371,6 +1406,7 @@ const es: ConsultationMessages = {
 		tabCorrected: "Corregida",
 		tabOriginal: "Original",
 		speakerN: paramMessage("es", "Hablante {n}", ["n"]),
+		speakerUnknown: "Hablante",
 	},
 	newConsultation: {
 		title: "Nueva consulta",
@@ -1510,6 +1546,14 @@ const es: ConsultationMessages = {
 		transcriptionFailed: "falló la transcripción",
 		botFailed: paramMessage("es", "el bot falló: HTTP {status}", ["status"]),
 		patientFallback: "paciente",
+		anamnesisDrawer: "Anamnesis IA",
+		anamnesisDrawerDescription:
+			"Borrador estructurado generado a partir de la transcripción — revise cada sección y guarde.",
+		stopCapture: "Detener captura",
+		copyTranscript: "Copiar transcripción",
+		transcriptCopied: "Transcripción copiada al portapapeles",
+		exportTranscript: "Descargar transcripción (.txt)",
+		yearsOld: paramMessage("es", "{age} años", ["age"]),
 	},
 	admin: {
 		title: "Consultas",

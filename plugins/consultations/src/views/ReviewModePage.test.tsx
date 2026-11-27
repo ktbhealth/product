@@ -168,7 +168,8 @@ describe("ReviewModePage — queue overview", () => {
 	it("queue rows show chief complaint, duration and the pending steps", () => {
 		renderPage({}, [item({ chiefComplaint: "dor lombar", audioKey: "k", audioDurationSec: 1452 })]);
 		expect(screen.getByText("dor lombar")).toBeTruthy();
-		expect(screen.getByText("24:12")).toBeTruthy(); // 1452s
+		// Duration shows on the queue row and in the patient context bar.
+		expect(screen.getAllByText("24:12").length).toBeGreaterThan(0); // 1452s
 		// Pending-step chips: transcript unstamped + anamnesis unapproved.
 		expect(screen.getAllByText("Transcript").length).toBeGreaterThan(0);
 		expect(screen.getAllByText("Anamnesis").length).toBeGreaterThan(0);

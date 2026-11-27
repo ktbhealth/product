@@ -245,13 +245,16 @@ describe("NewConsultationPage", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("renders empty state and steps", () => {
+	it("renders empty state and steps", async () => {
+		const user = userEvent.setup();
 		renderPage();
 		expect(screen.getByText("New consultation")).toBeTruthy();
-		expect(screen.getByText(/structured anamnesis appears here/)).toBeTruthy();
 		expect(screen.getByText("Prepare")).toBeTruthy();
 		expect(screen.getByText("Transcribe")).toBeTruthy();
 		expect(screen.getByText("Review")).toBeTruthy();
+		// The anamnesis surface lives in the drawer now.
+		await user.click(screen.getByText("AI anamnesis"));
+		await screen.findByText(/structured anamnesis appears here/);
 	});
 
 	it("creates a new patient from name + age and offers to complete the record", async () => {

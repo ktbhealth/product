@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	ArrowLeftIcon,
 	CalendarIcon,
@@ -56,6 +56,7 @@ import {
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
+import { PatientContextBar } from "./-chat.tsx";
 import { parseTranscriptSegments } from "../segments.ts";
 import {
 	parseTranscriptEdits,
@@ -76,7 +77,7 @@ function Chip({
 	tone = "neutral",
 }: {
 	children: React.ReactNode;
-	tone?: "neutral" | "green" | "blue";
+	tone?: "neutral" | "green" | "blue" | "red";
 }) {
 	return (
 		<Badge variant="secondary" className={`ring-1 ${BADGE_TONES[tone]}`}>
@@ -201,6 +202,24 @@ export function ConsultationDetailPage({
 	const navigate = useNavigate();
 	const router = useRouter();
 	const [toast, setToast] = useState<ToastData | null>(null);
+
+	// The detail workspace pins to the viewport: the page itself never
+	// scrolls — the transcript chat and the anamnesis column carry
+	// their own scroll instead. The available height is measured, not
+	// guessed: header/footer live in the app shell and their sizes vary.
+	const frameRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = frameRef.current;
+		if (!el) return;
+		const fit = () => {
+			const footer = document.querySelector("footer");
+			const reserve = (footer?.getBoundingClientRect().height ?? 0) + 16;
+			el.style.height = `${Math.max(320, window.innerHeight - el.getBoundingClientRect().top - reserve)}px`;
+		};
+		fit();
+		window.addEventListener("resize", fit);
+		return () => window.removeEventListener("resize", fit);
+	}, []);
 
 	// Review stamps (PL-022) — optimistic local overrides applied after
 	// each mutation; the row's columns are the server-side truth.
@@ -498,6 +517,103 @@ export function ConsultationDetailPage({
 			.then(() => setToast({ id: Date.now(), text: t.detail.anamnesisCopied }));
 	}
 
+	// Patient context strip (chat-workspace chrome): patient + visit
+	// metadata, the status chips the old "Details" card carried
+	// (consent, audio pipeline, review stamps, deferred, integrity,
+	// history) and the defer control.
+	const contextMeta: ReactNode[] = [
+		<LocalDateTime
+			key="date"
+			value={c.createdAt}
+			locale={locale}
+			options={{ dateStyle: "medium", timeStyle: "short" }}
+		/>,
+	];
+	const source = sourceLabel(t, c.source);
+	if (source) contextMeta.push(source);
+	if (c.engine) contextMeta.push(t.common.engine(c.engine));
+	const audioChip =
+		v.audioStatus === "failed" ? (
+			<Chip tone="red">{t.detail.audioFailed}</Chip>
+		) : PIPELINE_IN_FLIGHT.has(v.audioStatus ?? "") ? (
+			<Chip tone="blue">
+				{v.audioStatus === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}
+			</Chip>
+		) : null;
+	const contextChips = (
+		<>
+			{c.consentAt ? (
+				<Chip tone="green">
+					{t.detail.consentLabel}{" "}
+					<LocalDateTime
+						value={c.consentAt}
+						locale={locale}
+						options={{ year: "numeric", month: "numeric", day: "numeric" }}
+					/>
+				</Chip>
+			) : (
+				<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
+			)}
+			{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
+			{audioChip}
+			{review.transcriptAt ? (
+				<Chip tone="green">{t.detail.transcriptConfirmed(shortDate(review.transcriptAt))}</Chip>
+			) : null}
+			{anamnesisApproved ? (
+				<Chip tone="green">{t.detail.anamnesisApproved(review.anamnesisVersion!)}</Chip>
+			) : anamnesisStale ? (
+				<Chip tone="blue">{t.detail.anamnesisStale(c.anamnesisVersion!)}</Chip>
+			) : null}
+			{isDeferred ? (
+				<Chip tone="blue">{t.detail.deferredUntil(shortDate(review.deferredUntil!))}</Chip>
+			) : null}
+			{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
+			{history && history.count > 0 ? (
+				<Chip>{t.detail.previousConsultations(history.count)}</Chip>
+			) : null}
+		</>
+	);
+	const deferAction = api?.deferConsultation ? (
+		<Popover open={deferOpen} onOpenChange={setDeferOpen}>
+			<PopoverTrigger render={<Button variant="outline" size="sm" />}>
+				<CalendarIcon data-icon="inline-start" />
+				{isDeferred
+					? t.detail.deferredUntil(shortDate(review.deferredUntil!))
+					: t.detail.deferLabel}
+			</PopoverTrigger>
+			<PopoverContent className="w-auto p-0" align="end">
+				<Calendar
+					mode="single"
+					locale={CALENDAR_LOCALES[locale]}
+					selected={isDeferred ? new Date(review.deferredUntil!) : undefined}
+					disabled={{ before: new Date() }}
+					onSelect={(date) => {
+						if (date) {
+							defer(date);
+							setDeferOpen(false);
+						}
+					}}
+				/>
+				{isDeferred ? (
+					<div className="border-t border-border p-2">
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							disabled={busy}
+							onClick={() => {
+								defer(null);
+								setDeferOpen(false);
+							}}
+						>
+							{t.detail.deferResume}
+						</Button>
+					</div>
+				) : null}
+			</PopoverContent>
+		</Popover>
+	) : undefined;
+
 	// Locked record (T-145): the device holds no grant for this
 	// consultation's DEK — nothing clinical is rendered.
 	if (locked) {
@@ -530,11 +646,12 @@ export function ConsultationDetailPage({
 	}
 
 	return (
-		<PageContainer className="max-w-none">
+		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
 			{/* PageHeader renders any ReactNode, but its `title` prop type
 			    collides with the HTML `title` attribute upstream — cast the
 			    h1 so the page keeps a single heading landmark. */}
 			<PageHeader
+				className="shrink-0"
 				title={
 					(
 						<h1>
@@ -573,46 +690,6 @@ export function ConsultationDetailPage({
 							<ArrowLeftIcon data-icon="inline-start" />
 							{t.detail.back}
 						</Button>
-						{api?.deferConsultation ? (
-							<Popover open={deferOpen} onOpenChange={setDeferOpen}>
-								<PopoverTrigger render={<Button variant="outline" size="sm" />}>
-									<CalendarIcon data-icon="inline-start" />
-									{isDeferred
-										? t.detail.deferredUntil(shortDate(review.deferredUntil!))
-										: t.detail.deferLabel}
-								</PopoverTrigger>
-								<PopoverContent className="w-auto p-0" align="end">
-									<Calendar
-										mode="single"
-										locale={CALENDAR_LOCALES[locale]}
-										selected={isDeferred ? new Date(review.deferredUntil!) : undefined}
-										disabled={{ before: new Date() }}
-										onSelect={(date) => {
-											if (date) {
-												defer(date);
-												setDeferOpen(false);
-											}
-										}}
-									/>
-									{isDeferred ? (
-										<div className="border-t border-border p-2">
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												disabled={busy}
-												onClick={() => {
-													defer(null);
-													setDeferOpen(false);
-												}}
-											>
-												{t.detail.deferResume}
-											</Button>
-										</div>
-									) : null}
-								</PopoverContent>
-							</Popover>
-						) : null}
 						{v.anamnesis ? (
 							<>
 								<Button type="button" variant="outline" onClick={copy}>
@@ -642,71 +719,160 @@ export function ConsultationDetailPage({
 				}
 			/>
 
-			{/* ---------- meta ---------- */}
-			<Card>
-				<CardHeader>
-					<CardTitle>{t.detail.metaTitle}</CardTitle>
-				</CardHeader>
-				<CardContent className="flex flex-wrap items-center gap-1.5">
-					<Chip>{sourceLabel(t, c.source)}</Chip>
-					{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
-					{c.consentAt ? (
-						<Chip tone="green">
-							{t.detail.consentLabel}{" "}
-							<LocalDateTime
-								value={c.consentAt}
-								locale={locale}
-								options={{ year: "numeric", month: "numeric", day: "numeric" }}
-							/>
-						</Chip>
-					) : (
-						<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
-					)}
-					{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
-					{isDeferred ? (
-						<Chip tone="blue">{t.detail.deferredUntil(shortDate(review.deferredUntil!))}</Chip>
-					) : null}
-					{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
-					{history && history.count > 0 ? (
-						<Chip>{t.detail.previousConsultations(history.count)}</Chip>
-					) : null}
-				</CardContent>
-			</Card>
+			{/* ---------- patient context ---------- */}
+			<PatientContextBar
+				className="shrink-0"
+				name={v.patientName ?? `#${c.id}`}
+				meta={contextMeta}
+				chips={contextChips}
+				actions={deferAction}
+			/>
 
 			{history && history.count > 0 ? (
-				<details className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+				<details className="shrink-0 overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
 					<summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
 						{t.sections.historico} · {t.detail.previousConsultations(history.count)}
 					</summary>
-					<ul className="space-y-2 border-t border-border px-4 py-3 text-sm">
-						{history.visits.map((v) => (
-							<li key={v.id}>
-								<span className="text-muted-foreground">
-									<LocalDateTime value={v.date} locale={locale} options={{ dateStyle: "medium" }} />{" "}
-									· {t.common.consultationId(v.id).toLowerCase()}
-								</span>
-								{v.chiefComplaint ? <div>{t.detail.complaint(v.chiefComplaint)}</div> : null}
-								{v.plan ? <div>{t.detail.plan(v.plan)}</div> : null}
-							</li>
-						))}
-					</ul>
-					<p className="px-4 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
+					<div className="max-h-48 overflow-y-auto border-t border-border">
+						<ul className="space-y-2 px-4 py-3 text-sm">
+							{history.visits.map((v) => (
+								<li key={v.id}>
+									<span className="text-muted-foreground">
+										<LocalDateTime
+											value={v.date}
+											locale={locale}
+											options={{ dateStyle: "medium" }}
+										/>{" "}
+										· {t.common.consultationId(v.id).toLowerCase()}
+									</span>
+									{v.chiefComplaint ? <div>{t.detail.complaint(v.chiefComplaint)}</div> : null}
+									{v.plan ? <div>{t.detail.plan(v.plan)}</div> : null}
+								</li>
+							))}
+						</ul>
+						<p className="px-4 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
+					</div>
 				</details>
 			) : null}
 
-			<div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
+			<div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
+				{/* ---------- transcript chat ---------- */}
+				<Card className="flex min-h-0 flex-1 flex-col lg:flex-[1.35]">
+					<CardHeader className="shrink-0 border-b">
+						<div className="flex items-center justify-between gap-2">
+							<CardTitle>{t.common.transcript}</CardTitle>
+							{!review.transcriptAt && api?.reviewTranscript ? (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									disabled={busy}
+									onClick={confirmTranscript}
+								>
+									<CheckIcon data-icon="inline-start" />
+									{t.detail.confirmTranscript}
+								</Button>
+							) : null}
+						</div>
+					</CardHeader>
+					<CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+						<ScrollArea className="min-h-0 flex-1">
+							<div className="pr-3" ref={transcriptRef}>
+								{segEditing === "full" ? (
+									<div className="space-y-2">
+										<textarea
+											className="min-h-48 w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed"
+											value={segDraft}
+											onChange={(e) => setSegDraft(e.target.value)}
+										/>
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												size="sm"
+												disabled={editBusy}
+												onClick={saveTranscriptEdit}
+											>
+												{t.review.saveEdit}
+											</Button>
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => setSegEditing(null)}
+											>
+												{t.review.cancelEdit}
+											</Button>
+										</div>
+									</div>
+								) : (
+									<>
+										<AudioTranscriptPanel
+											i18n={i18n}
+											locale={locale}
+											consultationId={c.id}
+											audioStatus={v.audioStatus}
+											audioSrc={zk ? zkAudioUrl : undefined}
+											hasAudio={Boolean(v.audioKey)}
+											browserText={v.transcript}
+											serverText={v.serverTranscript}
+											correctedText={v.correctedTranscript}
+											highlight={evidence?.sentences}
+											segments={segments}
+											segmentEditing={
+												canEditTranscript && segments.length > 0
+													? {
+															segEdits,
+															editing: typeof segEditing === "number" ? segEditing : null,
+															draft: segDraft,
+															busy: editBusy,
+															onStart: (i) => {
+																setSegDraft(segEdits.get(i) ?? segments[i]?.text ?? "");
+																setSegEditing(i);
+															},
+															onDraft: setSegDraft,
+															onSave: saveTranscriptEdit,
+															onCancel: () => setSegEditing(null),
+															labels: {
+																edit: t.review.editSegment,
+																save: t.review.saveEdit,
+																cancel: t.review.cancelEdit,
+																editedTag: t.review.editedTag,
+															},
+														}
+													: undefined
+											}
+										/>
+										{/* Legacy/no-segments rows: a whole-doc correction lands
+										 * in the same edit log — identical to review mode. */}
+										{canEditTranscript && segments.length === 0 ? (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												className="mt-2"
+												onClick={() => {
+													setSegDraft(projected);
+													setSegEditing("full");
+												}}
+											>
+												<PencilIcon data-icon="inline-start" />
+												{t.review.editFullText}
+											</Button>
+										) : null}
+									</>
+								)}
+							</div>
+						</ScrollArea>
+					</CardContent>
+				</Card>
+
 				{/* ---------- anamnesis ---------- */}
-				<Card>
-					<CardHeader className="border-b">
+				<Card className="flex min-h-0 flex-1 flex-col">
+					<CardHeader className="shrink-0 border-b">
 						<div className="flex items-center justify-between gap-2">
 							<CardTitle>{t.common.anamnesis}</CardTitle>
 							<span className="flex items-center gap-2">
-								{anamnesisStale ? (
-									<Chip tone="blue">{t.detail.anamnesisStale(c.anamnesisVersion!)}</Chip>
-								) : null}
-								{anamnesisApproved ? (
-									<Chip tone="green">{t.detail.anamnesisApproved(review.anamnesisVersion!)}</Chip>
-								) : v.anamnesis && api?.approveAnamnesis ? (
+								{!anamnesisApproved && v.anamnesis && api?.approveAnamnesis ? (
 									<>
 										<Button
 											type="button"
@@ -733,9 +899,9 @@ export function ConsultationDetailPage({
 							</span>
 						</div>
 					</CardHeader>
-					<CardContent>
+					<CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
 						{v.anamnesis ? (
-							<ScrollArea className="h-[70vh]">
+							<ScrollArea className="min-h-0 flex-1">
 								<div className="divide-y divide-border pr-4">
 									{(
 										Object.keys(t.sections).filter(
@@ -824,120 +990,6 @@ export function ConsultationDetailPage({
 								) : null}
 							</Empty>
 						)}
-					</CardContent>
-				</Card>
-
-				{/* ---------- side: transcript ---------- */}
-				<Card className="lg:sticky lg:top-20">
-					<CardHeader className="border-b">
-						<div className="flex items-center justify-between gap-2">
-							<CardTitle>{t.common.transcript}</CardTitle>
-							{review.transcriptAt ? (
-								<Chip tone="green">
-									{t.detail.transcriptConfirmed(shortDate(review.transcriptAt))}
-								</Chip>
-							) : api?.reviewTranscript ? (
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									disabled={busy}
-									onClick={confirmTranscript}
-								>
-									<CheckIcon data-icon="inline-start" />
-									{t.detail.confirmTranscript}
-								</Button>
-							) : null}
-						</div>
-					</CardHeader>
-					<CardContent>
-						<ScrollArea className="h-[70vh]">
-							<div className="pr-3" ref={transcriptRef}>
-								{segEditing === "full" ? (
-									<div className="space-y-2">
-										<textarea
-											className="min-h-48 w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed"
-											value={segDraft}
-											onChange={(e) => setSegDraft(e.target.value)}
-										/>
-										<div className="flex gap-2">
-											<Button
-												type="button"
-												size="sm"
-												disabled={editBusy}
-												onClick={saveTranscriptEdit}
-											>
-												{t.review.saveEdit}
-											</Button>
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												onClick={() => setSegEditing(null)}
-											>
-												{t.review.cancelEdit}
-											</Button>
-										</div>
-									</div>
-								) : (
-									<>
-										<AudioTranscriptPanel
-											i18n={i18n}
-											locale={locale}
-											consultationId={c.id}
-											audioStatus={v.audioStatus}
-											audioSrc={zk ? zkAudioUrl : undefined}
-											hasAudio={Boolean(v.audioKey)}
-											browserText={v.transcript}
-											serverText={v.serverTranscript}
-											correctedText={v.correctedTranscript}
-											highlight={evidence?.sentences}
-											segments={segments}
-											segmentEditing={
-												canEditTranscript && segments.length > 0
-													? {
-															segEdits,
-															editing: typeof segEditing === "number" ? segEditing : null,
-															draft: segDraft,
-															busy: editBusy,
-															onStart: (i) => {
-																setSegDraft(segEdits.get(i) ?? segments[i]?.text ?? "");
-																setSegEditing(i);
-															},
-															onDraft: setSegDraft,
-															onSave: saveTranscriptEdit,
-															onCancel: () => setSegEditing(null),
-															labels: {
-																edit: t.review.editSegment,
-																save: t.review.saveEdit,
-																cancel: t.review.cancelEdit,
-																editedTag: t.review.editedTag,
-															},
-														}
-													: undefined
-											}
-										/>
-										{/* Legacy/no-segments rows: a whole-doc correction lands
-										 * in the same edit log — identical to review mode. */}
-										{canEditTranscript && segments.length === 0 ? (
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												className="mt-2"
-												onClick={() => {
-													setSegDraft(projected);
-													setSegEditing("full");
-												}}
-											>
-												<PencilIcon data-icon="inline-start" />
-												{t.review.editFullText}
-											</Button>
-										) : null}
-									</>
-								)}
-							</div>
-						</ScrollArea>
 					</CardContent>
 				</Card>
 			</div>
