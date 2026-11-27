@@ -9,6 +9,7 @@
 		"./element-kinds": "./src/element-kinds.ts",
 		"./routes": "./src/routes.ts",
 		"./capabilities": "./src/capabilities.ts",
+		"./keywords": "./src/keywords.ts",
 		"./middleware": "./src/middleware.ts"
 	},
 	"scripts": {
