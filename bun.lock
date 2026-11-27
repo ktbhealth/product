@@ -147,6 +147,7 @@
       "dependencies": {
         "@ktb/eval-core": "workspace:*",
         "@ktb/pipeline": "workspace:*",
+        "@ktb/transcript-cleanup": "workspace:*",
         "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
         "eta": "^4.6.0",
@@ -791,6 +792,16 @@
         "@ktb/db": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+      },
+    },
+    "packages/transcript-cleanup": {
+      "name": "@ktb/transcript-cleanup",
+      "dependencies": {
+        "@ktb/eval-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "vitest": "5.1.0",
       },
     },
     "packages/transcription": {
@@ -1987,10 +1998,11 @@
     "plugins/pipeline-transcript": {
       "name": "@ktb/plugin-pipeline-transcript",
       "dependencies": {
-        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
+        "@ktb/transcript-cleanup": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -3183,6 +3195,8 @@
     "@ktb/tenant-plugin": ["@ktb/tenant-plugin@workspace:plugins/tenant"],
 
     "@ktb/theme": ["@ktb/theme@workspace:plugins/theme"],
+
+    "@ktb/transcript-cleanup": ["@ktb/transcript-cleanup@workspace:packages/transcript-cleanup"],
 
     "@ktb/transcription": ["@ktb/transcription@workspace:packages/transcription"],
 

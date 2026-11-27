@@ -5,20 +5,22 @@ import type * as Layer from "effect/Layer";
 
 import type { PipelinePack, PipelineStage, StageContext, StageResult } from "@ktb/pipeline";
 import {
-	charRangesFor,
-	cleanupTranscript,
-	cleanupTranscriptGated,
 	DecisionsPort,
-	detectAsrErrorRanges,
 	LlmPort,
 	PlatformDecisions,
 	PlatformLlm,
-	segmentCharSpans,
-	type AsrRange,
 	type EditList,
 	type PortError,
 	type RunRecord,
-} from "@ktb/eval-consultation";
+} from "@ktb/eval-core";
+import {
+	charRangesFor,
+	cleanupTranscript,
+	cleanupTranscriptGated,
+	detectAsrErrorRanges,
+	segmentCharSpans,
+	type AsrRange,
+} from "@ktb/transcript-cleanup";
 
 /**
  * pack.ts — the `consultation-transcript` pipeline pack: contract
