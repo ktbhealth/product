@@ -219,7 +219,7 @@ export type ScheduleDeleteResult =
 
 /** One job kind as consoles see it: handler registration merged with
  * plugin `jobs.kind`/`jobs.schedulable` declarations (P-094).
- * `registered` is the live jobHandlers state — a declared-but-
+ * `registered` is the live job-handler registry state — a declared-but-
  * unregistered kind is catalog data, not dispatchable. */
 export interface JobKindInfo {
 	readonly kind: string;
@@ -426,7 +426,7 @@ export interface ServerRuntime {
 		readonly runNow: (id: string) => Promise<CronRunResult | null>;
 	};
 	/** Registered job kinds the scheduler can dispatch — the kind
-	 * picker's source of truth (jobHandlers registry keys). Undefined
+	 * picker's source of truth (the composition-built registry's keys). Undefined
 	 * outside the composed app. */
 	readonly jobKinds?: () => readonly string[];
 	/** Durable orchestration runner (P-120 phase 2): `startRun`

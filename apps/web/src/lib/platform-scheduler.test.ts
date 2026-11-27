@@ -6,7 +6,7 @@ import { insertScheduledJob } from "@ktb/scheduler-port";
 // Scheduler dispatch (P-094): the scheduler-heartbeat cron runner claims
 // due scheduled_jobs rows and dispatches each through dispatchScheduledJob.
 // With AUDIO_QUEUE bound the job becomes a queue envelope; without it the
-// inline fallback kind-dispatches through jobHandlers with the same
+// inline fallback kind-dispatches through the job-handler registry with the same
 // job_runs projection writes. env ships AUDIO_QUEUE bound by default, so
 // the inline path tests unbind it before composing.
 
@@ -32,10 +32,9 @@ const compose = async (configure: (env: Record<string, unknown>) => void = () =>
 	configure(env as Record<string, unknown>);
 	const platform = await import("./platform.ts");
 	const { getServerRuntime } = await import("@ktb/server-fns");
-	// registerJobHandler must come from the same post-reset module
-	// instance platform.ts composed against.
-	const { registerJobHandler } = await import("@ktb/jobs-port");
-	return { runtime: getServerRuntime(), platform, registerJobHandler };
+	// The job-handler registry platform.ts composed against is
+	// exported off the same post-reset module instance.
+	return { runtime: getServerRuntime(), platform };
 };
 
 const dueJob = (
@@ -69,10 +68,10 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		{ timeout: 30_000 },
 		async () => {
 			hoisted.handled = [];
-			const { runtime, platform, registerJobHandler } = await compose((env) => {
+			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
 			});
-			registerJobHandler("test.sched.ok", {
+			platform.jobHandlerRegistry.register("test.sched.ok", {
 				decodePayload: (payload) => ({ wrapped: payload }),
 				handle: async (payload, envelope) => {
 					hoisted.handled.push({
@@ -101,10 +100,10 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		"marks job_runs failed and counts the dispatch as failed when the handler throws",
 		{ timeout: 30_000 },
 		async () => {
-			const { runtime, platform, registerJobHandler } = await compose((env) => {
+			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
 			});
-			registerJobHandler("test.sched.boom", {
+			platform.jobHandlerRegistry.register("test.sched.boom", {
 				handle: async () => {
 					throw new Error("handler down");
 				},
@@ -122,10 +121,10 @@ describe("platform scheduler-heartbeat dispatch", () => {
 	);
 
 	it("stringifies non-Error handler failures into job_runs", { timeout: 30_000 }, async () => {
-		const { runtime, platform, registerJobHandler } = await compose((env) => {
+		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
-		registerJobHandler("test.sched.stringboom", {
+		platform.jobHandlerRegistry.register("test.sched.stringboom", {
 			handle: async () => {
 				throw "string failure";
 			},
@@ -157,10 +156,10 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		hoisted.upsertFails = true;
 		try {
-			const { runtime, platform, registerJobHandler } = await compose((env) => {
+			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
 			});
-			registerJobHandler("test.sched.projfail", { handle: async () => {} });
+			platform.jobHandlerRegistry.register("test.sched.projfail", { handle: async () => {} });
 			await dueJob(platform, "test.sched.projfail");
 
 			expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
@@ -180,8 +179,8 @@ describe("platform scheduler-heartbeat dispatch", () => {
 
 describe("platform capability views", () => {
 	it("exposes job-kind, schedulable and topic declarations", { timeout: 90_000 }, async () => {
-		const { runtime, registerJobHandler } = await compose();
-		registerJobHandler("test.cap.view", { handle: async () => {} });
+		const { runtime, platform } = await compose();
+		platform.jobHandlerRegistry.register("test.cap.view", { handle: async () => {} });
 
 		const kinds = runtime.jobKindInfo!();
 		expect(kinds.map((info) => info.kind)).toContain("test.cap.view");
@@ -196,11 +195,11 @@ describe("platform capability views", () => {
 
 describe("platform schedules capability", () => {
 	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 90_000 }, async () => {
-		const { runtime, platform, registerJobHandler } = await compose((env) => {
+		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
 		const schedules = runtime.schedules!;
-		registerJobHandler("test.sched.cap", { handle: async () => {} });
+		platform.jobHandlerRegistry.register("test.sched.cap", { handle: async () => {} });
 
 		expect(runtime.jobKinds!()).toContain("test.sched.cap");
 		expect(await schedules.list()).toEqual([]);

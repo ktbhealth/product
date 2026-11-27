@@ -8,13 +8,14 @@ import { GENERIC_CONTRIBUTION_SLOT, type ContributionKindDescriptor } from "@ktb
  * Work-orchestration capability declarations (P-094): the generic
  * `contributions` channel kinds a plugin uses to declare WHAT the
  * runtime may trigger — never how it executes. Handlers stay
- * imperative (`registerJobHandler` in @ktb/jobs-port, service layers);
+ * imperative (the composition-built job-handler registry in
+ * @ktb/jobs-port, wired by the composition root's edge modules);
  * these entries are serializable metadata the composition root
  * collects once and exposes through `ServerRuntime`:
  *
  * - `jobs.kind` — advisory metadata for a registered job kind
  *   (description, concurrency/attempt hints for consoles). The live
- *   `jobHandlers` registration stays authoritative for execution.
+ *   registry registration stays authoritative for execution.
  * - `jobs.schedulable` — opts a job kind into runtime scheduling:
  *   the /platform/cron picker lists it, `paramsSchema` (a JSON Schema
  *   document) validates schedule params at create time, and
@@ -74,7 +75,7 @@ export const CAPABILITY_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[
 // Meta schemas (the serializable contract on PluginContribution.meta)
 // ---------------------------------------------------------------------------
 
-/** `jobs.kind` meta — advisory only; `jobHandlers` registration is
+/** `jobs.kind` meta — advisory only; the registry registration is
  * authoritative for concurrency/attempts at execution time. */
 export const JobKindMeta = Schema.Struct({
 	description: Schema.optionalKey(Schema.String),
@@ -110,7 +111,7 @@ export type EventTopicMeta = Schema.Schema.Type<typeof EventTopicMeta>;
 // ---------------------------------------------------------------------------
 
 /** Declare metadata for a job kind — `kind` is both the entry id and
- * the jobHandlers key it describes. */
+ * the registry key it describes. */
 export const jobKindContribution = (kind: string, meta: JobKindMeta = {}): PluginContribution => ({
 	kind: JOB_KIND,
 	id: kind,

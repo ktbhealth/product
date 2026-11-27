@@ -7,7 +7,7 @@ import { Db, type DbClient } from "@ktb/db";
 import { consultations } from "@ktb/db/schema";
 import { EvalRunner, type EvalRunnerItem, type Persona } from "@ktb/eval-consultation";
 import { evalInstance, evalInstanceItem, type EvalInstanceItem } from "@ktb/eval-persona";
-import { registerJobHandler } from "@ktb/jobs-port";
+import type { JobRegistration } from "@ktb/jobs-port";
 import { peekServerRuntime } from "@ktb/server-fns";
 
 import { datasetPinFor, parseJson, runRecordRows, runToExperiment } from "./core-map.ts";
@@ -270,43 +270,42 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 });
 
 /**
- * Register the eval.run consumer handler — called once at module
- * scope in index.ts (plugins are imported eagerly by app-host
- * discovery, so the registry is populated before any queue batch is
- * consumed).
+ * The eval.run consumer registration — a plain value the composition
+ * root (apps/web lib/platform.ts) registers into its job-handler
+ * registry at startup. Kept out of the plugin manifest because
+ * `contributions` meta is serializable data; the handler itself is a
+ * function, so wiring stays at the edge like the audio consumer's.
  *
  * eval.run rides the in-app AUDIO_QUEUE transport ONLY: the handler
  * needs the app ServerRuntime (Db + EvalRunner live inside it), and
- * apps/jobs-worker (the Redis transport) has no such runtime — it only
+ * apps/jobs-worker (the Redis transport) composes no plugins — it only
  * ever sees jobs.ping today.
  */
-export const registerEvalRunJobHandler = (): void => {
-	registerJobHandler(EVAL_RUN_JOB_KIND, {
-		// A malformed payload throws here → the consumer marks the run
-		// failed and acks (poison is never retried).
-		decodePayload: (payload) => Schema.decodeUnknownSync(EvalRunJobPayload)(payload),
-		handle: async (payload) => {
-			const rt = peekServerRuntime();
-			if (rt === undefined) {
-				throw new Error("eval.run requires the app runtime (setServerRuntime)");
-			}
-			const { runId } = payload as { readonly runId: number };
-			await rt.run(
-				Effect.gen(function* () {
-					const db = yield* Db;
-					const runner = yield* Effect.serviceOption(EvalRunner);
-					if (Option.isNone(runner)) {
-						// Honest failure — no silent stuck "queued" row.
-						yield* failRun(
-							db,
-							runId,
-							"no EvalRunner bound — eval runs need the local runner driver (dev:node)",
-						);
-						return;
-					}
-					yield* executeEvalRun(db, runner.value, runId);
-				}),
-			);
-		},
-	});
-};
+export const evalRunJobRegistration = (): JobRegistration => ({
+	// A malformed payload throws here → the consumer marks the run
+	// failed and acks (poison is never retried).
+	decodePayload: (payload) => Schema.decodeUnknownSync(EvalRunJobPayload)(payload),
+	handle: async (payload) => {
+		const rt = peekServerRuntime();
+		if (rt === undefined) {
+			throw new Error("eval.run requires the app runtime (setServerRuntime)");
+		}
+		const { runId } = payload as { readonly runId: number };
+		await rt.run(
+			Effect.gen(function* () {
+				const db = yield* Db;
+				const runner = yield* Effect.serviceOption(EvalRunner);
+				if (Option.isNone(runner)) {
+					// Honest failure — no silent stuck "queued" row.
+					yield* failRun(
+						db,
+						runId,
+						"no EvalRunner bound — eval runs need the local runner driver (dev:node)",
+					);
+					return;
+				}
+				yield* executeEvalRun(db, runner.value, runId);
+			}),
+		);
+	},
+});

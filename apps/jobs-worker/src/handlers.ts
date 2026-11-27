@@ -1,22 +1,18 @@
 /**
  * Job-kind registrations for the local jobs worker (P-098 B2).
  *
- * The shared `jobHandlers` registry (@ktb/jobs-port) is populated at
- * composition time — domain packages self-register on import, and
- * app-bound kinds are wired here or in sibling modules (orchestration.ts
- * owns `orchestrator.step`). Today the only built-in is the ops
- * `jobs.ping` smoke kind; the eval runner registers `eval.run` when
- * the in-platform eval lands.
+ * The worker's job-handler registry (@ktb/jobs-port
+ * `makeJobHandlerRegistry`) is built at composition time in main.ts —
+ * this module only contributes the ops `jobs.ping` smoke kind.
+ * Sibling modules own their kinds (orchestration.ts owns
+ * `orchestrator.step`). The worker composes no plugins, so kinds like
+ * `eval.run` stay unregistered here and degrade to "unknown job kind".
  */
 
-import { registerJobHandler } from "@ktb/jobs-port";
+import type { JobHandlerRegistry } from "@ktb/jobs-port";
 
-let registered = false;
-
-export const registerWorkerHandlers = (): void => {
-	if (registered) return;
-	registered = true;
-	registerJobHandler("jobs.ping", {
+export const registerWorkerHandlers = (registry: JobHandlerRegistry): void => {
+	registry.register("jobs.ping", {
 		handle: async () => {},
 	});
 };

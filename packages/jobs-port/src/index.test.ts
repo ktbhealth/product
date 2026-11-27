@@ -17,9 +17,8 @@ import {
 	JobsLive,
 	listJobRuns,
 	makeJobConsumer,
+	makeJobHandlerRegistry,
 	makeJobs,
-	jobHandlers,
-	registerJobHandler,
 	upsertJobRun,
 	type JobEnvelope,
 	type JobRecord,
@@ -684,19 +683,35 @@ describe("makeJobConsumer", () => {
 	});
 });
 
-describe("jobHandlers registry", () => {
-	it("registers and replaces kind handlers", () => {
+describe("makeJobHandlerRegistry", () => {
+	it("registers, replaces and looks up kind handlers per instance", () => {
+		const registry = makeJobHandlerRegistry();
 		const first: JobRegistration = { handle: async () => {} };
 		const second: JobRegistration = { handle: async () => {} };
 		const kind = "test.registry";
-		try {
-			registerJobHandler(kind, first);
-			expect(jobHandlers[kind]).toBe(first);
-			registerJobHandler(kind, second);
-			expect(jobHandlers[kind]).toBe(second);
-		} finally {
-			delete jobHandlers[kind];
-		}
-		expect(jobHandlers[kind]).toBeUndefined();
+		registry.register(kind, first);
+		expect(registry.lookup(kind)).toBe(first);
+		expect(registry.has(kind)).toBe(true);
+		registry.register(kind, second);
+		expect(registry.lookup(kind)).toBe(second);
+		expect(registry.kinds()).toEqual([kind]);
+		expect(registry.handlers()[kind]).toBe(second);
+	});
+
+	it("keeps registries isolated — no shared module state", () => {
+		const a = makeJobHandlerRegistry();
+		const b = makeJobHandlerRegistry();
+		a.register("test.only-a", { handle: async () => {} });
+		expect(b.lookup("test.only-a")).toBeUndefined();
+		expect(b.kinds()).toEqual([]);
+	});
+
+	it("handlers() snapshots the table at call time", () => {
+		const registry = makeJobHandlerRegistry();
+		registry.register("test.snap", { handle: async () => {} });
+		const before = registry.handlers();
+		registry.register("test.late", { handle: async () => {} });
+		expect(before["test.late"]).toBeUndefined();
+		expect(registry.handlers()["test.late"]).toBeDefined();
 	});
 });

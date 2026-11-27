@@ -25,7 +25,7 @@ import { Permissions } from "@ktb/rbac";
 
 import { parseJson } from "./core-map.ts";
 import { EvalValidatorPage } from "./platform-page.tsx";
-import { EVAL_RUN_JOB_KIND, executeEvalRun, registerEvalRunJobHandler } from "./run-job.ts";
+import { EVAL_RUN_JOB_KIND, executeEvalRun } from "./run-job.ts";
 import { evalRun, evalRunRecord, evalRunSample, type EvalRunSample } from "./schema.ts";
 
 export { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
@@ -687,11 +687,10 @@ export const evalValidatorRoutesPlugin = definePlugin({
 	routes: [physical("/api", "../../../../plugins/eval-validator/src/api-routes")],
 });
 
-// WS-E: populate the shared jobHandlers registry with the eval.run
-// consumer — module scope runs at import time, and app-host's eager
-// plugins/* glob guarantees registration before any queue batch is
-// consumed.
-registerEvalRunJobHandler();
+// WS-E: the eval.run consumer registration lives in ./run-job.ts as a
+// plain JobRegistration value — apps/web's composition root
+// (lib/platform.ts) registers it into its job-handler registry. There
+// is no module-scope mutation: plugin manifests stay data-only.
 
 export const plugins: readonly Plugin[] = [
 	evalValidatorTablesPlugin,
