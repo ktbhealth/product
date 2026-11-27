@@ -28,6 +28,10 @@ old URLs redirect).
   pitch/site/theme repos; not part of this build.
 - **`docs`** — documentation site (Fumadocs + TanStack Start on
   Cloudflare Workers); product/architecture docs live there, not here.
+  Do NOT hand-edit `repos/docs` content — generated pages come from
+  `bun run db:erd`, and prose sync is owned by the `docs` peregrin
+  workflow (workflows/docs in the metarepo). If your change makes docs
+  stale, note it in the PR body; the sync agent picks it up.
 
 ## Commands
 
