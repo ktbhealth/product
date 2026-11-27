@@ -70,7 +70,7 @@ const fakeJobs = () => {
 	const sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: number | null };
+		options?: { tenantId?: string | number | null };
 	}[] = [];
 	const jobs: JobsEnqueuer = {
 		enqueue: async (kind, payload, options): Promise<JobEnvelope> => {
@@ -119,7 +119,7 @@ interface HostHarness {
 	readonly sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: number | null };
+		options?: { tenantId?: string | number | null };
 	}[];
 }
 

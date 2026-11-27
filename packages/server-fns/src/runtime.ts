@@ -1,6 +1,7 @@
 import type * as Effect from "effect/Effect";
 import type { I18nShape, ScopeChain } from "@ktb/i18n";
 import type { ExportFormat, RecordExporter } from "@ktb/interop";
+import type { TenantId } from "@ktb/tenant";
 import type { TenantSelector } from "@ktb/tenant/selector";
 
 /** The slice of R2 needed to drop objects — the real R2Bucket satisfies this. */
@@ -46,11 +47,13 @@ export interface AudioQueueSender {
 	send(message: AudioJobMessage): Promise<unknown>;
 }
 
-/** Options accepted by the generic jobs enqueue port (PL-007). */
+/** Options accepted by the generic jobs enqueue port (PL-007).
+ * Structural mirror of `@ktb/jobs-port`'s EnqueueJobOptions. */
 export interface JobEnqueueOptions {
-	/** Owning tenant (`groups.id`) or null/absent for personal scope —
-	 * same convention as {@link AudioJobMessage.tenantId}. */
-	readonly tenantId?: number | null;
+	/** Owning tenant (@ktb/tenant TenantId) or null/absent for personal
+	 * scope — numeric strings normalize to the integer `tenant_id`
+	 * column form in the job_runs projection. */
+	readonly tenantId?: TenantId | null;
 	/** Optional pointer to where the payload lives (never PHI/blob inline). */
 	readonly payloadRef?: string | null;
 }
@@ -176,7 +179,7 @@ export interface ScheduledJobInfo {
 	readonly nextRunAt: number;
 	readonly lastRunAt: number | null;
 	readonly status: ScheduledJobStatus;
-	readonly tenantId: number | null;
+	readonly tenantId: TenantId | null;
 	readonly createdBy: string | null;
 	readonly createdAt: number;
 	readonly updatedAt: number;
@@ -189,7 +192,7 @@ export interface ScheduledJobCreateInput {
 	readonly params?: unknown;
 	readonly cronExpr?: string | null;
 	readonly runAt?: number | null;
-	readonly tenantId?: number | null;
+	readonly tenantId?: TenantId | null;
 	readonly createdBy?: string | null;
 }
 

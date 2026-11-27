@@ -84,7 +84,7 @@ const fakeJobs = (fail?: { at?: number; value?: unknown }) => {
 	const sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: number | null };
+		options?: { tenantId?: string | number | null };
 	}[] = [];
 	let calls = 0;
 	const jobs: JobsEnqueuer = {
@@ -141,7 +141,7 @@ interface Harness {
 	readonly sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: number | null };
+		options?: { tenantId?: string | number | null };
 	}[];
 	readonly registration: ReturnType<typeof orchestratorStepRegistration>;
 }

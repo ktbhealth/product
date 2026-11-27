@@ -16,9 +16,15 @@ import type { TenantSelector } from "./selector.ts";
  * expressed against these three — see `requireTenantRole`. */
 export type TenantRole = "owner" | "admin" | "member";
 
+/** Tenant identity as carried on descriptors, wire payloads and
+ * scoping helpers — `string | number` because selector transport and
+ * some directories render ids as text. The canonical stored form is
+ * the integer `tenant_id` column value (see {@link tenantStorageId}). */
+export type TenantId = string | number;
+
 /** A tenant as stored/looked up — identity without request role. */
 export interface TenantDescriptor {
-	readonly id: string | number;
+	readonly id: TenantId;
 	readonly kind: string;
 	readonly slug: string;
 	readonly meta?: unknown;
@@ -49,14 +55,14 @@ export const Tenant = Context.Reference<Tenant | null>("@ktb/tenant/Tenant", {
  * touching every clinic) bind a wider set via `withTenantAccess`;
  * personal (`NULL`) rows are always part of the visible set.
  */
-export const TenantAccess = Context.Reference<readonly (string | number)[] | null>(
+export const TenantAccess = Context.Reference<readonly TenantId[] | null>(
 	"@ktb/tenant/TenantAccess",
 	{ defaultValue: () => null },
 );
 
 /** Run `effect` with an explicit accessible-tenant set (system flows). */
 export const withTenantAccess = <A, E, R>(
-	tenantIds: readonly (string | number)[],
+	tenantIds: readonly TenantId[],
 	effect: Effect.Effect<A, E, R>,
 ) => Effect.provideService(effect, TenantAccess, tenantIds);
 
@@ -86,12 +92,25 @@ const normalizeTenantId = (id: string | number): string | number =>
  * pre-tenancy messages keep working unchanged.
  */
 export const runAsTenantId = <A, E, R>(
-	tenantId: string | number | null | undefined,
+	tenantId: TenantId | null | undefined,
 	effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
 	tenantId === null || tenantId === undefined
 		? effect
 		: Effect.provideService(effect, TenantAccess, [normalizeTenantId(tenantId)]);
+
+/**
+ * `tenant_id` column storage form of a {@link TenantId}: numeric ids
+ * (a number, or a numeric-looking string per {@link normalizeTenantId})
+ * normalize to the integer the column stores; non-numeric strings
+ * resolve to `null` — they cannot be stamped, same contract as
+ * {@link tenantScopeId} which delegates here.
+ */
+export const tenantStorageId = (id: TenantId | null | undefined): number | null => {
+	if (id === null || id === undefined) return null;
+	if (typeof id === "number") return Number.isFinite(id) ? id : null;
+	return /^-?\d+$/.test(id) ? Number(id) : null;
+};
 
 /**
  * The `tenant_id` value a bound {@link Tenant} stamps and scopes by.
@@ -100,11 +119,8 @@ export const runAsTenantId = <A, E, R>(
  * they resolve to `null` (personal scope) rather than pointing at a
  * bogus tenant. `null` tenant (personal/system scope) → `null`.
  */
-export const tenantScopeId = (tenant: Tenant | null): number | null => {
-	if (tenant === null) return null;
-	const id = Number(tenant.id);
-	return Number.isFinite(id) ? id : null;
-};
+export const tenantScopeId = (tenant: Tenant | null): number | null =>
+	tenant === null ? null : tenantStorageId(tenant.id);
 
 /** Selector did not resolve to an accessible tenant (unknown slug,
  * foreign tenant, unauthenticated caller). */
