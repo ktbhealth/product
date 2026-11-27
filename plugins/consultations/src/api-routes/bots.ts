@@ -1,8 +1,10 @@
-import { Bot, STUB_CALL } from "@ktb/bot";
+import { Bot } from "@ktb/bot";
 import { Consultations } from "@ktb/consultations";
 import { Effect } from "effect";
 import { ensureDoctorUser, createPluginApiRoute, run, runAs } from "@ktb/server-fns";
 import { Tenant, runAsTenantId, tenantScopeId } from "@ktb/tenant";
+
+import { STUB_CALL } from "../stub-call.ts";
 
 /**
  * POST /api/bots — send a bot into a teleconsult.

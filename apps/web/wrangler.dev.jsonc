@@ -28,7 +28,17 @@
 	//   AI_BASE_URL=http://localhost:8080/v1   # OpenAI-compatible server
 	//     (whisper.cpp / llama.cpp) exposing /audio/transcriptions and
 	//     /chat/completions
-	"vars": { "CAPTCHA_STUB": "1", "EMAIL_STUB": "1", "AI_STUB": "1" },
+	"vars": {
+		"CAPTCHA_STUB": "1",
+		"EMAIL_STUB": "1",
+		"AI_STUB": "1",
+		// Product literals consumed by generic infra packages via config
+		// (mirrors alchemy.run.ts bindings): recall bot display name,
+		// observability env-var prefix, SchedulerDo queue binding name.
+		"RECALL_BOT_NAME": "KTB Health",
+		"OBSERVABILITY_ENV_PREFIX": "KTB_",
+		"SCHEDULER_QUEUE_BINDING": "AUDIO_QUEUE",
+	},
 	"r2_buckets": [
 		{ "binding": "AUDIO_BUCKET", "bucket_name": "ktb-audio" },
 		{ "binding": "THEME_ASSETS_BUCKET", "bucket_name": "ktb-theme-assets" },

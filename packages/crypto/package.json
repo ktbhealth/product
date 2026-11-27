@@ -9,7 +9,6 @@
 		"./wrap": "./src/wrap.ts",
 		"./sign": "./src/sign.ts",
 		"./digest": "./src/digest.ts",
-		"./entities": "./src/entities.ts",
 		"./kdf": "./src/kdf.ts",
 		"./keyring": "./src/keyring.ts",
 		"./recovery": "./src/recovery.ts",

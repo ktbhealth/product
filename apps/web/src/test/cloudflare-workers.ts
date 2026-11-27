@@ -126,6 +126,11 @@ export const env = {
 	TURNSTILE_SECRET_KEY: undefined as string | undefined,
 	CAPTCHA_STUB: undefined as string | undefined,
 	RECALL_API_KEY: undefined as string | undefined,
+	// Product literals the generic infra packages read via config —
+	// mirrors the alchemy.run.ts / wrangler*.jsonc bindings.
+	RECALL_BOT_NAME: "KTB Health",
+	OBSERVABILITY_ENV_PREFIX: "KTB_",
+	SCHEDULER_QUEUE_BINDING: "AUDIO_QUEUE",
 	// Fixed admin allowlist so platform-gate tests are deterministic.
 	PLATFORM_ADMIN_EMAILS: "platform-admin@ktb.test",
 };

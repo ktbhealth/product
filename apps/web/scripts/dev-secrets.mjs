@@ -35,10 +35,11 @@ const OPTIONAL = [
 	"EMAIL_STUB",
 	"SMTP_URL",
 	"EMAIL_FROM",
-	// Telemetry config — mirrors OBSERVABILITY_ENV_KEYS in
+	// Telemetry config — mirrors observabilityEnvKeys("KTB_") in
 	// @ktb/observability (config.ts); keep in sync. These are optional
 	// OTEL_*/KTB_* vars so `OTEL_EXPORTER_OTLP_ENDPOINT=… bun run
 	// dev:secrets` reaches the workerd bindings via .dev.vars.
+	"OBSERVABILITY_ENV_PREFIX",
 	"OTEL_SDK_DISABLED",
 	"OTEL_SERVICE_NAME",
 	"OTEL_RESOURCE_ATTRIBUTES",

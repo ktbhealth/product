@@ -19,7 +19,7 @@ const ENDPOINT = "https://otel-collector.test:4318";
 const fullEnv = {
 	OTEL_EXPORTER_OTLP_ENDPOINT: ENDPOINT,
 	OTEL_SERVICE_NAME: "ktb-test",
-	KTB_ENVIRONMENT: "test",
+	ENVIRONMENT: "test",
 };
 
 describe("otlpTelemetryDriver", () => {
@@ -341,7 +341,7 @@ describe("makeOtlpLayers", () => {
 	it("counts flush timeouts on telemetryErrors", async () => {
 		const config = telemetryConfigFromEnv({
 			...fullEnv,
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "100",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "100",
 		});
 		// A transport that never answers makes every export hang — the
 		// bounded drain must time out and count stage=flush.
@@ -376,8 +376,8 @@ describe("makeOtlpLayers", () => {
 			// One-item batches fork the export immediately on push — the
 			// test polls for the first failed attempt instead of waiting
 			// out the exporter's retry schedule.
-			KTB_TELEMETRY_MAX_BATCH_SIZE: "1",
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
+			TELEMETRY_MAX_BATCH_SIZE: "1",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
 		});
 		const serverError = HttpClient.make((request) =>
 			Effect.succeed(
@@ -423,8 +423,8 @@ describe("makeOtlpLayers", () => {
 	it("counts failed export attempts (HTTP 400) on telemetryErrors", async () => {
 		const config = telemetryConfigFromEnv({
 			...fullEnv,
-			KTB_TELEMETRY_MAX_BATCH_SIZE: "1",
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
+			TELEMETRY_MAX_BATCH_SIZE: "1",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
 		});
 		const badRequest = HttpClient.make((request) =>
 			Effect.succeed(
@@ -447,8 +447,8 @@ describe("makeOtlpLayers", () => {
 	it("does not count successful export responses on telemetryErrors", async () => {
 		const config = telemetryConfigFromEnv({
 			...fullEnv,
-			KTB_TELEMETRY_MAX_BATCH_SIZE: "1",
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
+			TELEMETRY_MAX_BATCH_SIZE: "1",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
 		});
 		const stub = makeStubHttp();
 		const runtime = ManagedRuntime.make(makeOtlpLayers(config, stub.layer));
@@ -471,8 +471,8 @@ describe("makeOtlpLayers", () => {
 	it("counts transport-level export failures on telemetryErrors", async () => {
 		const config = telemetryConfigFromEnv({
 			...fullEnv,
-			KTB_TELEMETRY_MAX_BATCH_SIZE: "1",
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
+			TELEMETRY_MAX_BATCH_SIZE: "1",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
 		});
 		const unreachable = HttpClient.make((request) =>
 			Effect.fail(
@@ -548,7 +548,7 @@ describe("TelemetryOtlpLive via driver provides", () => {
 		// export of the (empty) registry against the unreachable host.
 		const layer = otlpTelemetryDriver.provides({
 			...fullEnv,
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "100",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "100",
 		});
 		const runtime = ManagedRuntime.make(layer as Layer.Layer<unknown, unknown, never>);
 		try {

@@ -61,6 +61,7 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
 	const sent: unknown[] = [];
 	return {
 		env: {
+			SCHEDULER_QUEUE_BINDING: "AUDIO_QUEUE",
 			AUDIO_QUEUE: {
 				send: async (body: unknown) => {
 					sent.push(body);

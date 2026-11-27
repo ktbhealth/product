@@ -45,7 +45,15 @@ export interface SchedulerQueueBinding {
 /** Worker env the DO reads — bindings arrive untyped from workerd. */
 export interface SchedulerDoEnv {
 	readonly DB?: SqlDatabase;
-	readonly AUDIO_QUEUE?: SchedulerQueueBinding;
+	/**
+	 * Worker var naming the env binding that carries the jobs queue
+	 * (e.g. `"AUDIO_QUEUE"`). Supplied by the composing app — the DO
+	 * stays domain-blind and resolves `env[queueBinding]` at alarm
+	 * time. Unset/blank or unbound → the sweep is skipped (the
+	 * heartbeat cron remains the sweep of record).
+	 */
+	readonly SCHEDULER_QUEUE_BINDING?: string;
+	readonly [key: string]: unknown;
 }
 
 const PENDING_KEY = "pending";
@@ -84,7 +92,11 @@ export class SchedulerDo {
 	 * alarm just re-sweeps; the lease claim prevents double-fire. */
 	async alarm(): Promise<void> {
 		const db = this.env.DB === undefined ? undefined : makeDb(this.env.DB);
-		const queue = this.env.AUDIO_QUEUE;
+		const binding = this.env.SCHEDULER_QUEUE_BINDING;
+		const queue =
+			typeof binding === "string" && binding.trim() !== ""
+				? (this.env[binding] as SchedulerQueueBinding | undefined)
+				: undefined;
 		if (db && queue) {
 			// send must reject on transport failure — makeJobs marks the
 			// job_runs row failed and rethrows so dispatch reports it.

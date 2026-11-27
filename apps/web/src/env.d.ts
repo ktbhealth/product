@@ -8,6 +8,11 @@ declare namespace Cloudflare {
 		CAPTCHA_STUB?: string;
 		/** Recall.ai bot provider API key (bot-recall driver). */
 		RECALL_API_KEY?: string;
+		/** Display name the recall bot joins meetings under (product branding). */
+		RECALL_BOT_NAME?: string;
+		/** Env var naming the queue binding the SchedulerDo dispatches
+		 * through (e.g. "AUDIO_QUEUE") — the DO resolves it dynamically. */
+		SCHEDULER_QUEUE_BINDING?: string;
 		/** Comma-separated admin allowlist for the /platform console (P-026). */
 		PLATFORM_ADMIN_EMAILS?: string;
 		/** R2 bucket for consultation audio (P-015). */
@@ -47,6 +52,9 @@ declare namespace Cloudflare {
 		KTB_LOG_LEVEL?: string;
 		/** "1" disables all telemetry export. */
 		OTEL_SDK_DISABLED?: string;
+		/** Deployment env-var prefix for the telemetry vars above
+		 * (e.g. "KTB_" → KTB_TELEMETRY_*); unset reads unprefixed names. */
+		OBSERVABILITY_ENV_PREFIX?: string;
 		/** Bearer token guarding GET /api/metrics (secret). */
 		METRICS_SCRAPE_TOKEN?: string;
 		/** Optional override for the minted `ai-bridge connect` argv
