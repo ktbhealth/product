@@ -171,7 +171,7 @@ describe("SchedulerDo scheduling", () => {
 		["blank", "   "],
 		["non-string", 42],
 	])("alarm() skips the sweep when SCHEDULER_QUEUE_BINDING is %s", async (_label, binding) => {
-		const sql = makeD1(SCHEDULER_DDL);
+		const sql = makeTestD1();
 		const db = makeDb(sql);
 		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
 		const { state } = makeState();
@@ -182,7 +182,7 @@ describe("SchedulerDo scheduling", () => {
 	});
 
 	it("alarm() skips the sweep when the named binding is absent", async () => {
-		const sql = makeD1(SCHEDULER_DDL);
+		const sql = makeTestD1();
 		const db = makeDb(sql);
 		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
 		const { state } = makeState();
