@@ -17,8 +17,8 @@ import {
 	ensureSessionUser,
 	getSessionUser,
 	getTenantSelector,
-	peekServerRuntime,
 	runAs,
+	runtimeProbe,
 } from "@ktb/server-fns";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 import * as Effect from "effect/Effect";
@@ -246,7 +246,7 @@ export const startOrchestrationFn = createServerFn({ method: "POST" })
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
-				const startRun = peekServerRuntime()?.orchestration?.startRun;
+				const startRun = runtimeProbe((r) => r.orchestration?.startRun);
 				if (startRun === undefined) {
 					return {
 						ok: false as const,

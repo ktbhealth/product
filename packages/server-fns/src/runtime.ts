@@ -549,6 +549,24 @@ export const getServerRuntime = (): ServerRuntime => {
  */
 export const peekServerRuntime = (): ServerRuntime | undefined => runtime;
 
+/**
+ * Degrade-tolerant capability probe for call sites that must survive
+ * an unregistered runtime (ops consoles, optional admin writes):
+ * `pick` runs against the registered runtime and its result is
+ * returned verbatim — `undefined` when no runtime is registered, when
+ * `pick` throws, or when it yields `undefined` for an absent
+ * capability. Callers map `undefined` to their documented degrade
+ * value (null / "unavailable" / 503) instead of crashing on the
+ * throwing `getServerRuntime`.
+ */
+export const runtimeProbe = <A>(pick: (runtime: ServerRuntime) => A): A | undefined => {
+	try {
+		return pick(getServerRuntime());
+	} catch {
+		return undefined;
+	}
+};
+
 /** `run` against the registered runtime. */
 export const run = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
 	getServerRuntime().run(effect);
