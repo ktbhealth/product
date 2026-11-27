@@ -14,7 +14,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import { insertNotification, NotificationsLive } from "./Notifications.ts";
 import { Route as NotificationsRoute } from "./api-routes/notifications.ts";
@@ -34,9 +34,7 @@ const handlersOf = (r: unknown) =>
 // D1 + the real NotificationsLive. runAs mirrors @ktb/app-host: it
 // binds the request Principal for the duration of the effect.
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-INSERT INTO "user" VALUES ('u-sse', 'Dra SSE', 'sse@x.com', 0, NULL, 0, 0);
-CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES "user"(id), kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
+INSERT INTO "user" (id, name, email, email_verified, image, created_at, updated_at) VALUES ('u-sse', 'Dra SSE', 'sse@x.com', 0, NULL, 0, 0);
 `;
 
 const SESSION_USER = { id: "u-sse", email: "sse@x.com", name: "Dra SSE" };
@@ -60,7 +58,7 @@ const authStub = Auth.of({
 	},
 });
 
-const db = makeDb(makeD1(DDL));
+const db = makeDb(makeTestD1(DDL));
 
 const infra = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(Auth, authStub), makeEventBus());
 

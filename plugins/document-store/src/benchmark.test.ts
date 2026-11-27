@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { documentCollections, documentRecords } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -11,30 +12,7 @@ import { defineCollection } from "./collection.ts";
 import { DocumentCollections } from "./collection.ts";
 import { f } from "./fields.ts";
 import { FIND_SCAN_MAX_ROWS } from "./query.ts";
-import { DocumentStore, DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
-
-/**
- * find() scale benchmark (T-129) — NOT part of the normal test run.
- * Opt in explicitly:
- *
- *   DOCUMENT_STORE_BENCH=1 bunx vitest run src/benchmark.test.ts
- *
- * Measures the find() cost on better-sqlite3 at 1k and 10k stored
- * documents (the FIND_SCAN_MAX_ROWS ceiling) to pin the documented
- * scale ceiling in service.ts's module doc. Rows are bulk-inserted
- * directly (bypassing per-op validation — this measures READ cost,
- * not write throughput). T-149: the scalar filter compiles to a SQL
- * `json_extract` prefilter (see sqlfilter.ts) while the `$regex`
- * filter stays fully JS-side — the pair shows both ends of the
- * pushdown spectrum.
- */
-
-const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-`;
+import { DocumentStore, DocumentStoreLive } from "./service.ts";
 
 const RUN = process.env.DOCUMENT_STORE_BENCH === "1";
 
@@ -55,7 +33,7 @@ describe.skipIf(!RUN)("document-store find() benchmark", () => {
 	const COLLECTIONS = [benchDef("bench.1k"), benchDef("bench.10k")];
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: COLLECTIONS }),

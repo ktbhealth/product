@@ -16,7 +16,12 @@ const mocks = vi.hoisted(() => ({
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => mocks);
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return Object.assign({}, actual, mocks, actual.serverFnHandlerMocks(), {
+		forbiddenTo: actual.forbiddenTo,
+	});
+});
 
 import { Doctors } from "./index.ts";
 import { doctorContextFn, ensureDoctorProfileFn, localeFn, selectDoctorFn } from "./fns.ts";

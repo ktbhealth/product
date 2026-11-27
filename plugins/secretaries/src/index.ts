@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { ClipboardListIcon, UserCogIcon } from "lucide-react";
 
-import { DoctorDelegations, type DoctorProfile } from "@ktb/auth";
+import { DoctorDelegations, type DoctorProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { doctors, user } from "@ktb/db/schema";

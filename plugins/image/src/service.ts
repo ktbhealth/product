@@ -222,23 +222,3 @@ export const ImagesLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the `images` migration — re-exported for
- * sibling test files (same convention as `RICH_TEXT_TEST_DDL` in
- * plugins/rich-text). Never used by production code.
- */
-export const IMAGES_TEST_DDL = `
-CREATE TABLE images (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	title TEXT NOT NULL,
-	alt TEXT NOT NULL,
-	mime TEXT NOT NULL,
-	size INTEGER NOT NULL,
-	storage_key TEXT NOT NULL,
-	width INTEGER,
-	height INTEGER,
-	created_at INTEGER NOT NULL
-);
-CREATE INDEX images_created_idx ON images (created_at);
-`;

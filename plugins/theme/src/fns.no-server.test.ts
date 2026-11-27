@@ -22,7 +22,8 @@ vi.mock("@tanstack/react-start/server", () => {
 // resolve an admin user directly (the real ones would need the
 // unavailable server module for request headers), and run/runAs
 // execute the effect against inline service stubs.
-vi.mock("@ktb/server-fns", async () => {
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
 	const Effect = await import("effect/Effect");
 	const { Principal } = await import("@ktb/authz");
 	const { PlatformAdmin } = await import("@ktb/platform");
@@ -78,6 +79,8 @@ vi.mock("@ktb/server-fns", async () => {
 			Effect.runPromise(provide(effect as never, { id: u.id, email: u.email ?? "" })),
 		getSessionUser: async () => user,
 		ensureSessionUser: async () => user,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
 	};
 });
 

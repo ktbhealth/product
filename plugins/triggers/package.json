@@ -15,6 +15,7 @@
 	},
 	"devDependencies": {
 		"@ktb/db": "workspace:*",
+		"@ktb/db-testing": "workspace:*",
 		"vitest": "5.1.0"
 	}
 }

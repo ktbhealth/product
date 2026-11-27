@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import type { Forbidden } from "@ktb/authz";
 import { PlatformAdmin } from "@ktb/platform";
 import {
-	getServerRuntime,
+	runtimeProbe,
 	type EventTopicInfo,
 	type PubSubPublishResult,
 	type PubSubTopicsResult,
@@ -53,7 +53,7 @@ export const PubSubAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<PubSubTopicsResult | null> => {
 							try {
-								const capability = getServerRuntime().pubsub;
+								const capability = runtimeProbe((r) => r.pubsub);
 								return capability === undefined ? null : await capability.topics();
 							} catch {
 								return null;
@@ -66,8 +66,7 @@ export const PubSubAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<readonly EventTopicInfo[] | null> => {
 							try {
-								const pubsub = getServerRuntime().pubsub;
-								const read = pubsub?.declaredTopics;
+								const read = runtimeProbe((r) => r.pubsub?.declaredTopics);
 								return read === undefined ? null : read();
 							} catch {
 								return null;
@@ -79,14 +78,8 @@ export const PubSubAdminLive = Layer.effect(
 				platformAdmin.requireAdmin().pipe(
 					Effect.andThen(
 						Effect.promise(async (): Promise<PubSubPublishResult> => {
-							let capability: NonNullable<ReturnType<typeof getServerRuntime>["pubsub"]>;
-							try {
-								const found = getServerRuntime().pubsub;
-								if (found === undefined) return { ok: false, reason: "unavailable" };
-								capability = found;
-							} catch {
-								return { ok: false, reason: "unavailable" };
-							}
+							const capability = runtimeProbe((r) => r.pubsub);
+							if (capability === undefined) return { ok: false, reason: "unavailable" };
 							try {
 								return await capability.publish(topicId, payload);
 							} catch {

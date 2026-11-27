@@ -10,8 +10,9 @@ import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
 import { countPendingReviewFn } from "@ktb/consultations/fns";
 import { PendingReviewCountContext } from "@ktb/consultations/context";
+import type { TenantRole } from "@ktb/tenant";
 
-import { pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
+import { boundTenantFn, pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
 import { portalChromeProps } from "#/lib/chrome-props.ts";
 import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
@@ -70,12 +71,19 @@ export const portalLoader = async ({
 	const pendingReviewP = statesP.then((s) =>
 		packageLive(plugins, enabledIdSet(s), "consultations") ? countPendingReviewFn() : { count: 0 },
 	);
-	const [states, audiences, result, theme, pendingReview] = await Promise.all([
+	// Enablement resolves BEFORE the page-data server fn is invoked:
+	// the side-effect-free reads (states/audiences/theme/tenant) race,
+	// the package gate runs, and only a live entry reaches
+	// portalPageDataFn — the same ordering the server-side pageData
+	// middleware stages enforce, so a disabled plugin's loader work
+	// never starts.
+	const [states, audiences, theme, tenant, pendingReview] = await Promise.all([
 		statesP,
 		portalAudiencesFn(),
-		portalPageDataFn({ data: path }),
 		// Instance → tenant → platform fallback (P-082).
 		themeScopeFn({ data: { scope: "portal-instance", id: instanceId } }),
+		// Bound tenant for `when.minUserCounts` chrome gates.
+		boundTenantFn(),
 		pendingReviewP,
 	]);
 	const enabled = enabledIdSet(states);
@@ -85,6 +93,7 @@ export const portalLoader = async ({
 	if (!entryEnabled(plugins, enabled, pageEntry) || !entryEnabled(plugins, enabled, entry)) {
 		throw notFound();
 	}
+	const result = await portalPageDataFn({ data: path });
 	if (result.status === "notfound") throw notFound();
 	if (result.status === "redirect") throw redirect({ href: result.to });
 	return {
@@ -94,6 +103,7 @@ export const portalLoader = async ({
 		audiences,
 		pluginStates: states,
 		theme,
+		tenant,
 		pendingReviewCount: pendingReview.count,
 	};
 };
@@ -105,11 +115,19 @@ export interface PortalLoaderData {
 	audiences: readonly string[];
 	pluginStates: { enabled: readonly string[] };
 	theme: ResolvedTheme | null;
+	/** Bound tenant ({ id, role, roleRank }) or null in personal scope —
+	 * `roleRank` feeds the `tenantRoleRank` chrome facet. */
+	tenant: {
+		readonly id: string | number;
+		readonly role: TenantRole;
+		readonly roleRank: number;
+	} | null;
 	pendingReviewCount: number;
 }
 
 export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderData }) {
-	const { path, instanceId, data, audiences, pluginStates, theme, pendingReviewCount } = loaderData;
+	const { path, instanceId, data, audiences, pluginStates, theme, tenant, pendingReviewCount } =
+		loaderData;
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const { user, i18n } = rootApi.useLoaderData();
 	const locale = i18n?.locale ?? "en";
@@ -118,12 +136,17 @@ export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderDa
 	if (entry === undefined || pageEntry === undefined) return null;
 	const instance = entry.instance;
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
+	// Chrome user gains the bound tenant's role rank so
+	// `when.minUserCounts: { tenantRoleRank }` gates evaluate;
+	// unresolved tenant → undefined → those gates fail closed.
+	const chromeUser =
+		user === null || user === undefined ? user : { ...user, tenantRoleRank: tenant?.roleRank };
 	const items = collectChrome(
 		visiblePlugins,
 		"portal.sidebar",
 		pathname,
 		instance.id,
-		user,
+		chromeUser,
 	).flatMap((chromeEntry) =>
 		chromeEntry.content.kind === "sidebarItem"
 			? [

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
-import { DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { makeTestD1 } from "@ktb/db-testing";
+import { DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,7 +15,6 @@ import { eq } from "drizzle-orm";
 
 import { adminAudit } from "./schema.ts";
 import {
-	AUDIT_TEST_DDL,
 	Audit,
 	AuditLive,
 	audit,
@@ -38,35 +37,20 @@ import {
 	type AuditListResult,
 } from "./index.ts";
 
-// admin_audit.tenant_id references groups.id — the FK is declared for
-// documentation; better-sqlite3 does not enforce it, but the parent
-// table exists in every real database, so the test DDL mirrors that.
-const GROUPS_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
+const DDL = `
 INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES ('Clinic A', 'clinic-a', 'clinic', NULL, 1000, 1000);
 `;
 
-const DDL = GROUPS_DDL + AUDIT_TEST_DDL;
-
-// Patient feed (P-086): the consultations join needs only id +
-// patient_id — the WHERE never touches the clinical columns. Rows are
-// seeded through the D1 shim's exec (the drizzle insert would demand
-// every notNull column of the real table).
-const CONSULTATIONS_DDL = `
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
-		transcript_edits TEXT,
-		transcript_edits_base TEXT,
-		transcript_reviewed_edits INTEGER,
-		deferred_until INTEGER);
-INSERT INTO consultations (id, patient_id) VALUES (10, 5), (11, 6), (12, NULL);
+const PATIENT_DDL = `
+INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES ('Clinic A', 'clinic-a', 'clinic', NULL, 1000, 1000);
+INSERT INTO consultations (id, patient_id, transcript, created_at) VALUES (10, 5, '', 0), (11, 6, '', 0), (12, NULL, '', 0);
 `;
-const PATIENT_DDL = GROUPS_DDL + AUDIT_TEST_DDL + CONSULTATIONS_DDL;
 
 describe("audit repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("insertAuditEntry writes a row with actor, normalized tenant and stringified target", async () => {
@@ -154,7 +138,7 @@ describe("audit repo", () => {
 	});
 
 	it("listAuditEntries returns newest-first rows with the total count", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		await insertAuditEntry(fresh, {
 			actorUserId: "u1",
 			actorEmail: "a@x.com",
@@ -172,7 +156,7 @@ describe("audit repo", () => {
 	});
 
 	it("clamps the page limit and reports zero totals on empty drivers", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		for (let i = 0; i < 3; i++) {
 			await insertAuditEntry(fresh, {
 				actorUserId: null,
@@ -201,7 +185,7 @@ describe("audit repo", () => {
 
 describe("listTenantAuditEntries", () => {
 	it("returns only the tenant's rows, newest-first — NULL tenant excluded", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		const write = (action: string, tenantId?: string | number | null) =>
 			insertAuditEntry(fresh, {
 				actorUserId: null,
@@ -220,7 +204,7 @@ describe("listTenantAuditEntries", () => {
 	});
 
 	it("clamps the page limit like the admin listing", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		for (let i = 0; i < 3; i++) {
 			await insertAuditEntry(fresh, {
 				actorUserId: null,
@@ -250,7 +234,7 @@ describe("listTenantAuditEntries", () => {
 
 describe("listActorAuditEntries", () => {
 	it("returns rows matching any actor's userId or email — system rows excluded", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		const write = (action: string, actorUserId: string | null, actorEmail: string | null) =>
 			insertAuditEntry(fresh, { action, actorUserId, actorEmail });
 		await write("feed.self", "sec-1", "sec@x.com");
@@ -271,7 +255,7 @@ describe("listActorAuditEntries", () => {
 	});
 
 	it("matches by userId alone when actors carry no email", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		await insertAuditEntry(fresh, {
 			action: "feed.self",
 			actorUserId: "sec-1",
@@ -288,7 +272,7 @@ describe("listActorAuditEntries", () => {
 	});
 
 	it("returns an empty page for an empty actor set", async () => {
-		const fresh = makeDb(makeD1(DDL));
+		const fresh = makeDb(makeTestD1(DDL));
 		await insertAuditEntry(fresh, {
 			action: "feed.self",
 			actorUserId: "sec-1",
@@ -318,7 +302,7 @@ describe("audit chain (T-139)", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	const write = (action: string) =>
@@ -337,7 +321,7 @@ describe("audit chain (T-139)", () => {
 
 	it("verifies a clean log and an empty one", async () => {
 		expect(await verifyAuditChain(db)).toMatchObject({ status: "verified" });
-		const empty = makeDb(makeD1(DDL));
+		const empty = makeDb(makeTestD1(DDL));
 		expect(await verifyAuditChain(empty)).toEqual({
 			status: "empty",
 			entries: 0,
@@ -346,7 +330,7 @@ describe("audit chain (T-139)", () => {
 	});
 
 	it("accepts an unchained legacy prefix (pre-column rows)", async () => {
-		const legacy = makeDb(makeD1(DDL));
+		const legacy = makeDb(makeTestD1(DDL));
 		// Legacy row written before prev_hash existed — NULL link.
 		await legacy.insert(adminAudit).values({ action: "legacy.one", createdAt: new Date(0) });
 		// The first post-migration row chains onto the legacy row's hash.
@@ -363,7 +347,7 @@ describe("audit chain (T-139)", () => {
 	});
 
 	it("detects a rewritten historical row", async () => {
-		const tampered = makeDb(makeD1(DDL));
+		const tampered = makeDb(makeTestD1(DDL));
 		const a = (await insertAuditEntry(tampered, {
 			action: "t.one",
 			actorUserId: null,
@@ -388,7 +372,7 @@ describe("audit chain (T-139)", () => {
 		// Nulling a TAIL row's prev_hash is indistinguishable from a
 		// legacy prefix — the tamper surfaces at the NEXT chained row,
 		// whose stored link no longer matches the rewritten predecessor.
-		const tampered = makeDb(makeD1(DDL));
+		const tampered = makeDb(makeTestD1(DDL));
 		await insertAuditEntry(tampered, { action: "d.one", actorUserId: null, actorEmail: null });
 		const second = (await insertAuditEntry(tampered, {
 			action: "d.two",
@@ -410,7 +394,7 @@ describe("audit chain (T-139)", () => {
 	it("detects an unchained row appearing after the chain started", async () => {
 		// A NULL prev_hash after the first chained row is tamper evidence
 		// in itself — verification stops at that row.
-		const tampered = makeDb(makeD1(DDL));
+		const tampered = makeDb(makeTestD1(DDL));
 		await insertAuditEntry(tampered, { action: "u.one", actorUserId: null, actorEmail: null });
 		await insertAuditEntry(tampered, { action: "u.two", actorUserId: null, actorEmail: null });
 		const third = (await insertAuditEntry(tampered, {
@@ -427,7 +411,7 @@ describe("audit chain (T-139)", () => {
 
 	it("rejects a first row that is already chained", async () => {
 		// prev_hash on the genesis row has no predecessor to match.
-		const tampered = makeDb(makeD1(DDL));
+		const tampered = makeDb(makeTestD1(DDL));
 		await tampered
 			.insert(adminAudit)
 			.values({ action: "g.one", prevHash: "forged", createdAt: new Date(0) });
@@ -465,7 +449,7 @@ describe("AuditLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -590,7 +574,7 @@ describe("Audit activity feed — actor scope", () => {
 	let db: DbClient;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		const write = (action: string, actorUserId: string | null, actorEmail: string | null) =>
 			insertAuditEntry(db, { action, actorUserId, actorEmail });
 		await write("feed.self.one", "sec-1", "sec@x.com");
@@ -963,7 +947,7 @@ describe("adminAudit schema", () => {
 describe("listPatientAuditEntries", () => {
 	/** Seed one row per feed branch; returns the fresh db. */
 	const seed = async () => {
-		const d1 = makeD1(PATIENT_DDL);
+		const d1 = makeTestD1(PATIENT_DDL);
 		const fresh = makeDb(d1);
 		const write = (
 			action: string,
@@ -1047,7 +1031,7 @@ describe("Audit patientList (P-086)", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(PATIENT_DDL));
+		const db = makeDb(makeTestD1(PATIENT_DDL));
 		await insertAuditEntry(db, {
 			actorUserId: null,
 			actorEmail: null,
@@ -1229,7 +1213,7 @@ describe("sanitizeAuditDetail (P-087 D1)", () => {
 	});
 
 	it("insertAuditEntry stores the sanitized detail JSON", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const row = await insertAuditEntry(db, {
 			actorUserId: null,
 			actorEmail: null,
@@ -1245,7 +1229,7 @@ describe("sanitizeAuditDetail (P-087 D1)", () => {
 
 describe("hasRecentAuditRead (P-087 D3)", () => {
 	it("matches NULL columns via IS NULL and respects the window", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		await insertAuditEntry(db, {
 			actorUserId: null,
 			actorEmail: null,
@@ -1297,7 +1281,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	const actions = async (db: DbClient) => (await db.select().from(adminAudit)).map((r) => r.action);
 
 	it("coalesces an identical .read within the window; mutations never coalesce", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
@@ -1326,7 +1310,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("coalesces NULL-actor reads via IS NULL, distinct from user reads", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			const read = { action: "system.read", targetType: "report", targetId: "r1" };
@@ -1342,7 +1326,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("coalesces reads with absent target fields via the NULL-key probe", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			// No targetType/targetId → the dedupe probe compares NULL
@@ -1361,7 +1345,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("inserts again once the coalescing window has expired", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		// Seed a read older than the default 60s window directly.
 		await db.insert(adminAudit).values({
 			action: "patients.read",
@@ -1386,7 +1370,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("readCoalesceMs=0 disables coalescing; partial stored config keeps defaults", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
@@ -1402,7 +1386,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("readsEnabled=false drops *.read events but mutations still record", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			const states = statesStub({ readsEnabled: false });
@@ -1425,7 +1409,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("enabled=false is the global kill switch", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			const states = statesStub({ enabled: false });
@@ -1448,7 +1432,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("corrupt stored config falls back to defaults (coalescing still applies)", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
@@ -1464,7 +1448,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	});
 
 	it("falls back to defaults when the PluginStates config read itself fails", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
 		try {
 			// config() failing (typed error — Effect.catch only handles
@@ -1488,7 +1472,7 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 
 describe("audit list filters and facets", () => {
 	const seed = async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const write = (over: Parameters<typeof insertAuditEntry>[1]) => insertAuditEntry(db, over);
 		await write({
 			action: "users.suspend",

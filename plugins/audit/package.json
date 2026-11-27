@@ -10,7 +10,6 @@
 		"./views/audit-page": "./src/views/AuditPage.tsx"
 	},
 	"dependencies": {
-		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",
@@ -27,6 +26,7 @@
 		"lucide-react": "0.544.0"
 	},
 	"devDependencies": {
+		"@ktb/db-testing": "workspace:*",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
 		"react": "^19.2.0",

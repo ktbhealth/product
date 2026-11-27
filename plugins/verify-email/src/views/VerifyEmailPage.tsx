@@ -3,6 +3,10 @@ import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageContext } from "@ktb/kernel";
+// Type-only: pulls @ktb/server-fns' `declare module "@ktb/kernel"`
+// ChromeUser augmentation (the `patientOnly` facet read below) into
+// this package's program — erased at compile time, never bundled.
+import type {} from "@ktb/server-fns";
 
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";

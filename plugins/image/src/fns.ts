@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, getServerRuntime, requirePluginEnabled, runAs } from "@ktb/server-fns";
+import { getServerRuntime, pluginHandler, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import { ImageDeleteHooks, type ImageUsageOwner } from "./delete-hooks.ts";
@@ -99,62 +99,69 @@ const isHandled = (error: unknown): boolean =>
  * full wire rows (thumbs resolve through `src`). Handled failures
  * collapse to an empty list. */
 export const listImagesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly ImageWire[]> => {
-		await requirePluginEnabled("image.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const images = yield* Images;
-				const rows = yield* images.adminList();
-				return rows.map(toWire);
-			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as readonly ImageWire[];
-			throw error;
-		});
-	},
+	pluginHandler(
+		"image.panel",
+		sessionHandler(async ({ user }): Promise<readonly ImageWire[]> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const images = yield* Images;
+					const rows = yield* images.adminList();
+					return rows.map(toWire);
+				}),
+			).catch((error: unknown) => {
+				if (isHandled(error)) return [] as readonly ImageWire[];
+				throw error;
+			});
+		}),
+	),
 );
 
 /** Update an image's title and/or alt text; `null` for non-admins,
  * missing rows and other handled failures. */
 export const updateImageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<ImageWire | null> => {
-		await requirePluginEnabled("image.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const images = yield* Images;
-				const { id, ...input } = data;
-				return toWire(yield* images.adminUpdate(id, input));
+	.handler(
+		pluginHandler(
+			"image.panel",
+			sessionHandler(async ({ data, user }): Promise<ImageWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const images = yield* Images;
+						const { id, ...input } = data;
+						return toWire(yield* images.adminUpdate(id, input));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Referencers of an image grouped by owning plugin — feeds the
  * delete dialog's extended confirm. Handled failures collapse to an
  * empty list; hook errors propagate (see the header comment). */
 export const imageUsageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<ImageUsageWire> => {
-		await requirePluginEnabled("image.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const hooks = yield* ImageDeleteHooks;
-				return yield* hooks.usage(data.id);
+	.handler(
+		pluginHandler(
+			"image.panel",
+			sessionHandler(async ({ data, user }): Promise<ImageUsageWire> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const hooks = yield* ImageDeleteHooks;
+						return yield* hooks.usage(data.id);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return [] as ImageUsageWire;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as ImageUsageWire;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Delete an image by id; `false` for non-admins and missing rows.
  * When `actionId` is present the referencer hooks' `cleanup` runs
@@ -165,43 +172,46 @@ export const imageUsageFn = createServerFn({ method: "POST" })
  * a served URL: `/api/images/:id` resolves through the row). */
 export const deleteImageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDelete(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("image.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const images = yield* Images;
-				// Read first: the storage key is needed for object cleanup
-				// and a missing row must not run hooks or delete.
-				const row = yield* images.adminGet(data.id);
-				if (row === null) return false;
-				if (data.actionId !== undefined) {
-					const hooks = yield* ImageDeleteHooks;
-					yield* hooks.cleanup(data.id, data.actionId);
-				}
-				yield* images.adminRemove(data.id);
-				return row.storageKey;
+	.handler(
+		pluginHandler(
+			"image.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const images = yield* Images;
+						// Read first: the storage key is needed for object cleanup
+						// and a missing row must not run hooks or delete.
+						const row = yield* images.adminGet(data.id);
+						if (row === null) return false;
+						if (data.actionId !== undefined) {
+							const hooks = yield* ImageDeleteHooks;
+							yield* hooks.cleanup(data.id, data.actionId);
+						}
+						yield* images.adminRemove(data.id);
+						return row.storageKey;
+					}),
+				)
+					.then(async (storageKey) => {
+						if (storageKey === false) return false;
+						// Best-effort object cleanup outside the admin gate — the
+						// row is already gone; a storage failure only orphans bytes
+						// (the serve route resolves through the row, so orphaned
+						// objects are unreachable, never leaked).
+						const bucket = getServerRuntime().images;
+						if (bucket !== undefined) {
+							try {
+								await bucket.delete([storageKey]);
+							} catch (error) {
+								console.error("image object delete failed", { storageKey, error });
+							}
+						}
+						return true;
+					})
+					.catch((error: unknown) => {
+						if (isHandled(error)) return false;
+						throw error;
+					});
 			}),
-		)
-			.then(async (storageKey) => {
-				if (storageKey === false) return false;
-				// Best-effort object cleanup outside the admin gate — the
-				// row is already gone; a storage failure only orphans bytes
-				// (the serve route resolves through the row, so orphaned
-				// objects are unreachable, never leaked).
-				const bucket = getServerRuntime().images;
-				if (bucket !== undefined) {
-					try {
-						await bucket.delete([storageKey]);
-					} catch (error) {
-						console.error("image object delete failed", { storageKey, error });
-					}
-				}
-				return true;
-			})
-			.catch((error: unknown) => {
-				if (isHandled(error)) return false;
-				throw error;
-			});
-	});
+		),
+	);

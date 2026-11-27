@@ -1,30 +1,32 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	OBSERVABILITY_ENV_KEYS,
+	observabilityEnvKeys,
 	parseKeyValueList,
 	parseLogLevel,
 	telemetryConfigFromEnv,
 	type ObservabilityEnv,
 } from "./config.ts";
 
-describe("OBSERVABILITY_ENV_KEYS", () => {
-	it("lists every ObservabilityEnv key exactly once", () => {
+describe("observabilityEnvKeys", () => {
+	it("lists every env var telemetryConfigFromEnv resolves, exactly once", () => {
 		// Compile-time exhaustiveness lives in config.ts
 		// (_envKeysExhaustive); this pins the runtime list so a refactor
 		// that drops a key fails loudly instead of silently.
-		expect([...OBSERVABILITY_ENV_KEYS].sort()).toEqual(
+		const unprefixed = observabilityEnvKeys();
+		expect([...unprefixed].sort()).toEqual(
 			[
-				"KTB_ENVIRONMENT",
-				"KTB_LOG_LEVEL",
-				"KTB_TELEMETRY_CLIENT",
-				"KTB_TELEMETRY_CLIENT_SAMPLE_RATE",
-				"KTB_TELEMETRY_EXPORT_INTERVAL_MS",
-				"KTB_TELEMETRY_MAX_BATCH_SIZE",
-				"KTB_TELEMETRY_RATE_LIMIT_GLOBAL",
-				"KTB_TELEMETRY_RATE_LIMIT_PER_IP",
-				"KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS",
-				"KTB_TELEMETRY_TRACES_SAMPLE_RATE",
+				"OBSERVABILITY_ENV_PREFIX",
+				"ENVIRONMENT",
+				"LOG_LEVEL",
+				"TELEMETRY_CLIENT",
+				"TELEMETRY_CLIENT_SAMPLE_RATE",
+				"TELEMETRY_EXPORT_INTERVAL_MS",
+				"TELEMETRY_MAX_BATCH_SIZE",
+				"TELEMETRY_RATE_LIMIT_GLOBAL",
+				"TELEMETRY_RATE_LIMIT_PER_IP",
+				"TELEMETRY_SHUTDOWN_TIMEOUT_MS",
+				"TELEMETRY_TRACES_SAMPLE_RATE",
 				"OTEL_EXPORTER_OTLP_COMPRESSION",
 				"OTEL_EXPORTER_OTLP_ENDPOINT",
 				"OTEL_EXPORTER_OTLP_HEADERS",
@@ -36,14 +38,28 @@ describe("OBSERVABILITY_ENV_KEYS", () => {
 				"OTEL_SERVICE_NAME",
 			].sort(),
 		);
-		expect(new Set(OBSERVABILITY_ENV_KEYS).size).toBe(OBSERVABILITY_ENV_KEYS.length);
+		expect(new Set(unprefixed).size).toBe(unprefixed.length);
+	});
+
+	it("prefixes only the deployment vars — OTEL_* stay unprefixed", () => {
+		const keys = observabilityEnvKeys("ACME_");
+		expect(keys).toContain("ACME_ENVIRONMENT");
+		expect(keys).toContain("ACME_TELEMETRY_CLIENT");
+		expect(keys).toContain("ACME_LOG_LEVEL");
+		expect(keys).toContain("OTEL_SDK_DISABLED");
+		expect(keys).not.toContain("ENVIRONMENT");
 	});
 
 	it("every listed key is readable by telemetryConfigFromEnv", () => {
 		// Feed each key a sentinel value through a cast env object —
 		// proves the list and the parser stay aligned.
 		const env = Object.fromEntries(
-			OBSERVABILITY_ENV_KEYS.map((key) => [key, "1"]),
+			observabilityEnvKeys().map((key) => [
+				key,
+				// "" keeps the prefix unresolved so the unprefixed sentinel
+				// names below are the ones actually read.
+				key === "OBSERVABILITY_ENV_PREFIX" ? "" : "1",
+			]),
 		) as ObservabilityEnv;
 		const config = telemetryConfigFromEnv(env);
 		expect(config.disabled).toBe(true);
@@ -171,7 +187,7 @@ describe("telemetryConfigFromEnv", () => {
 	it("reads service name/version/environment from dedicated vars and resource attributes", () => {
 		const byEnv = telemetryConfigFromEnv({
 			OTEL_SERVICE_NAME: "ktb-api",
-			KTB_ENVIRONMENT: "staging",
+			ENVIRONMENT: "staging",
 		});
 		expect(byEnv.serviceName).toBe("ktb-api");
 		expect(byEnv.environment).toBe("staging");
@@ -207,14 +223,14 @@ describe("telemetryConfigFromEnv", () => {
 	it("honors OTEL_SDK_DISABLED and numeric tuning vars", () => {
 		const config = telemetryConfigFromEnv({
 			OTEL_SDK_DISABLED: "true",
-			KTB_TELEMETRY_TRACES_SAMPLE_RATE: "0.25",
-			KTB_TELEMETRY_EXPORT_INTERVAL_MS: "5000",
-			KTB_TELEMETRY_MAX_BATCH_SIZE: "128",
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "1500",
-			KTB_TELEMETRY_CLIENT: "0",
-			KTB_TELEMETRY_CLIENT_SAMPLE_RATE: "0.5",
-			KTB_LOG_LEVEL: "debug",
-		} satisfies ObservabilityEnv);
+			TELEMETRY_TRACES_SAMPLE_RATE: "0.25",
+			TELEMETRY_EXPORT_INTERVAL_MS: "5000",
+			TELEMETRY_MAX_BATCH_SIZE: "128",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "1500",
+			TELEMETRY_CLIENT: "0",
+			TELEMETRY_CLIENT_SAMPLE_RATE: "0.5",
+			LOG_LEVEL: "debug",
+		});
 		expect(config.disabled).toBe(true);
 		expect(config.tracesSampleRate).toBe(0.25);
 		expect(config.otlp.exportIntervalMs).toBe(5_000);
@@ -230,8 +246,8 @@ describe("telemetryConfigFromEnv", () => {
 
 	it("parses client telemetry rate limits, 0 disables", () => {
 		const config = telemetryConfigFromEnv({
-			KTB_TELEMETRY_RATE_LIMIT_PER_IP: "30",
-			KTB_TELEMETRY_RATE_LIMIT_GLOBAL: "0",
+			TELEMETRY_RATE_LIMIT_PER_IP: "30",
+			TELEMETRY_RATE_LIMIT_GLOBAL: "0",
 		});
 		expect(config.clientTelemetry.rateLimit).toEqual({
 			perIpPerMinute: 30,
@@ -241,11 +257,11 @@ describe("telemetryConfigFromEnv", () => {
 
 	it("clamps out-of-range numerics to safe bounds", () => {
 		const config = telemetryConfigFromEnv({
-			KTB_TELEMETRY_TRACES_SAMPLE_RATE: "4",
-			KTB_TELEMETRY_CLIENT_SAMPLE_RATE: "-1",
-			KTB_TELEMETRY_EXPORT_INTERVAL_MS: "1",
-			KTB_TELEMETRY_MAX_BATCH_SIZE: "999999",
-			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "0",
+			TELEMETRY_TRACES_SAMPLE_RATE: "4",
+			TELEMETRY_CLIENT_SAMPLE_RATE: "-1",
+			TELEMETRY_EXPORT_INTERVAL_MS: "1",
+			TELEMETRY_MAX_BATCH_SIZE: "999999",
+			TELEMETRY_SHUTDOWN_TIMEOUT_MS: "0",
 		});
 		expect(config.tracesSampleRate).toBe(1);
 		expect(config.clientTelemetry.sampleRate).toBe(0);
@@ -256,17 +272,53 @@ describe("telemetryConfigFromEnv", () => {
 
 	it("falls back on non-numeric values", () => {
 		const config = telemetryConfigFromEnv({
-			KTB_TELEMETRY_TRACES_SAMPLE_RATE: "lots",
-			KTB_TELEMETRY_EXPORT_INTERVAL_MS: "soon",
+			TELEMETRY_TRACES_SAMPLE_RATE: "lots",
+			TELEMETRY_EXPORT_INTERVAL_MS: "soon",
 		});
 		expect(config.tracesSampleRate).toBe(1);
 		expect(config.otlp.exportIntervalMs).toBe(10_000);
 	});
 
+	it("reads the deployment-prefixed vars via envPrefix option", () => {
+		const config = telemetryConfigFromEnv(
+			{
+				ACME_ENVIRONMENT: "prod",
+				ACME_LOG_LEVEL: "debug",
+				ACME_TELEMETRY_CLIENT: "0",
+				ENVIRONMENT: "ignored",
+			} as ObservabilityEnv,
+			{ envPrefix: "ACME_" },
+		);
+		expect(config.environment).toBe("prod");
+		expect(config.logLevel).toBe("Debug");
+		expect(config.clientTelemetry.enabled).toBe(false);
+	});
+
+	it("reads the prefix from OBSERVABILITY_ENV_PREFIX when no option is given", () => {
+		const config = telemetryConfigFromEnv({
+			OBSERVABILITY_ENV_PREFIX: "ACME_",
+			ACME_ENVIRONMENT: "staging",
+			ENVIRONMENT: "ignored",
+		} as ObservabilityEnv);
+		expect(config.environment).toBe("staging");
+	});
+
+	it("envPrefix option wins over the OBSERVABILITY_ENV_PREFIX var", () => {
+		const config = telemetryConfigFromEnv(
+			{
+				OBSERVABILITY_ENV_PREFIX: "ACME_",
+				ACME_ENVIRONMENT: "ignored",
+				OTHER_ENVIRONMENT: "prod",
+			} as ObservabilityEnv,
+			{ envPrefix: "OTHER_" },
+		);
+		expect(config.environment).toBe("prod");
+	});
+
 	it("trims dedicated service name and environment vars", () => {
 		const config = telemetryConfigFromEnv({
 			OTEL_SERVICE_NAME: "  ktb-api  ",
-			KTB_ENVIRONMENT: "  prod  ",
+			ENVIRONMENT: "  prod  ",
 		});
 		expect(config.serviceName).toBe("ktb-api");
 		expect(config.environment).toBe("prod");
@@ -282,10 +334,8 @@ describe("telemetryConfigFromEnv", () => {
 		// truthy token; "nope" contains "no" but is not falsy.
 		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: "yesterday" }).disabled).toBe(false);
 		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: " true " }).disabled).toBe(true);
-		expect(telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "nope" }).clientTelemetry.enabled).toBe(
-			true,
-		);
-		expect(telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: " off " }).clientTelemetry.enabled).toBe(
+		expect(telemetryConfigFromEnv({ TELEMETRY_CLIENT: "nope" }).clientTelemetry.enabled).toBe(true);
+		expect(telemetryConfigFromEnv({ TELEMETRY_CLIENT: " off " }).clientTelemetry.enabled).toBe(
 			false,
 		);
 	});
@@ -295,12 +345,10 @@ describe("telemetryConfigFromEnv", () => {
 		// a token ("hold on", "power off") is not a boolean flag.
 		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: "hold on" }).disabled).toBe(false);
 		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: "yes!" }).disabled).toBe(false);
-		expect(
-			telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "power off" }).clientTelemetry.enabled,
-		).toBe(true);
-		expect(telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "off!" }).clientTelemetry.enabled).toBe(
+		expect(telemetryConfigFromEnv({ TELEMETRY_CLIENT: "power off" }).clientTelemetry.enabled).toBe(
 			true,
 		);
+		expect(telemetryConfigFromEnv({ TELEMETRY_CLIENT: "off!" }).clientTelemetry.enabled).toBe(true);
 	});
 
 	it("trims and rejects blank OTLP base endpoints", () => {

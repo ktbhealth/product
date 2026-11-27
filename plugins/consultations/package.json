@@ -62,6 +62,7 @@
 		"react-day-picker": "^10.0.2"
 	},
 	"devDependencies": {
+		"@ktb/db-testing": "workspace:*",
 		"@ktb/interop-fhir": "workspace:*",
 		"@ktb/interop-openehr": "workspace:*",
 		"@types/better-sqlite3": "^9.6.0",

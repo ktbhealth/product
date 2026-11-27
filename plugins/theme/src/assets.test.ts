@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	BRAND_FIELD_FOR_KIND,
@@ -43,41 +43,13 @@ import {
 } from "./assets.ts";
 import type { ThemeFontAsset } from "./types.ts";
 
-const DDL = `
-CREATE TABLE theme_assets (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	theme_id integer,
-	kind text NOT NULL,
-	r2_key text,
-	status text DEFAULT 'pending' NOT NULL,
-	variants text,
-	created_at integer NOT NULL,
-	FOREIGN KEY (theme_id) REFERENCES theme_definitions(id) ON UPDATE no action ON DELETE set null
-);
-CREATE TABLE theme_definitions (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	scope text NOT NULL,
-	scope_id text DEFAULT '' NOT NULL,
-	app_name text,
-	seeds text NOT NULL,
-	tokens text NOT NULL,
-	fonts text,
-	brand text,
-	enabled integer DEFAULT true NOT NULL,
-	is_main integer DEFAULT false NOT NULL,
-	version integer DEFAULT 1 NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-`;
-
 interface TestDb {
 	readonly db: DbClient;
 	readonly d1: SqlDatabase;
 }
 
 const makeTestDb = (): TestDb => {
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1();
 	return { db: makeDb(d1), d1 };
 };
 
@@ -95,13 +67,16 @@ const run = (d1: SqlDatabase, query: string, params: unknown[] = []) =>
 		.bind(...params)
 		.run();
 
+let themeSeq = 0;
 const seedTheme = async ({ d1 }: TestDb): Promise<number> => {
-	await run(
+	// theme_definitions has UNIQUE(scope, scope_id) — each seed needs a
+	// distinct scope_id.
+	const rows = await all<{ id: number }>(
 		d1,
 		`INSERT INTO theme_definitions (scope, scope_id, seeds, tokens, created_at)
-		 VALUES ('platform', '', '{}', '{}', 0)`,
+		 VALUES ('platform', ?, '{}', '{}', 0) RETURNING id`,
+		[`seed-${themeSeq++}`],
 	);
-	const rows = await all<{ id: number }>(d1, `SELECT id FROM theme_definitions`);
 	return rows[0]!.id;
 };
 

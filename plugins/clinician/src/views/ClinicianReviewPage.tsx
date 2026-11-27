@@ -10,7 +10,7 @@ type ReviewProps = ComponentProps<typeof ReviewModePage>;
 
 /** Loader payload for <instance>/review[/<id>] (PL-023): the queue for
  * the rail plus the selected record when a numeric id subpath resolves. */
-type ClinicianReviewData =
+export type ClinicianReviewData =
 	| {
 			readonly view: "item";
 			readonly queue: ReviewProps["queue"];

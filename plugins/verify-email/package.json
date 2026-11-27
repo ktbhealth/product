@@ -12,6 +12,7 @@
 		"@ktb/email": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/server-fns": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#feat/review-ux",
 		"@tanstack/react-router": "1.170.46",
 		"effect": "4.1.2",

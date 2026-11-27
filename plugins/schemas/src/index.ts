@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { SchemasAdminConsolePage } from "./platform-page.tsx";
 import { schemas } from "./schema.ts";
@@ -72,20 +72,12 @@ export const schemasPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, schemasServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "schemas.admin",
 				path: "/platform/schemas",
 				component: SchemasAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const schemas = yield* Schemas;
@@ -99,7 +91,7 @@ export const schemasPanelPlugin = definePlugin({
 							updatedAt: row.updatedAt.toISOString(),
 						}));
 					}),
-			},
+			}),
 		],
 	},
 });

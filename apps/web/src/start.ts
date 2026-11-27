@@ -1,9 +1,7 @@
 import { createMiddleware, createStart } from "@tanstack/react-start";
 import { requestLocale } from "#/lib/i18n.ts";
 import { localeStorage } from "#/lib/locale-context.ts";
-import { accessLog } from "#/lib/access-log.ts";
-import { unwrapResponse } from "#/lib/response.ts";
-import { serverFnIdFromPathname } from "#/lib/server-fn.ts";
+import { accessLog, serverFnIdFromPathname, unwrapResponse } from "@ktb/observability-edge";
 import {
 	isValidTraceparent,
 	newRequestId,

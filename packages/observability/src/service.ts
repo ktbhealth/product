@@ -70,7 +70,7 @@ const LOG_LEVEL_BY_TYPE = {
 /** Shared ingest implementation — both drivers use it; only the
  * surrounding exporters differ.
  *
- * `KTB_TELEMETRY_CLIENT_SAMPLE_RATE` is enforced HERE, server-side, per
+ * `TELEMETRY_CLIENT_SAMPLE_RATE` (under the configured prefix) is enforced HERE, server-side, per
  * event: each event flips a weighted coin (`random() < rate`), the same
  * convention `sampledTracer` uses for root spans. Server-side (not
  * client-side) because the env binding never reaches the browser and a

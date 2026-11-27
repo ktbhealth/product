@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Permissions } from "@ktb/rbac";
 import { EvalRunner } from "@ktb/eval-consultation";
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
@@ -22,7 +23,6 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { EvalValidatorLive } from "./index.ts";
-import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 import {
 	listCohortItemsFn,
 	listCohortsFn,
@@ -40,7 +40,7 @@ describe("eval validator fns", () => {
 	let allow = true;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(

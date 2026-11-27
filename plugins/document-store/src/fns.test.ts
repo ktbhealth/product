@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -22,7 +23,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { DocumentCollections, defineCollection } from "./collection.ts";
 import { f } from "./fields.ts";
 import { DocumentStoreAdmin, DocumentStoreAdminLive } from "./admin.ts";
-import { DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
+import { DocumentStoreLive } from "./service.ts";
 import {
 	browseDocumentsFn,
 	createDocumentFn,
@@ -32,13 +33,6 @@ import {
 	migrateCollectionFn,
 	updateDocumentFn,
 } from "./fns.ts";
-
-const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-`;
 
 const notes = defineCollection({
 	name: "fns.notes",
@@ -73,7 +67,7 @@ describe("document-store fns", () => {
 		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),

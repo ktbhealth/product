@@ -1,17 +1,17 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 
-import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
-import { Integrity, IntegrityLive, RECORD_VERSIONS_TEST_DDL, recordVersions } from "@ktb/integrity";
-import { VAULT_TEST_DDL } from "@ktb/vault";
+import { adminAudit, AuditLive } from "@ktb/audit";
+import { Integrity, IntegrityLive, recordVersions } from "@ktb/integrity";
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import {
 	consultations as consultationsTable,
 	patients as patientsTable,
 	relationTuples as relationTuplesTable,
 	user as userTable,
 } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { Forbidden, Principal } from "@ktb/authz";
 import { buildPermissions, deleteRelationTuples, Permissions, writeRelationTuple } from "@ktb/rbac";
 import {
@@ -64,20 +64,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Stream from "effect/Stream";
 
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
-CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
-		transcript_edits TEXT,
-		transcript_edits_base TEXT,
-		transcript_reviewed_edits INTEGER,
-		deferred_until INTEGER);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-${AUDIT_TEST_DDL}
-${RECORD_VERSIONS_TEST_DDL}
-${VAULT_TEST_DDL}
+
 -- A ZK-flagged tenant for the cipher-gate tests; 7/8 stay plaintext.
 INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
 `;
@@ -131,7 +119,7 @@ describe("consultations repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("creates with defaults", async () => {
@@ -274,7 +262,7 @@ describe("ConsultationsLive", () => {
 	});
 
 	beforeAll(() => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
 	});
 
@@ -1427,7 +1415,7 @@ describe("anamnesis integrity versioning (T-138)", () => {
 	};
 
 	beforeAll(() => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
 	});
 
@@ -1659,7 +1647,7 @@ describe("verifyIntegrity (T-139)", () => {
 		Effect.flatMap(Consultations, f);
 
 	beforeAll(() => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
 	});
 
@@ -1790,7 +1778,7 @@ describe("audio pipeline", () => {
 		Effect.flatMap(Consultations, f);
 
 	beforeAll(() => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
 	});
 
@@ -2069,7 +2057,7 @@ describe("Consultations.history", () => {
 	};
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
 		const [p] = await testDb
 			.insert(patientsTable)
@@ -2354,7 +2342,7 @@ describe("patientId ownership on save/attach", () => {
 		)?.patientId;
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
 		await testDb.insert(userTable).values({
 			id: "u2",
@@ -2475,7 +2463,7 @@ describe("consultations.audioJobs query", () => {
 		);
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(
 			ConsultationsQueriesLive.pipe(Layer.provideMerge(liveDeps(testDb))),
 		) as ManagedRuntime.ManagedRuntime<Query.Registered<typeof ConsultationsQueries>, never>;
@@ -2651,7 +2639,7 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 	};
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		// The shared DDL seeds only u1 — tenant-member scenarios need u2
 		// (the consultations.user_id FK is enforced by better-sqlite3).
 		await testDb.insert(userTable).values({
@@ -3189,7 +3177,7 @@ describe("ConsultationsLive portal reads (T-141)", () => {
 	});
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(
 			ConsultationsLive.pipe(Layer.provideMerge(Layer.mergeAll(liveDeps(testDb), accessLayer))),
 		);
@@ -3334,7 +3322,7 @@ describe("ConsultationsLive without the Permissions port", () => {
 		Effect.flatMap(Consultations, f);
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1(DDL));
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, testDb),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

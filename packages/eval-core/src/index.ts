@@ -10,3 +10,4 @@ export * from "./dag.ts";
 export * from "./registry.ts";
 export * from "./kinds.ts";
 export * from "./experiment.ts";
+export * from "./hash.ts";

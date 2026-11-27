@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { TemplateKinds, TemplateKindsLive } from "./kinds.ts";
 import { TemplatesAdminConsolePage } from "./platform-page.tsx";
@@ -82,20 +82,12 @@ export const templatesPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, templatesServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "templates.admin",
 				path: "/platform/templates",
 				component: TemplatesAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const templatesService = yield* Templates;
@@ -119,7 +111,7 @@ export const templatesPanelPlugin = definePlugin({
 							kinds: registered,
 						};
 					}),
-			},
+			}),
 		],
 	},
 });

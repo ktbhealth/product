@@ -22,6 +22,7 @@
 import { jobHandlers, makeJobs } from "@ktb/jobs-port";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
+import { batchSizeFromEnv } from "./env.ts";
 import { openWorkerDb } from "./db.ts";
 import { registerWorkerHandlers } from "./handlers.ts";
 import { makeOrchestrationWorker } from "./orchestration.ts";
@@ -55,12 +56,25 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 }
 
 console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? "ktb:jobs");
+// Recover envelopes orphaned on the pending list by a previous
+// crash/kill — BLMOVE parks popped entries there until ack, so a dead
+// worker's in-flight jobs would otherwise never redeliver.
+try {
+	const requeued = await transport.requeuePending();
+	if (requeued > 0) {
+		console.log(`jobs worker: requeued ${requeued} orphaned job(s) from pending list`);
+	}
+} catch (error) {
+	// Non-fatal: receive() has its own transport-error backoff, and a
+	// failed sweep just defers orphan recovery to the next boot.
+	console.warn("jobs worker: pending-list sweep failed", { error: String(error) });
+}
 try {
 	await runJobWorker({
 		transport,
 		handlers: jobHandlers,
 		db,
-		batchSize: process.env.JOBS_BATCH !== undefined ? Number(process.env.JOBS_BATCH) : 10,
+		batchSize: batchSizeFromEnv(process.env.JOBS_BATCH),
 		signal: ac.signal,
 	});
 } finally {

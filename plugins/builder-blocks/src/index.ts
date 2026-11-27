@@ -2,7 +2,7 @@ import { ComponentIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { ComponentsCatalogPage } from "./catalog-page.tsx";
 import { BUILDER_BLOCKS_ELEMENT_KINDS_LIVE } from "./element-kinds.ts";
@@ -69,22 +69,14 @@ export const builderBlocksPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "builder-blocks.catalog",
 				path: "/platform/components",
 				component: ComponentsCatalogPage,
 				// Path arg unused — the catalog is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path: string) => Effect.succeed(null),
-			},
+			}),
 		],
 	},
 });

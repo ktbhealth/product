@@ -2,6 +2,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { makeRegistry } from "@ktb/kernel";
+
 import {
 	DuplicatePipelineError,
 	PipelineRunError,
@@ -166,13 +168,11 @@ const runPipeline = (
  * needed) — tests and non-Effect callers use this directly;
  * {@link PipelineRegistryLive} wraps it as a Layer. */
 export const makePipelineRegistry = (): PipelineRegistryService => {
-	const packs = new Map<string, PipelinePack>();
-
-	return {
-		register(pack) {
-			if (packs.has(pack.def.id)) {
-				throw new DuplicatePipelineError({ pipelineId: pack.def.id });
-			}
+	const packs = makeRegistry<PipelinePack>({
+		key: (pack) => pack.def.id,
+		duplicate: (id) => new DuplicatePipelineError({ pipelineId: id }),
+		unknown: (id) => new UnknownPipelineError({ pipelineId: id }),
+		validate: (pack) => {
 			for (const entry of pack.def.stages) {
 				if (pack.stages[entry.id] === undefined) {
 					throw new UnknownStageError({
@@ -181,27 +181,20 @@ export const makePipelineRegistry = (): PipelineRegistryService => {
 					});
 				}
 			}
-			packs.set(pack.def.id, pack);
 		},
+	});
 
-		get(id) {
-			const pack = packs.get(id);
-			if (pack === undefined) {
-				throw new UnknownPipelineError({ pipelineId: id });
-			}
-			return pack;
-		},
+	return {
+		register: (pack) => packs.register(pack),
 
-		has(id) {
-			return packs.has(id);
-		},
+		get: (id) => packs.get(id),
 
-		list() {
-			return [...packs.values()].map((pack) => pack.def);
-		},
+		has: (id) => packs.has(id),
+
+		list: () => packs.list().map((pack) => pack.def),
 
 		run(id, input, config) {
-			const pack = packs.get(id);
+			const pack = packs.lookup(id);
 			if (pack === undefined) {
 				return Effect.fail(
 					new PipelineRunError({

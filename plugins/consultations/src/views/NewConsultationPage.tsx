@@ -1190,7 +1190,8 @@ export function NewConsultationPage({
 	// refreshed on `devicechange` (plug/unplug, permission grant).
 	useEffect(() => {
 		if (!showRoom || modality !== "in-person") return;
-		const md = typeof navigator === "undefined" ? undefined : navigator.mediaDevices;
+		// Effects never run during SSR — navigator is always defined here.
+		const md = navigator.mediaDevices;
 		if (!md?.enumerateDevices) return;
 		let cancelled = false;
 		const refresh = () => {
@@ -1328,13 +1329,7 @@ export function NewConsultationPage({
 		// Testing audio signals capture intent — warm the ASR engine so the
 		// first real capture doesn't pay the model-load latency.
 		backend.load();
-		if (
-			audioTestActive.current ||
-			!supported ||
-			typeof navigator === "undefined" ||
-			typeof AudioContext === "undefined"
-		)
-			return;
+		if (audioTestActive.current || !supported || typeof AudioContext === "undefined") return;
 		audioTestActive.current = true;
 		setAudioTestLevel(0);
 		let stream: MediaStream | null = null;
@@ -1733,7 +1728,7 @@ export function NewConsultationPage({
 									modality === "in-person" && audioDevices.length > 0 ? audioDevices : undefined
 								}
 								selectedDeviceId={micDeviceId ?? "default"}
-								onDeviceChange={(id) => setMicDeviceId(id === "default" ? null : id)}
+								onDeviceChange={(id) => setMicDeviceId(!id || id === "default" ? null : id)}
 								vuLevel={audioTestLevel}
 								telemetry={{ encryptionLabel: lf.encryption }}
 								headerActions={

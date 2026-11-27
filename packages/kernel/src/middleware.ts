@@ -58,16 +58,16 @@ export interface MiddlewareState {
 /** Everything a stage handler sees. `owner` names the plugin that
  * owns the matched route descriptor (enablement/audit stages read
  * it); `subject` selects which principal the built-in session stage
- * resolves ("session" account vs doctor-resolved acting user);
- * `search` is the request's parsed URL search when the dispatcher
- * supplies one. */
+ * resolves ("session" account vs a host-defined subject kind — this
+ * product's "doctor" resolves the acting user); `search` is the
+ * request's parsed URL search when the dispatcher supplies one. */
 export interface MiddlewareContext extends MiddlewareRequest {
 	readonly search?: Readonly<Record<string, unknown>>;
 	readonly owner?: {
 		readonly pluginId: string;
 		readonly pkg?: string;
 	};
-	readonly subject?: "session" | "doctor";
+	readonly subject?: string;
 	/** Discovered plugin registry — package-granular enablement stages
 	 * resolve `owner.pkg` membership through it (`packageLive`). The
 	 * dispatch edge always supplies it; absent, pkg-scoped checks fail

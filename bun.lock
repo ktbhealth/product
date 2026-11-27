@@ -38,6 +38,7 @@
       "dependencies": {
         "@ktb/db": "workspace:*",
         "@ktb/db-sqlite": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/jobs-transport-redis": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
@@ -67,6 +68,7 @@
         "@ktb/cron-port": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/db-sqlite": "workspace:*",
+        "@ktb/dev-node": "workspace:*",
         "@ktb/doctors": "workspace:*",
         "@ktb/email": "workspace:*",
         "@ktb/email-smtp": "workspace:*",
@@ -88,6 +90,7 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/notifications": "workspace:*",
         "@ktb/observability": "workspace:*",
+        "@ktb/observability-edge": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patient-portal": "workspace:*",
@@ -122,6 +125,7 @@
         "@alchemy.run/cloudflare": "2.0.0-beta.85",
         "@cloudflare/vite-plugin": "1.68.0",
         "@effect/platform-node": "4.1.2",
+        "@ktb/db-testing": "workspace:*",
         "@playwright/test": "^1.65.0",
         "@tailwindcss/vite": "^4.1.18",
         "@tanstack/devtools-vite": "0.8.6",
@@ -145,6 +149,7 @@
       "dependencies": {
         "@ktb/eval-core": "workspace:*",
         "@ktb/pipeline": "workspace:*",
+        "@ktb/transcript-cleanup": "workspace:*",
         "@ktb/transcript-diff": "workspace:*",
         "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
@@ -329,6 +334,7 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20251014.0",
+        "@ktb/db-testing": "workspace:*",
       },
     },
     "packages/auth": {
@@ -338,6 +344,7 @@
       },
       "devDependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "drizzle-orm": "^0.45.1",
       },
     },
@@ -351,6 +358,7 @@
         "drizzle-orm": "^0.45.1",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
         "@types/node": "^22.10.2",
         "better-sqlite3": "^13.0.3",
@@ -465,6 +473,31 @@
         "@types/better-sqlite3": "^9.6.0",
         "@types/node": "^22.10.2",
         "drizzle-orm": "^0.45.1",
+        "vitest": "5.1.0",
+      },
+    },
+    "packages/db-testing": {
+      "name": "@ktb/db-testing",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/db-sqlite": "workspace:*",
+        "better-sqlite3": "^13.0.3",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^9.6.0",
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
+    "packages/dev-node": {
+      "name": "@ktb/dev-node",
+      "dependencies": {
+        "@ktb/server-fns": "workspace:*",
+        "better-sqlite3": "^13.0.3",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^9.6.0",
+        "@types/node": "^22.10.2",
         "vitest": "5.1.0",
       },
     },
@@ -626,8 +659,12 @@
       "name": "@ktb/jobs-port",
       "dependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/tenant": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
       },
     },
     "packages/jobs-transport-redis": {
@@ -664,6 +701,13 @@
         "effect": "4.1.2",
       },
     },
+    "packages/observability-edge": {
+      "name": "@ktb/observability-edge",
+      "dependencies": {
+        "@ktb/observability": "workspace:*",
+        "@tanstack/react-start": "1.169.5",
+      },
+    },
     "packages/observability-otlp": {
       "name": "@ktb/observability-otlp",
       "dependencies": {
@@ -677,14 +721,19 @@
       "dependencies": {
         "@ktb/db": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
+        "@ktb/kernel": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
       },
     },
     "packages/pipeline": {
       "name": "@ktb/pipeline",
       "dependencies": {
+        "@ktb/kernel": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -696,6 +745,9 @@
         "@ktb/kernel": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
       },
     },
     "packages/pubsub-port": {
@@ -720,6 +772,7 @@
         "effect": "4.1.2",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
         "better-sqlite3": "^13.0.3",
         "vitest": "5.1.0",
@@ -732,13 +785,20 @@
         "@ktb/jobs-port": "workspace:*",
         "@ktb/scheduler-port": "workspace:*",
       },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
+      },
     },
     "packages/scheduler-port": {
       "name": "@ktb/scheduler-port",
       "dependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/tenant": "workspace:*",
         "croner": "^9.0.0",
         "drizzle-orm": "^0.45.1",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
       },
     },
     "packages/seed": {
@@ -754,6 +814,7 @@
         "@ktb/authz": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/interop": "workspace:*",
+        "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@tanstack/react-router": "1.170.46",
@@ -767,6 +828,19 @@
         "@ktb/db": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
+      },
+    },
+    "packages/transcript-cleanup": {
+      "name": "@ktb/transcript-cleanup",
+      "dependencies": {
+        "@ktb/eval-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "vitest": "5.1.0",
       },
     },
     "packages/transcript-diff": {
@@ -822,6 +896,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -850,6 +925,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -878,6 +954,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -912,6 +989,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -941,6 +1019,7 @@
       "devDependencies": {
         "@ktb/auth": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "vitest": "5.1.0",
       },
     },
@@ -965,7 +1044,6 @@
     "plugins/audit": {
       "name": "@ktb/audit",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -982,6 +1060,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1111,6 +1190,7 @@
         "react-day-picker": "^10.0.2",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@ktb/interop-fhir": "workspace:*",
         "@ktb/interop-openehr": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
@@ -1145,6 +1225,7 @@
       },
       "devDependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@ktb/vault-keyring": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1172,6 +1253,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "react": "^19.2.0",
       },
@@ -1218,7 +1300,6 @@
     "plugins/doctors": {
       "name": "@ktb/doctors",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1235,6 +1316,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1270,6 +1352,7 @@
         "react": "^19.2.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1323,6 +1406,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1355,6 +1439,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1381,6 +1466,7 @@
       "devDependencies": {
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "vitest": "5.1.0",
       },
     },
@@ -1401,6 +1487,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1453,6 +1540,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1485,6 +1573,7 @@
         "react": "^19.2.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1515,6 +1604,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1537,6 +1627,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1564,6 +1655,7 @@
         "effect": "4.1.2",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1595,6 +1687,7 @@
       "devDependencies": {
         "@ktb/auth": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1624,6 +1717,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1657,6 +1751,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1694,6 +1789,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1724,6 +1820,7 @@
       "devDependencies": {
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -1787,6 +1884,7 @@
       },
       "devDependencies": {
         "@ktb/auth": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@tanstack/react-start": "1.169.5",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1819,6 +1917,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1832,7 +1931,6 @@
       "name": "@ktb/patient-access",
       "dependencies": {
         "@ktb/audit": "workspace:*",
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1853,6 +1951,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1871,6 +1970,7 @@
         "@ktb/consultations": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@ktb/doctors": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
@@ -1929,6 +2029,7 @@
         "react-day-picker": "^10.0.2",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/better-sqlite3": "^9.6.0",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1961,6 +2062,7 @@
       },
       "devDependencies": {
         "@ktb/authz": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -1972,10 +2074,11 @@
     "plugins/pipeline-transcript": {
       "name": "@ktb/plugin-pipeline-transcript",
       "dependencies": {
-        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
+        "@ktb/transcript-cleanup": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -1989,11 +2092,11 @@
     "plugins/portal": {
       "name": "@ktb/portal",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#feat/review-ux",
         "@tanstack/react-router": "1.170.46",
         "effect": "4.1.2",
@@ -2046,6 +2149,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "react": "^19.2.0",
       },
@@ -2074,6 +2178,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2101,6 +2206,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2129,6 +2235,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2141,7 +2248,6 @@
     "plugins/secretaries": {
       "name": "@ktb/secretaries",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/auth-plugin": "workspace:*",
         "@ktb/authz": "workspace:*",
@@ -2163,6 +2269,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2267,6 +2374,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2295,6 +2403,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2328,6 +2437,7 @@
       },
       "devDependencies": {
         "@ktb/auth": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2365,6 +2475,7 @@
       },
       "devDependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/db-testing": "workspace:*",
         "vitest": "5.1.0",
       },
     },
@@ -2389,6 +2500,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2420,6 +2532,7 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@ktb/vault-keyring": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -2437,6 +2550,7 @@
         "@ktb/email": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#feat/review-ux",
         "@tanstack/react-router": "1.170.46",
         "effect": "4.1.2",
@@ -2507,6 +2621,7 @@
         "react": "^19.2.0",
       },
       "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -2997,7 +3112,11 @@
 
     "@ktb/db-sqlite": ["@ktb/db-sqlite@workspace:packages/db-sqlite"],
 
+    "@ktb/db-testing": ["@ktb/db-testing@workspace:packages/db-testing"],
+
     "@ktb/dev-capture-test": ["@ktb/dev-capture-test@workspace:plugins/dev-capture-test"],
+
+    "@ktb/dev-node": ["@ktb/dev-node@workspace:packages/dev-node"],
 
     "@ktb/doctors": ["@ktb/doctors@workspace:plugins/doctors"],
 
@@ -3097,6 +3216,8 @@
 
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
 
+    "@ktb/observability-edge": ["@ktb/observability-edge@workspace:packages/observability-edge"],
+
     "@ktb/observability-otlp": ["@ktb/observability-otlp@workspace:packages/observability-otlp"],
 
     "@ktb/orchestrator": ["@ktb/orchestrator@workspace:packages/orchestrator"],
@@ -3164,6 +3285,8 @@
     "@ktb/tenant-plugin": ["@ktb/tenant-plugin@workspace:plugins/tenant"],
 
     "@ktb/theme": ["@ktb/theme@workspace:plugins/theme"],
+
+    "@ktb/transcript-cleanup": ["@ktb/transcript-cleanup@workspace:packages/transcript-cleanup"],
 
     "@ktb/transcript-diff": ["@ktb/transcript-diff@workspace:packages/transcript-diff"],
 

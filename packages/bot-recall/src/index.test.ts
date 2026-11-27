@@ -21,7 +21,7 @@ describe("RecallBotProvider", () => {
 		});
 		vi.stubGlobal("fetch", fetchMock);
 
-		const provider = new RecallBotProvider("test-key");
+		const provider = new RecallBotProvider("test-key", "Test Clinic");
 		const session = await provider.join("https://meet.example/x", "https://hook.example/");
 		expect(session).toEqual({ botId: "bot-123", provider: "recall" });
 		expect(fetchMock).toHaveBeenCalledWith("https://api.recall.ai/api/v1/bot", {
@@ -32,7 +32,7 @@ describe("RecallBotProvider", () => {
 			},
 			body: JSON.stringify({
 				meeting_url: "https://meet.example/x",
-				bot_name: "KTB Health",
+				bot_name: "Test Clinic",
 				transcription_options: { provider: "default" },
 				realtime_endpoints: [
 					{
@@ -105,5 +105,17 @@ describe("recallDriver", () => {
 				headers: expect.objectContaining({ authorization: "Token " }),
 			}),
 		);
+	});
+
+	it("defaults bot_name to a neutral name and honors RECALL_BOT_NAME", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "b" }) });
+		vi.stubGlobal("fetch", fetchMock);
+
+		await new RecallBotProvider("k").join("https://m/", "https://h/");
+		expect(JSON.parse(fetchMock.mock.calls[0]![1].body).bot_name).toBe("bot");
+
+		const named = await buildBot({ RECALL_API_KEY: "k", RECALL_BOT_NAME: "Clinic Bot" });
+		await named.join("https://m/", "https://h/");
+		expect(JSON.parse(fetchMock.mock.calls[1]![1].body).bot_name).toBe("Clinic Bot");
 	});
 });

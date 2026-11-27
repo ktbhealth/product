@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 import { ArrowLeftRightIcon } from "lucide-react";
 
-import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";
@@ -201,7 +201,7 @@ const switchDoctorChrome = (portal: (typeof CLINICAL_PORTALS)[number]): ChromeCo
 	portal,
 	// Only meaningful when the account acts through more than one
 	// profile — an owner without delegations has nothing to switch to.
-	when: { minDoctorProfiles: 2 },
+	when: { minUserCounts: { doctorProfiles: 2 } },
 	content: {
 		kind: "sidebarItem",
 		item: {

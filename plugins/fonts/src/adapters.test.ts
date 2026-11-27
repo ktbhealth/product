@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	googleFontCssHref,
@@ -12,34 +12,8 @@ import {
 } from "./adapters/googlefonts.ts";
 import { localFontProviderAdapter } from "./adapters/local.ts";
 
-const DDL = `
-CREATE TABLE theme_definitions (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	scope text NOT NULL,
-	scope_id text DEFAULT '' NOT NULL,
-	app_name text,
-	seeds text NOT NULL,
-	tokens text NOT NULL,
-	fonts text,
-	brand text,
-	enabled integer DEFAULT true NOT NULL,
-	version integer DEFAULT 1 NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-CREATE TABLE theme_assets (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	theme_id integer REFERENCES theme_definitions(id) ON DELETE SET NULL,
-	kind text NOT NULL,
-	r2_key text,
-	status text DEFAULT 'pending' NOT NULL,
-	variants text,
-	created_at integer NOT NULL
-);
-`;
-
 const makeTestDb = () => {
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1();
 	return { db: makeDb(d1), d1 };
 };
 
@@ -53,7 +27,7 @@ describe("googlefonts adapter", () => {
 	it("exposes a static catalog of common families with weights", async () => {
 		expect(googleFontsAdapter.kind).toBe("googlefonts");
 		const entries = await Effect.runPromise(
-			googleFontsAdapter.list().pipe(Effect.provideService(Db, makeDb(makeD1()))),
+			googleFontsAdapter.list().pipe(Effect.provideService(Db, makeDb(makeTestD1()))),
 		);
 		expect(entries).toEqual(GOOGLE_FONTS_CATALOG);
 		expect(entries.length).toBeGreaterThanOrEqual(40);
@@ -280,14 +254,17 @@ describe("local adapter", () => {
 
 	it("skips corrupt/blank rows and falls back to theme fonts (slots, assets, weights)", async () => {
 		const { db, d1 } = makeTestDb();
+		// theme_definitions has UNIQUE(scope, scope_id) — scope_id must
+		// differ per seeded theme.
+		let themeSeq = 0;
 		const insertTheme = async (fonts: string | null) =>
 			(
 				await d1
 					.prepare(
 						`INSERT INTO theme_definitions (scope, scope_id, seeds, tokens, fonts, created_at)
-						 VALUES ('platform', '', '{}', '{}', ?, 0) RETURNING id`,
+						 VALUES ('platform', ?, '{}', '{}', ?, 0) RETURNING id`,
 					)
-					.bind(fonts)
+					.bind(`seed-${themeSeq++}`, fonts)
 					.all<{ id: number }>()
 			).results[0]!.id;
 		const addAsset = (themeId: number, variants: string | null) =>

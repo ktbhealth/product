@@ -2,7 +2,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -25,14 +26,6 @@ import {
 	writeRelationTuple,
 } from "./index.ts";
 import { relationTuples } from "@ktb/db/schema";
-
-const DDL = `
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
-CREATE INDEX relation_tuples_subject_idx ON relation_tuples (subject_kind, subject_id);
-CREATE INDEX relation_tuples_natural_idx ON relation_tuples (object_type, object_id, relation, subject_kind, subject_id);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-`;
 
 // Tuple builders — relation_tuples is the only grant store (T-183),
 // so tests seed it directly. `grant` is the admin role-grant shape
@@ -106,7 +99,7 @@ const seed = async (db: DbClient) => {
 
 describe("permission epoch", () => {
 	it("readEpoch returns 0 before any bump, bumpEpoch increments", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		expect(await readEpoch(db)).toBe(0);
 		await bumpEpoch(db);
 		expect(await readEpoch(db)).toBe(1);
@@ -120,7 +113,7 @@ describe("buildPermissions", () => {
 	let permissions: ReturnType<typeof buildPermissions>;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 		await seed(db);
 		permissions = buildPermissions(db, (userId) =>
 			Effect.succeed<readonly string[]>(userId === "u4" ? ["9"] : []),
@@ -687,7 +680,7 @@ describe("buildPermissions", () => {
 
 describe("permissionsService", () => {
 	it("builds without GroupMembership (no group grants)", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		await seed(db);
 		const DbLive = Layer.succeed(Db, db);
 		const runtime = ManagedRuntime.make(
@@ -704,7 +697,7 @@ describe("permissionsService", () => {
 	});
 
 	it("wires GroupMembership when provided", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		await seed(db);
 		const membership = GroupMembership.of({
 			groupIdsFor: () => Effect.succeed<readonly string[]>(["9"]),
@@ -729,7 +722,7 @@ describe("permissionsService", () => {
 	});
 
 	it("permissionsService effect resolves the same shape", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		await seed(db);
 		const shape = await Effect.runPromise(permissionsService.pipe(Effect.provideService(Db, db)));
 		const grants = await Effect.runPromise(shape.permissionsFor("u1", "t1"));
@@ -742,9 +735,18 @@ describe("vocabulary", () => {
 		expect(splitPermission("patient.read")).toEqual({ resource: "patient", action: "read" });
 		expect(splitPermission("nodot")).toEqual({ resource: "nodot", action: "" });
 		expect(permissionKey("patient", "read")).toBe("patient.read");
-		expect(isKnownPermission("patient", "read")).toBe(true);
-		expect(isKnownPermission("patient", "fly")).toBe(false);
-		expect(isKnownPermission("billing", "manage")).toBe(true);
+	});
+
+	it("isKnownPermission checks membership against an injected catalog", () => {
+		const known = isKnownPermission(["patient.read", "billing.manage"]);
+		expect(known("patient", "read")).toBe(true);
+		expect(known("patient", "fly")).toBe(false);
+		expect(known("billing", "manage")).toBe(true);
+		// The engine is domain-blind: catalogs are caller-supplied, so
+		// a different deployment's vocabulary resolves independently.
+		const other = isKnownPermission(["widget.spin"]);
+		expect(other("widget", "spin")).toBe(true);
+		expect(other("patient", "read")).toBe(false);
 	});
 
 	it("grantKey separates resource and action unambiguously", () => {
@@ -764,7 +766,7 @@ describe("service identifiers", () => {
 
 describe("schema round-trip", () => {
 	it("member tuples round-trip through drizzle", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		await seed(db);
 		// u1: auditor member (global) + billing member (tenant t1).
 		const rows = await db
@@ -807,7 +809,7 @@ describe("canObject / requireObject", () => {
 	});
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 		await db.insert(relationTuples).values([
 			// Direct user allow on a specific object.
 			tuple({ objectType: "patient", objectId: "p1", relation: "read", subjectId: "u1" }),
@@ -1225,7 +1227,7 @@ describe("relation tuple writes", () => {
 	let db: DbClient;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 	});
 
 	it("writeRelationTuple inserts then upserts by natural key and bumps the epoch", async () => {

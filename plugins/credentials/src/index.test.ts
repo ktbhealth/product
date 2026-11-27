@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { ApiKeys, type ApiKeyRow } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
-import { SecretError, Secrets, SecretsLive, VAULT_TEST_DDL } from "@ktb/vault";
+import { SecretError, Secrets, SecretsLive } from "@ktb/vault";
 import { secretKeyringLive } from "@ktb/vault-keyring";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -440,10 +441,8 @@ describe("client plugin mirror", () => {
 });
 
 describe("Credentials (vault-backed, P-098 C3)", () => {
-	const DDL = "CREATE TABLE user (id TEXT PRIMARY KEY);" + VAULT_TEST_DDL;
-
 	it("stores new credentials as vault user secrets; credential: refs resolve", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const secretsEnv = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(""))),

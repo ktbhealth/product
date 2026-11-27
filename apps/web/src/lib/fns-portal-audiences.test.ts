@@ -26,6 +26,52 @@ vi.mock("#/lib/auth.ts", () => ({
 	ensureDoctorUser: async () => state.user,
 }));
 
+// The migrated handlers resolve session + the app runtime through
+// @ktb/server-fns (not #/lib/auth.ts) — mirror state.user there and
+// rebuild the wrappers on top of the mock so `run` reaches the same
+// service overrides as the #/lib/platform.ts mock below.
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	const Effect = await import("effect/Effect");
+	const { PluginStates } = await import("@ktb/platform/plugin-states");
+	const { PortalAudience } = await import("@ktb/portal");
+	const states = {
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set<string>()),
+		config: () => Effect.succeed(undefined),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	};
+	const runAs = async (_user: unknown, effect: any) => {
+		let e = effect.pipe(Effect.provideService(PluginStates, states as never));
+		if (state.audiences !== undefined) {
+			e = e.pipe(
+				Effect.provideService(PortalAudience, {
+					audiences: () =>
+						state.audiences === null
+							? Effect.fail(new Error("audience down"))
+							: Effect.succeed(state.audiences as ReadonlySet<string>),
+				} as never),
+			);
+		}
+		return Effect.runPromise(e);
+	};
+	const asUser = async () => {
+		if (state.user === null) throw new Error("unauthenticated");
+		return state.user;
+	};
+	return {
+		...actual,
+		getSessionUser: async () => state.user,
+		getDoctorUser: async () => state.user,
+		ensureSessionUser: asUser,
+		ensureDoctorUser: asUser,
+		runAs,
+		...actual.serverFnHandlerMocks(),
+	};
+});
+
 vi.mock("#/lib/platform.ts", async () => {
 	const { PluginStates } = await import("@ktb/platform/plugin-states");
 	const { PortalAudience } = await import("@ktb/portal");

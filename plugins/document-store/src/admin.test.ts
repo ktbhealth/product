@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant } from "@ktb/tenant";
 import { eq } from "drizzle-orm";
@@ -14,15 +15,11 @@ import { DocumentCollections, defineCollection } from "./collection.ts";
 import { f } from "./fields.ts";
 import { documentCollections, documentRecords } from "./schema.ts";
 import { DocumentStoreAdmin, DocumentStoreAdminLive, type AdminCollectionInfo } from "./admin.ts";
-import { DocumentStore, DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
+import { DocumentStore, DocumentStoreLive } from "./service.ts";
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a'), (2, 'clinic-b');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0), (2, 'clinic-b', 'clinic-b', 'clinic', 0, 0);
 `;
 
 const targets = defineCollection({
@@ -82,7 +79,7 @@ describe("DocumentStoreAdminLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),

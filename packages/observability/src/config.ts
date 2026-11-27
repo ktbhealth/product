@@ -9,7 +9,40 @@
  * vendor endpoints) without code changes — cloud-agnostic by contract.
  */
 
-/** Env slice the observability drivers inspect (a subset of AppEnv). */
+/**
+ * Worker var carrying the deployment env-var prefix (e.g. `"APP_"`).
+ * Product-neutral name — the composing app binds it; when unset the
+ * config reads unprefixed names (`ENVIRONMENT`, `LOG_LEVEL`,
+ * `TELEMETRY_*`). `telemetryConfigFromEnv`'s `envPrefix` option wins
+ * over this var for direct callers.
+ */
+export const OBSERVABILITY_ENV_PREFIX_KEY = "OBSERVABILITY_ENV_PREFIX";
+
+/**
+ * Suffixes of the deployment-prefixed telemetry vars — the package
+ * stays product-blind: the full name is `${envPrefix}${suffix}` with
+ * the prefix supplied by composition (see {@link TelemetryEnvOptions}) —
+ * e.g. `"APP_"` resolves `APP_ENVIRONMENT` / `APP_LOG_LEVEL` /
+ * `APP_TELEMETRY_*`.
+ */
+export const OBSERVABILITY_ENV_SUFFIXES = [
+	"ENVIRONMENT",
+	"LOG_LEVEL",
+	"TELEMETRY_CLIENT",
+	"TELEMETRY_CLIENT_SAMPLE_RATE",
+	"TELEMETRY_EXPORT_INTERVAL_MS",
+	"TELEMETRY_MAX_BATCH_SIZE",
+	"TELEMETRY_RATE_LIMIT_GLOBAL",
+	"TELEMETRY_RATE_LIMIT_PER_IP",
+	"TELEMETRY_SHUTDOWN_TIMEOUT_MS",
+	"TELEMETRY_TRACES_SAMPLE_RATE",
+] as const;
+
+/** Env slice the observability drivers inspect (a subset of AppEnv).
+ * Only the unprefixed `OTEL_*` contract is declared — the prefixed
+ * telemetry vars are read dynamically through the configured
+ * {@link TelemetryEnvOptions.envPrefix} (see
+ * {@link OBSERVABILITY_ENV_SUFFIXES}). */
 export interface ObservabilityEnv {
 	readonly OTEL_SDK_DISABLED?: string;
 	readonly OTEL_SERVICE_NAME?: string;
@@ -20,44 +53,11 @@ export interface ObservabilityEnv {
 	readonly OTEL_EXPORTER_OTLP_METRICS_ENDPOINT?: string;
 	readonly OTEL_EXPORTER_OTLP_HEADERS?: string;
 	readonly OTEL_EXPORTER_OTLP_COMPRESSION?: string;
-	readonly KTB_ENVIRONMENT?: string;
-	readonly KTB_TELEMETRY_TRACES_SAMPLE_RATE?: string;
-	readonly KTB_TELEMETRY_EXPORT_INTERVAL_MS?: string;
-	readonly KTB_TELEMETRY_MAX_BATCH_SIZE?: string;
-	readonly KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS?: string;
-	readonly KTB_TELEMETRY_CLIENT?: string;
-	readonly KTB_TELEMETRY_CLIENT_SAMPLE_RATE?: string;
-	/** /api/telemetry ingest rate limits — max requests per minute,
-	 * per client IP (`cf-connecting-ip`) and globally. "0" disables. */
-	readonly KTB_TELEMETRY_RATE_LIMIT_PER_IP?: string;
-	readonly KTB_TELEMETRY_RATE_LIMIT_GLOBAL?: string;
-	/** Minimum log level — "Debug"|"Info"|"Warning"|"Error"|"Trace"|"All"|"None".
-	 * Unset keeps Effect's default (Info). */
-	readonly KTB_LOG_LEVEL?: string;
 }
 
-/**
- * Canonical list of every env var `ObservabilityEnv` declares — the
- * single source for "which process.env keys are telemetry config".
- * Composition edges that forward env into the worker binding shape
- * (the dev:node `cloudflare:workers` shim in apps/web, the OPTIONAL
- * list in scripts/dev-secrets.mjs) consume this instead of
- * hand-maintaining parallel lists that silently drift.
- *
- * `satisfies` rejects unknown keys; `_envKeysExhaustive` fails
- * typecheck if `ObservabilityEnv` ever grows a key missing here.
- */
-export const OBSERVABILITY_ENV_KEYS = [
-	"KTB_ENVIRONMENT",
-	"KTB_LOG_LEVEL",
-	"KTB_TELEMETRY_CLIENT",
-	"KTB_TELEMETRY_CLIENT_SAMPLE_RATE",
-	"KTB_TELEMETRY_EXPORT_INTERVAL_MS",
-	"KTB_TELEMETRY_MAX_BATCH_SIZE",
-	"KTB_TELEMETRY_RATE_LIMIT_GLOBAL",
-	"KTB_TELEMETRY_RATE_LIMIT_PER_IP",
-	"KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS",
-	"KTB_TELEMETRY_TRACES_SAMPLE_RATE",
+/** The unprefixed OTEL_* keys — always read verbatim regardless of
+ * the configured env-var prefix. */
+const OBSERVABILITY_ENV_OTEL_KEYS = [
 	"OTEL_EXPORTER_OTLP_COMPRESSION",
 	"OTEL_EXPORTER_OTLP_ENDPOINT",
 	"OTEL_EXPORTER_OTLP_HEADERS",
@@ -69,10 +69,30 @@ export const OBSERVABILITY_ENV_KEYS = [
 	"OTEL_SERVICE_NAME",
 ] as const satisfies readonly (keyof ObservabilityEnv)[];
 
-type _EnvKeysMissing = Exclude<keyof ObservabilityEnv, (typeof OBSERVABILITY_ENV_KEYS)[number]>;
+type _EnvKeysMissing = Exclude<
+	keyof ObservabilityEnv,
+	(typeof OBSERVABILITY_ENV_OTEL_KEYS)[number]
+>;
 // Stryker disable next-line BooleanLiteral: compile-time-only exhaustiveness assertion — the runtime value is never read (`void` discard below).
 const _envKeysExhaustive: [_EnvKeysMissing] extends [never] ? true : never = true;
 void _envKeysExhaustive;
+
+/**
+ * Canonical list of every env var name `telemetryConfigFromEnv`
+ * resolves, for a given deployment prefix — the single source for
+ * "which process.env keys are telemetry config". Composition edges
+ * that forward env into the worker binding shape (the dev:node
+ * `cloudflare:workers` shim in apps/web, the OPTIONAL list in
+ * scripts/dev-secrets.mjs) consume this instead of hand-maintaining
+ * parallel lists that silently drift. The returned names always
+ * include {@link OBSERVABILITY_ENV_PREFIX_KEY} so an explicit prefix
+ * override forwards too.
+ */
+export const observabilityEnvKeys = (envPrefix = ""): readonly string[] => [
+	OBSERVABILITY_ENV_PREFIX_KEY,
+	...OBSERVABILITY_ENV_SUFFIXES.map((suffix) => `${envPrefix}${suffix}`),
+	...OBSERVABILITY_ENV_OTEL_KEYS,
+];
 
 export interface OtlpSignalEndpoints {
 	readonly logs?: string;
@@ -85,7 +105,8 @@ export interface TelemetryConfig {
 	readonly disabled: boolean;
 	readonly serviceName: string;
 	readonly serviceVersion?: string;
-	/** deployment.environment.resource attribute or KTB_ENVIRONMENT. */
+	/** deployment.environment.resource attribute or the prefixed
+	 * ENVIRONMENT var. */
 	readonly environment: string;
 	/** Parsed OTEL_RESOURCE_ATTRIBUTES (service.name/version excluded —
 	 * they have dedicated fields). */
@@ -119,7 +140,7 @@ export interface TelemetryConfig {
 			readonly globalPerMinute: number;
 		};
 	};
-	/** KTB_LOG_LEVEL — minimum severity for emitted logs. */
+	/** Prefixed LOG_LEVEL var — minimum severity for emitted logs. */
 	readonly logLevel?: string;
 	/** Non-fatal resolution problems (e.g. an insecure remote `http://`
 	 * OTLP endpoint that was dropped). Drivers surface these via
@@ -295,35 +316,73 @@ const guardOtlpEndpoints = (
 	return { logs: guard("logs"), traces: guard("traces"), metrics: guard("metrics") };
 };
 
+export interface TelemetryEnvOptions {
+	/**
+	 * Deployment env-var prefix applied to the telemetry vars
+	 * (`${envPrefix}ENVIRONMENT`, `${envPrefix}TELEMETRY_*`, …). Wins
+	 * over the {@link OBSERVABILITY_ENV_PREFIX_KEY} worker var; when
+	 * neither is set the unprefixed names are read. The composing app
+	 * supplies the product prefix — this package stays product-blind.
+	 */
+	readonly envPrefix?: string;
+}
+
+/** Dynamic env read for the prefixed vars — ObservabilityEnv only
+ * declares the OTEL_* slice, so prefixed names resolve through a
+ * string index. Non-string bindings (queues, DO namespaces) read as
+ * undefined. */
+const envString = (env: object, name: string): string | undefined => {
+	const value = (env as Readonly<Record<string, unknown>>)[name];
+	return typeof value === "string" ? value : undefined;
+};
+
+/**
+ * Env object {@link telemetryConfigFromEnv} accepts: the declared
+ * `ObservabilityEnv` slice, or any record carrying the deployment's
+ * prefixed vars (`ACME_ENVIRONMENT`, `ACME_TELEMETRY_*`, …) — worker
+ * envs are heterogeneous binding bags, so the record half stays loose.
+ */
+export type TelemetryEnvInput = ObservabilityEnv | Readonly<Record<string, unknown>>;
+
 /**
  * Resolve telemetry configuration from platform bindings. Pure — no env
  * reads, no I/O — so tests and every runtime share the exact semantics.
  * Defaults are DX-first: no OTLP endpoint → console JSON logs only,
  * everything else off until configured.
  */
-export const telemetryConfigFromEnv = (env: ObservabilityEnv): TelemetryConfig => {
-	const disabled = truthy(env.OTEL_SDK_DISABLED);
-	const resourceAttributes = parseKeyValueList(env.OTEL_RESOURCE_ATTRIBUTES);
-	const serviceName = env.OTEL_SERVICE_NAME?.trim() || resourceAttributes["service.name"] || "ktb";
+export const telemetryConfigFromEnv = (
+	env: TelemetryEnvInput,
+	options?: TelemetryEnvOptions,
+): TelemetryConfig => {
+	const otel = env as ObservabilityEnv;
+	const prefix = options?.envPrefix ?? envString(env, OBSERVABILITY_ENV_PREFIX_KEY) ?? "";
+	/** `${prefix}${suffix}` lookup — the prefixed telemetry vars. */
+	const prefixed = (suffix: (typeof OBSERVABILITY_ENV_SUFFIXES)[number]): string | undefined =>
+		envString(env, `${prefix}${suffix}`);
+	const disabled = truthy(otel.OTEL_SDK_DISABLED);
+	const resourceAttributes = parseKeyValueList(otel.OTEL_RESOURCE_ATTRIBUTES);
+	const serviceName = otel.OTEL_SERVICE_NAME?.trim() || resourceAttributes["service.name"] || "ktb";
 	const serviceVersion = resourceAttributes["service.version"];
 	const environment =
-		env.KTB_ENVIRONMENT?.trim() || resourceAttributes["deployment.environment"] || "development";
-	const headersRaw = parseKeyValueList(env.OTEL_EXPORTER_OTLP_HEADERS);
+		prefixed("ENVIRONMENT")?.trim() ||
+		resourceAttributes["deployment.environment"] ||
+		"development";
+	const headersRaw = parseKeyValueList(otel.OTEL_EXPORTER_OTLP_HEADERS);
 	const resolvedEndpoints: OtlpSignalEndpoints = {
 		logs: signalEndpoint(
 			"logs",
-			env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
-			env.OTEL_EXPORTER_OTLP_ENDPOINT,
+			otel.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+			otel.OTEL_EXPORTER_OTLP_ENDPOINT,
 		),
 		traces: signalEndpoint(
 			"traces",
-			env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
-			env.OTEL_EXPORTER_OTLP_ENDPOINT,
+			otel.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+			otel.OTEL_EXPORTER_OTLP_ENDPOINT,
 		),
 		metrics: signalEndpoint(
 			"metrics",
-			env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
-			env.OTEL_EXPORTER_OTLP_ENDPOINT,
+			otel.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
+			otel.OTEL_EXPORTER_OTLP_ENDPOINT,
 		),
 	};
 	// TLS enforcement: remote http:// endpoints are dropped with a
@@ -332,9 +391,9 @@ export const telemetryConfigFromEnv = (env: ObservabilityEnv): TelemetryConfig =
 	const warnings: string[] = [];
 	const endpoints = disabled
 		? resolvedEndpoints
-		: guardOtlpEndpoints(resolvedEndpoints, env, warnings);
+		: guardOtlpEndpoints(resolvedEndpoints, otel, warnings);
 	const compression =
-		env.OTEL_EXPORTER_OTLP_COMPRESSION?.trim().toLowerCase() === "gzip" ? "gzip" : "none";
+		otel.OTEL_EXPORTER_OTLP_COMPRESSION?.trim().toLowerCase() === "gzip" ? "gzip" : "none";
 	return {
 		disabled,
 		serviceName,
@@ -345,30 +404,45 @@ export const telemetryConfigFromEnv = (env: ObservabilityEnv): TelemetryConfig =
 			endpoints,
 			headers: Object.keys(headersRaw).length > 0 ? headersRaw : undefined,
 			compression,
-			exportIntervalMs: parseIntClamped(env.KTB_TELEMETRY_EXPORT_INTERVAL_MS, 10_000, 100, 300_000),
-			maxBatchSize: parseIntClamped(env.KTB_TELEMETRY_MAX_BATCH_SIZE, 512, 1, 4096),
-			shutdownTimeoutMs: parseIntClamped(env.KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS, 3_000, 100, 60_000),
+			exportIntervalMs: parseIntClamped(
+				prefixed("TELEMETRY_EXPORT_INTERVAL_MS"),
+				10_000,
+				100,
+				300_000,
+			),
+			maxBatchSize: parseIntClamped(prefixed("TELEMETRY_MAX_BATCH_SIZE"), 512, 1, 4096),
+			shutdownTimeoutMs: parseIntClamped(
+				prefixed("TELEMETRY_SHUTDOWN_TIMEOUT_MS"),
+				3_000,
+				100,
+				60_000,
+			),
 		},
-		tracesSampleRate: parseFloatClamped(env.KTB_TELEMETRY_TRACES_SAMPLE_RATE, 1, 0, 1),
+		tracesSampleRate: parseFloatClamped(prefixed("TELEMETRY_TRACES_SAMPLE_RATE"), 1, 0, 1),
 		clientTelemetry: {
-			enabled: !falsy(env.KTB_TELEMETRY_CLIENT),
-			sampleRate: parseFloatClamped(env.KTB_TELEMETRY_CLIENT_SAMPLE_RATE, 1, 0, 1),
+			enabled: !falsy(prefixed("TELEMETRY_CLIENT")),
+			sampleRate: parseFloatClamped(prefixed("TELEMETRY_CLIENT_SAMPLE_RATE"), 1, 0, 1),
 			rateLimit: {
 				// Generous vs. real browser bursts (a page view emits a
 				// handful of batched events); the cap exists to stop log
 				// spam, not to shape legitimate traffic.
-				perIpPerMinute: parseIntClamped(env.KTB_TELEMETRY_RATE_LIMIT_PER_IP, 120, 0, 1_000_000),
-				globalPerMinute: parseIntClamped(env.KTB_TELEMETRY_RATE_LIMIT_GLOBAL, 6_000, 0, 10_000_000),
+				perIpPerMinute: parseIntClamped(prefixed("TELEMETRY_RATE_LIMIT_PER_IP"), 120, 0, 1_000_000),
+				globalPerMinute: parseIntClamped(
+					prefixed("TELEMETRY_RATE_LIMIT_GLOBAL"),
+					6_000,
+					0,
+					10_000_000,
+				),
 			},
 		},
-		logLevel: parseLogLevel(env.KTB_LOG_LEVEL),
+		logLevel: parseLogLevel(prefixed("LOG_LEVEL")),
 		warnings,
 	};
 };
 
 const LOG_LEVELS = new Set(["All", "Trace", "Debug", "Info", "Warning", "Error", "Fatal", "None"]);
 
-/** KTB_LOG_LEVEL → effect LogLevel, or undefined when unset/invalid. */
+/** Prefixed LOG_LEVEL var → effect LogLevel, or undefined when unset/invalid. */
 export const parseLogLevel = (raw: string | undefined): string | undefined => {
 	if (raw === undefined) return undefined;
 	const trimmed = raw.trim();

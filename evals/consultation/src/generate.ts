@@ -11,7 +11,7 @@
 import * as Effect from "effect/Effect";
 import type { JsonObject } from "effect/Schema";
 
-import { runBatch, type BatchOptions, type BatchResult } from "@ktb/eval-core";
+import { fnvHex, runBatch, type BatchOptions, type BatchResult } from "@ktb/eval-core";
 
 import type { LocaleProfile } from "./locale.ts";
 import { enrichPersona, voiceFor } from "./personas.ts";
@@ -19,16 +19,10 @@ import { DatasetStorePort, PortError, ReportPort, TtsPort } from "./ports.ts";
 import type { AcousticProfile, Persona, Sample } from "./schema.ts";
 import { renderScript, rng } from "./scriptgen.ts";
 
-/** FNV-1a hex — dependency-free content hash for ids/scriptHash
- * (domain code cannot use node:crypto). */
-export const fnvHex = (s: string): string => {
-	let h = 0x811c9dc5;
-	for (let i = 0; i < s.length; i++) {
-		h ^= s.charCodeAt(i);
-		h = Math.imul(h, 0x01000193);
-	}
-	return (h >>> 0).toString(16).padStart(8, "0");
-};
+// fnvHex lives in @ktb/eval-core (shared with @ktb/transcript-cleanup's
+// CLEANUP_PROMPT) — re-exported so this module's public surface and
+// `export * from "./generate.ts"` consumers are unchanged.
+export { fnvHex };
 
 /** Canonical persona key for sample ids — EVERY Persona field,
  * including the optional `gender`/`cues`. Two personas differing only

@@ -5,7 +5,7 @@ import { Telemetry } from "@ktb/observability";
 import { PlatformAdmin } from "@ktb/platform";
 import { getSessionUser } from "#/lib/auth.ts";
 import { run } from "#/lib/platform.ts";
-import { timingSafeEqual } from "#/lib/timing-safe.ts";
+import { timingSafeEqual } from "@ktb/observability-edge";
 import { env } from "cloudflare:workers";
 
 /**

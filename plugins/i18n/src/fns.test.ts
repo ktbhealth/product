@@ -36,18 +36,23 @@ vi.mock("@tanstack/react-start", () => ({
 
 // @ktb/auth is not a direct dep of this plugin — stub the session/runAs
 // ports instead of composing the real server runtime.
-vi.mock("@ktb/server-fns", () => ({
-	getSessionUser: async () => h.user.current,
-	runAs: async (_user: unknown, effect: unknown) => {
-		const EffectNS = await import("effect/Effect");
-		const { I18nAdmin } = await import("./contract.ts");
-		return EffectNS.runPromise(
-			(effect as import("effect/Effect").Effect<unknown, unknown, never>).pipe(
-				EffectNS.provideService(I18nAdmin, h.admin as never),
-			),
-		);
-	},
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		getSessionUser: async () => h.user.current,
+		runAs: async (_user: unknown, effect: unknown) => {
+			const EffectNS = await import("effect/Effect");
+			const { I18nAdmin } = await import("./contract.ts");
+			return EffectNS.runPromise(
+				(effect as import("effect/Effect").Effect<unknown, unknown, never>).pipe(
+					EffectNS.provideService(I18nAdmin, h.admin as never),
+				),
+			);
+		},
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 
 import { Forbidden } from "@ktb/authz";
 import * as Effect from "effect/Effect";

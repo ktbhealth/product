@@ -16,6 +16,7 @@
 		"@ktb/consultations": "workspace:*",
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/db-testing": "workspace:*",
 		"@ktb/doctors": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",

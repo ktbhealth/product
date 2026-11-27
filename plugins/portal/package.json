@@ -8,11 +8,11 @@
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
-		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
+		"@ktb/server-fns": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#feat/review-ux",
 		"@tanstack/react-router": "1.170.46",
 		"effect": "4.1.2",

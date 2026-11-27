@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { pluginState } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { definePlugin } from "@ktb/kernel";
 import type { PluginConfigSchema, PluginId } from "@ktb/kernel";
 import * as Effect from "effect/Effect";
@@ -21,15 +22,6 @@ import {
 	UnknownPlugin,
 	validatePluginConfig,
 } from "./plugin-states.ts";
-
-const DDL = `
-CREATE TABLE plugin_state (
-	plugin_id TEXT PRIMARY KEY NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	config TEXT,
-	updated_at INTEGER NOT NULL
-);
-`;
 
 // Test-only ids registered for the PluginId type — the runtime registry
 // is whatever `plugins` array the layer is built with.
@@ -78,7 +70,7 @@ const testPlugins = [depPlugin, mainPlugin, otherPlugin, sysPlugin];
 
 const makeRuntime = () => {
 	const layer = makePluginStatesLive(testPlugins).pipe(
-		Layer.provide(Layer.succeed(Db, makeDb(makeD1(DDL)))),
+		Layer.provide(Layer.succeed(Db, makeDb(makeTestD1()))),
 	);
 	return ManagedRuntime.make(layer);
 };
@@ -309,7 +301,7 @@ describe("PluginStatesLive", () => {
 	});
 
 	it("system plugins stay enabled regardless of rows and reject disables", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const runtime = ManagedRuntime.make(
 			makePluginStatesLive(testPlugins).pipe(Layer.provide(Layer.succeed(Db, db))),
 		);
@@ -380,7 +372,7 @@ describe("PluginStatesLive", () => {
 	});
 
 	it("reads degrade a corrupt stored config row to schema defaults", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const runtime = ManagedRuntime.make(
 			makePluginStatesLive(testPlugins).pipe(Layer.provide(Layer.succeed(Db, db))),
 		);
@@ -409,7 +401,7 @@ describe("PluginStatesLive", () => {
 			configSchema: Schema.Struct({ "": Schema.String }),
 		});
 		const runtime = ManagedRuntime.make(
-			makePluginStatesLive([weird]).pipe(Layer.provide(Layer.succeed(Db, makeDb(makeD1(DDL))))),
+			makePluginStatesLive([weird]).pipe(Layer.provide(Layer.succeed(Db, makeDb(makeTestD1())))),
 		);
 		try {
 			const bad = await withStates(

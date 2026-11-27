@@ -6,7 +6,8 @@ import * as Option from "effect/Option";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
-import { Accounts, DoctorProfiles, PatientProfiles } from "@ktb/auth";
+import { Accounts } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles } from "@ktb/server-fns";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";

@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
-import { VAULT_TEST_DDL } from "@ktb/vault";
+import { adminAudit, AuditLive } from "@ktb/audit";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { patientDocuments, relationTuples, user as userTable } from "@ktb/db/schema";
 import { and, eq } from "drizzle-orm";
 import { Forbidden, Principal } from "@ktb/authz";
@@ -50,15 +50,9 @@ const fields = (name: string, extra: Record<string, string> = {}): PatientFields
 };
 
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0, 0);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
-CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-${AUDIT_TEST_DDL}
-${VAULT_TEST_DDL}
+
 INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'Clínica A', 'clinica-a', 'clinic', 0, 0, 0);
 INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (8, 'Clínica B', 'clinica-b', 'clinic', 0, 0, 0);
 INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
@@ -68,7 +62,7 @@ describe("patients repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("creates and lists scoped by owner", async () => {
@@ -292,7 +286,7 @@ describe("PatientsLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -779,7 +773,7 @@ describe("plugins", () => {
 
 describe("patients.ownerOf", () => {
 	it("returns the owner row for a patient and null for unknown ids", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const p = await createPatient(db, "u1", fields("Owner Lookup"));
 		expect(p?.id).toBeTypeOf("number");
 		expect(await getPatientOwnerId(db, p!.id)).toMatchObject({ ownerId: "u1" });
@@ -787,7 +781,7 @@ describe("patients.ownerOf", () => {
 	});
 
 	it("resolves through the query dispatcher", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const p = await createPatient(db, "u1", fields("Dispatcher Lookup"));
 		const runtime = ManagedRuntime.make(
 			PatientsQueriesLive.pipe(Layer.provide(Layer.succeed(Db, db))),
@@ -911,7 +905,7 @@ describe("PatientsCommandsLive", () => {
 
 	it("patients.delete is a no-op for a patient that does not exist", async () => {
 		const deps = Layer.mergeAll(
-			Layer.succeed(Db, makeDb(makeD1(DDL))),
+			Layer.succeed(Db, makeDb(makeTestD1(DDL))),
 			makeEventBus(),
 			adminGate(),
 		);
@@ -935,7 +929,7 @@ describe("PatientsCommandsLive", () => {
 	});
 
 	it("patients.delete removes the owner's patient, emits patient.deleted and audits (P-080)", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const row = (await createPatient(db, "u1", fields("To Delete")))!;
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
@@ -970,7 +964,7 @@ describe("PatientsCommandsLive", () => {
 	});
 
 	it("patients.delete lets a platform admin remove another owner's patient and audits the row's owner", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const row = (await createPatient(db, "u2", fields("Foreign")))!;
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
@@ -1008,7 +1002,7 @@ describe("PatientsCommandsLive", () => {
 	});
 
 	it("patients.delete still fails Forbidden for a non-admin non-owner", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const row = (await createPatient(db, "u2", fields("Foreign 2")))!;
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
@@ -1057,7 +1051,7 @@ describe("PatientsLive tenant scope (P-053)", () => {
 	};
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		// Build the bus explicitly so tests can subscribe to the same
 		// instance the service layer dispatches on.
 		busRuntime = ManagedRuntime.make(makeEventBus());
@@ -1246,7 +1240,7 @@ describe("PatientsLive tenant scope (P-053)", () => {
 	});
 
 	it("patients.delete lets a tenant member remove a tenant row; non-members are Forbidden", async () => {
-		const db2 = makeDb(makeD1(DDL));
+		const db2 = makeDb(makeTestD1(DDL));
 		const shared = (await createPatient(db2, "u1", fields("Shared Del"), 7))!;
 		// Same explicit-bus trick as the tenant describe: subscribe on
 		// the instance the command layer dispatches to.
@@ -1304,7 +1298,7 @@ describe("PatientsLive ZK gate (T-144)", () => {
 	const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -1443,7 +1437,7 @@ describe("PatientsLive without the Permissions port", () => {
 	// Permissions service — when the rbac plugin isn't composed the
 	// check must fail closed (Forbidden), never allow.
 	it("get/update/delete fail Forbidden on a personal row; create still works", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const row = (await createPatient(db, "u1", fields("No Port")))!;
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),

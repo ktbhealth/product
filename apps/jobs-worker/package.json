@@ -9,6 +9,7 @@
 	"dependencies": {
 		"@ktb/db": "workspace:*",
 		"@ktb/db-sqlite": "workspace:*",
+		"@ktb/db-testing": "workspace:*",
 		"@ktb/jobs-port": "workspace:*",
 		"@ktb/jobs-transport-redis": "workspace:*",
 		"@ktb/orchestrator": "workspace:*",

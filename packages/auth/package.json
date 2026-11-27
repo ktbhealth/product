@@ -13,6 +13,7 @@
 	},
 	"devDependencies": {
 		"@ktb/db": "workspace:*",
+		"@ktb/db-testing": "workspace:*",
 		"drizzle-orm": "^0.45.1"
 	}
 }

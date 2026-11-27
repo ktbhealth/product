@@ -27,6 +27,7 @@ vi.mock("@ktb/server-fns", async (importOriginal) => {
 		},
 		runAs: (user: unknown, eff: Effect.Effect<unknown, unknown, unknown>) =>
 			server.runAs(user, eff),
+		...actual.serverFnHandlerMocks(),
 	};
 });
 

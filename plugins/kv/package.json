@@ -25,6 +25,7 @@
 		"lucide-react": "0.544.0"
 	},
 	"devDependencies": {
+		"@ktb/db-testing": "workspace:*",
 		"@types/better-sqlite3": "^9.6.0",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",

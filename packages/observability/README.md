@@ -10,8 +10,12 @@ package defines the contracts, local defaults and shared primitives.
 ```
 app edge (apps/web)
   start.ts            request middleware — request id, access log, RED metrics
-  lib/telemetry.ts    request-scoped context (x-request-id, traceparent)
   lib/platform.ts     run/runAs seed TelemetryContext per invocation
+        │
+        ▼
+@ktb/observability-edge  edge kit — request telemetry context (x-request-id,
+                        traceparent), ingest rate limit, flush throttle,
+                        access-log sink, server-fn/response helpers
         │
         ▼
 @ktb/app-host         driver selection (OTLP wins, console fallback),

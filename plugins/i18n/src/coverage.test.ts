@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -13,7 +14,7 @@ import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
 
 import { I18nAdmin, I18nAdminLive, I18nValidationError } from "./admin.ts";
-import { I18N_TEST_DDL, i18nMessages, i18nNamespaces } from "./index.ts";
+import { i18nMessages, i18nNamespaces } from "./index.ts";
 import { I18nRuntimeLive } from "./runtime.ts";
 
 /**
@@ -115,7 +116,7 @@ const runMissingKeys = (
 	);
 
 beforeAll(async () => {
-	db = makeDb(makeD1(I18N_TEST_DDL));
+	db = makeDb(makeTestD1());
 	// Sentinel namespace keeps i18n_namespaces non-empty so the runtime
 	// layer's lazy baseline seed (admin.test.ts pattern) stays a no-op.
 	await db.insert(i18nNamespaces).values({

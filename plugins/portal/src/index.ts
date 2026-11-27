@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 
-import { DoctorProfiles, PatientProfiles, type PatientProfile } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles, type PatientProfile } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin } from "@ktb/platform";

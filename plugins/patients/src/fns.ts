@@ -5,16 +5,17 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import {
-	ensureDoctorUser,
-	ensureSessionUser,
+	doctorHandler,
+	forbiddenTo,
 	getDoctorAccess,
 	getDoctorContext,
-	getDoctorUser,
 	getLocale,
 	getServerRuntime,
 	getSessionUser,
+	optionalDoctorHandler,
 	purgeAudio,
 	runAs,
+	sessionHandler,
 } from "@ktb/server-fns";
 
 import { Vault } from "@ktb/vault";
@@ -155,42 +156,44 @@ export const localeFn = createServerFn({ method: "GET" }).handler(() => getLocal
 // All domain calls go through `runAs(user, …)`: the service enforces
 // ownership via the bound Principal — no handler-level permission checks.
 
-export const listPatientsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return [];
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const patients = yield* Patients;
-			return yield* patients.list(user.id);
-		}),
-	);
-});
+export const listPatientsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => [],
+		async ({ user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const patients = yield* Patients;
+					return yield* patients.list(user.id);
+				}),
+			);
+		},
+	),
+);
 
 /** What deleting a patient takes with it — shown before the doctor confirms. */
 export const patientDeletionImpactFn = createServerFn({ method: "GET" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const patients = yield* Patients;
-					const patient = yield* patients
-						.get(user.id, id)
-						.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-					if (!patient) return null;
-					const queries = yield* Query.dispatcher(PatientRecordConsultationsQueries);
-					const consultations = yield* queries["patients.recordConsultations"]({
-						patientId: id,
-					});
-					return { consultations: consultations.length };
-				}),
-			),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data: id }) => null,
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.scoped(
+						Effect.gen(function* () {
+							const patients = yield* Patients;
+							const patient = yield* patients.get(user.id, id).pipe(forbiddenTo(null));
+							if (!patient) return null;
+							const queries = yield* Query.dispatcher(PatientRecordConsultationsQueries);
+							const consultations = yield* queries["patients.recordConsultations"]({
+								patientId: id,
+							});
+							return { consultations: consultations.length };
+						}),
+					),
+				);
+			},
+		),
+	);
 
 /**
  * Permanently delete a patient and every consultation linked to them
@@ -199,96 +202,96 @@ export const patientDeletionImpactFn = createServerFn({ method: "GET" })
  */
 export const deletePatientFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await ensureDoctorUser();
-		const result = await runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(PatientCascadeCommands);
-					return yield* commands["patients.deleteCascade"]({
-						patientId: id,
-					}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-				}),
-			),
-		);
-		if (!result) return { ok: false as const };
-		const leftover = await purgeAudio(getServerRuntime().audio, result.audioKeys);
-		return {
-			ok: true as const,
-			consultations: result.consultations,
-			/** Recordings still in storage after a failed purge (0 when clean). */
-			orphanedAudio: leftover.length,
-		};
-	});
+	.handler(
+		doctorHandler(async ({ data: id, run }) => {
+			const result = await run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(PatientCascadeCommands);
+						return yield* commands["patients.deleteCascade"]({
+							patientId: id,
+						}).pipe(forbiddenTo(null));
+					}),
+				),
+			);
+			if (!result) return { ok: false as const };
+			const leftover = await purgeAudio(getServerRuntime().audio, result.audioKeys);
+			return {
+				ok: true as const,
+				consultations: result.consultations,
+				/** Recordings still in storage after a failed purge (0 when clean). */
+				orphanedAudio: leftover.length,
+			};
+		}),
+	);
 
 export const getPatientFn = createServerFn({ method: "GET" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		// Someone else's patient fails Forbidden inside the service → null (404).
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const patients = yield* Patients;
-				return yield* patients
-					.get(user.id, id)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data: id }) => null,
+			async ({ data: id, user, run }) => {
+				// Someone else's patient fails Forbidden inside the service → null (404).
+				return run(
+					Effect.gen(function* () {
+						const patients = yield* Patients;
+						return yield* patients.get(user.id, id).pipe(forbiddenTo(null));
+					}),
+				);
+			},
+		),
+	);
 
 /** Field errors come back as data (`ok: false`) so the form can show them inline. */
 export const createPatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePatientDraft(input))
-	.handler(async ({ data: { ciphered, grants, ...draft } }) => {
-		const user = await ensureDoctorUser();
-		const result = validateDraft(ciphered, draft);
-		if (!result.ok) return { ok: false as const, errors: result.errors };
-		// T-144: a ciphered row without at least one wrapped DEK is
-		// unreadable forever — the create must carry its grants.
-		if (ciphered === true && (grants === undefined || grants.length === 0)) {
-			return { ok: false as const, errors: {} };
-		}
-		if (grants !== undefined && ciphered !== true) {
-			return { ok: false as const, errors: {} };
-		}
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const patients = yield* Patients;
-				const patient = yield* patients.create(user.id, result.fields);
-				if (patient === null) return { ok: false as const, errors: {} };
-				if (grants !== undefined) {
-					// Atomic-ish: the vault write failing orphans the record —
-					// no device could ever unwrap it — so the row is rolled back.
-					const db = yield* Db;
-					const tenant = yield* Tenant;
-					const tenantId = tenantScopeId(tenant);
-					const vault = yield* Effect.serviceOption(Vault);
-					const granted = yield* tenantId !== null && vault._tag === "Some"
-						? vault.value
-								.grantAccess({
-									tenantId,
-									entityType: patientCipher.entity,
-									entityId: patient.id,
-									grants,
-								})
-								.pipe(
-									Effect.map(() => true),
-									Effect.catch(() => Effect.succeed(false)),
-								)
-						: Effect.succeed(false);
-					if (!granted) {
-						yield* Effect.promise(() => deletePatientRow(db, patient.id));
-						return { ok: false as const, errors: {} };
+	.handler(
+		doctorHandler(async ({ data: { ciphered, grants, ...draft }, user, run }) => {
+			const result = validateDraft(ciphered, draft);
+			if (!result.ok) return { ok: false as const, errors: result.errors };
+			// T-144: a ciphered row without at least one wrapped DEK is
+			// unreadable forever — the create must carry its grants.
+			if (ciphered === true && (grants === undefined || grants.length === 0)) {
+				return { ok: false as const, errors: {} };
+			}
+			if (grants !== undefined && ciphered !== true) {
+				return { ok: false as const, errors: {} };
+			}
+			return run(
+				Effect.gen(function* () {
+					const patients = yield* Patients;
+					const patient = yield* patients.create(user.id, result.fields);
+					if (patient === null) return { ok: false as const, errors: {} };
+					if (grants !== undefined) {
+						// Atomic-ish: the vault write failing orphans the record —
+						// no device could ever unwrap it — so the row is rolled back.
+						const db = yield* Db;
+						const tenant = yield* Tenant;
+						const tenantId = tenantScopeId(tenant);
+						const vault = yield* Effect.serviceOption(Vault);
+						const granted = yield* tenantId !== null && vault._tag === "Some"
+							? vault.value
+									.grantAccess({
+										tenantId,
+										entityType: patientCipher.entity,
+										entityId: patient.id,
+										grants,
+									})
+									.pipe(
+										Effect.map(() => true),
+										Effect.catch(() => Effect.succeed(false)),
+									)
+							: Effect.succeed(false);
+						if (!granted) {
+							yield* Effect.promise(() => deletePatientRow(db, patient.id));
+							return { ok: false as const, errors: {} };
+						}
 					}
-				}
-				return { ok: true as const, patient };
-			}),
-		);
-	});
+					return { ok: true as const, patient };
+				}),
+			);
+		}),
+	);
 
 /**
  * Platform-admin create on behalf of another user — the service
@@ -300,72 +303,74 @@ export const createPatientFn = createServerFn({ method: "POST" })
  * service re-checks the PlatformAdmin gate; non-admins and missing
  * sessions get the same empty feed as an empty table.
  */
-export const adminListPatientsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return [];
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const patients = yield* Patients;
-			return yield* patients
-				.adminList()
-				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as AdminPatientRow[])));
-		}),
-	);
-});
+export const adminListPatientsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => [],
+		async ({ run }) => {
+			return run(
+				Effect.gen(function* () {
+					const patients = yield* Patients;
+					return yield* patients.adminList().pipe(forbiddenTo([] as AdminPatientRow[]));
+				}),
+			);
+		},
+	),
+);
 
 export const adminCreatePatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAdminPatientCreate(input))
-	.handler(async ({ data: { ownerId, ...draft } }) => {
-		const user = await ensureSessionUser();
-		const result = validatePatient(draft);
-		if (!result.ok) return { ok: false as const, errors: result.errors };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const patients = yield* Patients;
-				const patient = yield* patients
-					.adminCreate(ownerId, result.fields)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-				return patient ? { ok: true as const, patient } : { ok: false as const, errors: {} };
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data: { ownerId, ...draft }, run }) => {
+			const result = validatePatient(draft);
+			if (!result.ok) return { ok: false as const, errors: result.errors };
+			return run(
+				Effect.gen(function* () {
+					const patients = yield* Patients;
+					const patient = yield* patients
+						.adminCreate(ownerId, result.fields)
+						.pipe(forbiddenTo(null));
+					return patient ? { ok: true as const, patient } : { ok: false as const, errors: {} };
+				}),
+			);
+		}),
+	);
 
 export const updatePatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePatientUpdate(input))
-	.handler(async ({ data: { id, ciphered, ...draft } }) => {
-		const user = await ensureDoctorUser();
-		const result = validateDraft(ciphered, draft);
-		if (!result.ok) return { ok: false as const, errors: result.errors };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const patients = yield* Patients;
-				// Missing or not owned → same "not saved" answer.
-				const patient = yield* patients
-					.update(user.id, id, result.fields)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-				return patient ? { ok: true as const, patient } : { ok: false as const, errors: {} };
-			}),
-		);
-	});
+	.handler(
+		doctorHandler(async ({ data: { id, ciphered, ...draft }, user, run }) => {
+			const result = validateDraft(ciphered, draft);
+			if (!result.ok) return { ok: false as const, errors: result.errors };
+			return run(
+				Effect.gen(function* () {
+					const patients = yield* Patients;
+					// Missing or not owned → same "not saved" answer.
+					const patient = yield* patients
+						.update(user.id, id, result.fields)
+						.pipe(forbiddenTo(null));
+					return patient ? { ok: true as const, patient } : { ok: false as const, errors: {} };
+				}),
+			);
+		}),
+	);
 
 /** The patient record page's consultation list (owner-scoped) — the
  * `patients.recordConsultations` CQRS query, dispatched inside runAs so
  * the bound Principal reaches the handler's authz checks. */
 export const patientConsultationsFn = createServerFn({ method: "GET" })
 	.validator((patientId: number) => decodeNumber(patientId))
-	.handler(async ({ data: patientId }) => {
-		const user = await getDoctorUser();
-		if (!user) return [];
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const queries = yield* Query.dispatcher(PatientRecordConsultationsQueries);
-					return yield* queries["patients.recordConsultations"]({ patientId });
-				}),
-			),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data: patientId }) => [],
+			async ({ data: patientId, run }) => {
+				return run(
+					Effect.scoped(
+						Effect.gen(function* () {
+							const queries = yield* Query.dispatcher(PatientRecordConsultationsQueries);
+							return yield* queries["patients.recordConsultations"]({ patientId });
+						}),
+					),
+				);
+			},
+		),
+	);

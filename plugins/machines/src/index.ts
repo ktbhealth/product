@@ -3,7 +3,7 @@ import { ServerIcon } from "lucide-react";
 import { Effect } from "effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { Machines, MachinesLive, type MachineCard } from "./machines.ts";
 import { MachinesPanelPage } from "./platform-page.tsx";
@@ -18,18 +18,6 @@ export {
 	MachinesLive,
 	type MachineCard,
 } from "./machines.ts";
-
-/** Platform-admin gate for the panel page — same contract as the
- * /platform/audit admin surface: hard deny for non-admins, the
- * Machines service re-checks every call anyway. */
-const adminGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
 
 export const machinesTablesPlugin = definePlugin({
 	id: "machines.tables",
@@ -78,11 +66,10 @@ export const machinesPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, machinesServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "machines",
 				path: "/platform/ai/machines",
 				component: MachinesPanelPage,
-				guard: adminGuard,
 				loader: () =>
 					Effect.gen(function* () {
 						const machines = yield* Machines;
@@ -96,21 +83,10 @@ export const machinesPanelPlugin = definePlugin({
 							}),
 						);
 					}),
-			},
+			}),
 		],
 	},
 });
-
-// Re-exported for tests: DDL that creates `machine` (+ a `groups`
-// stub for the tenant FK) in the in-memory better-sqlite3 test
-// databases of instrumented plugins.
-export const MACHINES_TEST_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE machine (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'other', host TEXT NOT NULL, port INTEGER, capabilities TEXT, secret_ref TEXT, health_url TEXT, status TEXT NOT NULL DEFAULT 'unknown', last_seen_at INTEGER, last_check_at INTEGER, check_error TEXT, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE UNIQUE INDEX machine_scope_name_idx ON machine (scope, name);
-CREATE INDEX machine_tenant_idx ON machine (tenant_id);
-CREATE INDEX machine_status_idx ON machine (status);
-`;
 
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */

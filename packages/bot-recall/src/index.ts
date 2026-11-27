@@ -8,13 +8,19 @@ const BASE = "https://api.recall.ai/api/v1";
 /** Env slice the recall driver inspects (mirrors app-host AppEnv). */
 export interface RecallDriverEnv {
 	readonly RECALL_API_KEY?: string;
+	/** Display name the bot joins meetings under — supplied by the
+	 * composing app (product branding); defaults to a neutral name. */
+	readonly RECALL_BOT_NAME?: string;
 }
 
 /** Recall.ai — real adapter, needs RECALL_API_KEY. */
 export class RecallBotProvider implements BotProvider {
 	readonly name = "recall";
 
-	constructor(private readonly apiKey: string) {}
+	constructor(
+		private readonly apiKey: string,
+		private readonly botName = "bot",
+	) {}
 
 	async join(meetUrl: string, webhookUrl: string): Promise<BotSession> {
 		const res = await fetch(`${BASE}/bot`, {
@@ -25,7 +31,7 @@ export class RecallBotProvider implements BotProvider {
 			},
 			body: JSON.stringify({
 				meeting_url: meetUrl,
-				bot_name: "KTB Health",
+				bot_name: this.botName,
 				transcription_options: { provider: "default" },
 				realtime_endpoints: [
 					{
@@ -50,6 +56,7 @@ export class RecallBotProvider implements BotProvider {
 export const recallDriver: Driver<RecallDriverEnv> = {
 	id: "bot-recall",
 	port: Bot.key,
-	provides: (env) => Layer.succeed(Bot, new RecallBotProvider(env.RECALL_API_KEY ?? "")),
+	provides: (env) =>
+		Layer.succeed(Bot, new RecallBotProvider(env.RECALL_API_KEY ?? "", env.RECALL_BOT_NAME)),
 	when: (env) => Boolean(env.RECALL_API_KEY),
 };

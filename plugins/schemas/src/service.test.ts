@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { eq } from "drizzle-orm";
@@ -15,7 +16,6 @@ import {
 	InvalidSchemaName,
 	Schemas,
 	SchemasLive,
-	SCHEMAS_TEST_DDL,
 	SchemaNameTaken,
 	SchemaNotFound,
 } from "./service.ts";
@@ -33,7 +33,7 @@ describe("SchemasLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(SCHEMAS_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

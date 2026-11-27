@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
+import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
@@ -89,78 +89,93 @@ const HANDLED_TAGS = [
  * (invalid/duplicate path), same contract as the manager fns. */
 export const createPageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<PageWire | null> => {
-		await requirePluginEnabled("pages.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const pages = yield* Pages;
-				const row = yield* pages.adminCreate(data as PageInput);
-				return row === null ? null : toWire(row);
+	.handler(
+		pluginHandler(
+			"pages.panel",
+			sessionHandler(async ({ data, user }): Promise<PageWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const pages = yield* Pages;
+						const row = yield* pages.adminCreate(data as PageInput);
+						return row === null ? null : toWire(row);
+					}),
+				).catch((error: unknown) => {
+					if (typeof error === "object" && error !== null && "_tag" in error) {
+						if (
+							(HANDLED_TAGS as readonly string[]).includes(
+								String((error as { _tag?: unknown })._tag),
+							)
+						) {
+							return null;
+						}
+					}
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if (
-					(HANDLED_TAGS as readonly string[]).includes(String((error as { _tag?: unknown })._tag))
-				) {
-					return null;
-				}
-			}
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Update a page by id; `null` for non-admins, missing rows and
  * handled domain failures. */
 export const updatePageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<PageWire | null> => {
-		await requirePluginEnabled("pages.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const pages = yield* Pages;
-				const { id, ...input } = data;
-				return toWire(yield* pages.adminUpdate(id, input as PageInput));
+	.handler(
+		pluginHandler(
+			"pages.panel",
+			sessionHandler(async ({ data, user }): Promise<PageWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const pages = yield* Pages;
+						const { id, ...input } = data;
+						return toWire(yield* pages.adminUpdate(id, input as PageInput));
+					}),
+				).catch((error: unknown) => {
+					if (typeof error === "object" && error !== null && "_tag" in error) {
+						if (
+							(HANDLED_TAGS as readonly string[]).includes(
+								String((error as { _tag?: unknown })._tag),
+							)
+						) {
+							return null;
+						}
+					}
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if (
-					(HANDLED_TAGS as readonly string[]).includes(String((error as { _tag?: unknown })._tag))
-				) {
-					return null;
-				}
-			}
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Delete a page by id; `false` for non-admins and missing rows. */
 export const deletePageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("pages.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const pages = yield* Pages;
-				yield* pages.adminRemove(data.id);
-				return true;
+	.handler(
+		pluginHandler(
+			"pages.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const pages = yield* Pages;
+						yield* pages.adminRemove(data.id);
+						return true;
+					}),
+				).catch((error: unknown) => {
+					if (typeof error === "object" && error !== null && "_tag" in error) {
+						if (
+							(HANDLED_TAGS as readonly string[]).includes(
+								String((error as { _tag?: unknown })._tag),
+							)
+						) {
+							return false;
+						}
+					}
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if (
-					(HANDLED_TAGS as readonly string[]).includes(String((error as { _tag?: unknown })._tag))
-				) {
-					return false;
-				}
-			}
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Nav entry for the app-header chrome component — path/title/order
  * only. Public (anonymous visitors see the same nav); returns [] when

@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Query } from "@effect-server-utils/cqrs";
 
-import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
+import { adminAudit, AuditLive } from "@ktb/audit";
 import { Accounts, Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -27,39 +27,27 @@ import {
 	plugins,
 } from "./index.ts";
 
+// Seed rows only — schema comes from the real migrations via makeTestD1.
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES
   ('u1', 'Admin', 'admin@x.com', 1, NULL, 0, 1000, 1000),
   ('u2', 'Doc', 'doc@x.com', 0, NULL, 0, 2000, 2000),
   ('u3', 'Banned', 'banned@x.com', 1, NULL, 1, 3000, 3000);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER);
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, synthetic INTEGER NOT NULL DEFAULT 0);
 INSERT INTO patients (owner_id, name, created_at) VALUES ('u2', 'Ana', 0), ('u2', 'Bia', 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
-		transcript_edits TEXT,
-		transcript_edits_base TEXT,
-		transcript_reviewed_edits INTEGER,
-		deferred_until INTEGER);
-INSERT INTO consultations (user_id, status) VALUES ('u2', 'done'), ('u1', 'live');
-${AUDIT_TEST_DDL}
+INSERT INTO consultations (user_id, status, transcript, created_at) VALUES ('u2', 'done', '', 0), ('u1', 'live', '', 0);
 `;
 
 describe("users repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("counts zero for a user with no patients and no consultations", async () => {
 		const empty = makeDb(
-			makeD1(`
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+			makeTestD1(`
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u9', 'New', 'new@x.com', 0, NULL, 0, 3000, 3000);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER);
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, synthetic INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
 `),
 		);
 		const [row] = await listAllUsers(empty);
@@ -102,7 +90,7 @@ describe("UsersLive", () => {
 	const deleteUser = vi.fn(async (_userId: string) => {});
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(Auth, {
@@ -431,7 +419,7 @@ describe("UsersQueriesLive", () => {
 
 	beforeAll(() => {
 		runtime = ManagedRuntime.make(
-			UsersQueriesLive.pipe(Layer.provideMerge(Layer.succeed(Db, makeDb(makeD1(DDL))))),
+			UsersQueriesLive.pipe(Layer.provideMerge(Layer.succeed(Db, makeDb(makeTestD1(DDL))))),
 		) as unknown as ManagedRuntime.ManagedRuntime<never, never>;
 	});
 

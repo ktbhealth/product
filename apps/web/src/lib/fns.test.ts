@@ -18,7 +18,7 @@ import { pluginEnabledFn } from "@ktb/server-fns";
 import { SAMPLE_TRANSCRIPT, type Anamnesis, type AnamnesisSection } from "@ktb/anamnesis";
 import { auth, db } from "./platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
-import { consultations, pluginState } from "@ktb/db/schema";
+import { consultations, groupMembers, groups, pluginState } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
 import { audioBucketStore } from "#/test/cloudflare-workers.ts";
 import {
@@ -46,6 +46,7 @@ import {
 	updatePatientFn,
 } from "@ktb/patients/fns";
 import {
+	boundTenantFn,
 	countMyUnreadNotificationsFn,
 	emailEnabledFn,
 	getSessionUserFn,
@@ -1073,5 +1074,40 @@ describe("server fns", () => {
 		expect(await countMyUnreadNotificationsFn()).toBe(0);
 		// Ids that aren't yours are ignored, not errors.
 		expect(await markMyNotificationsReadFn({ data: [999999] })).toBe(true);
+	});
+
+	it("boundTenantFn reports the request's tenant for chrome role gates", async () => {
+		serverFnRequestHeaders.current = new Headers();
+		expect(await boundTenantFn()).toBeNull();
+
+		// Dedicated user: a clinic membership must not leak into the
+		// other tests' personal scope.
+		const tenantCookie = await signIn("fns-tenant@x.com");
+		serverFnRequestHeaders.current = new Headers({ cookie: tenantCookie });
+		const me = await getSessionUserFn();
+		expect(me?.id).toBeTruthy();
+		// No membership → personal scope.
+		expect(await boundTenantFn()).toBeNull();
+
+		const [tenant] = await db
+			.insert(groups)
+			.values({
+				name: "Bound Tenant",
+				slug: "bound-tenant-fn",
+				kind: "clinic",
+				meta: null,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.returning();
+		await db.insert(groupMembers).values({
+			groupId: tenant!.id,
+			memberKind: "user",
+			memberId: me!.id,
+			role: "admin",
+			createdAt: new Date(),
+		});
+		// Exactly one membership → the resolver's default pick binds it.
+		expect(await boundTenantFn()).toEqual({ id: tenant!.id, role: "admin", roleRank: 2 });
 	});
 });

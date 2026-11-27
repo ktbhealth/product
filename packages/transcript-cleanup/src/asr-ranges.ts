@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 
 import type { EvalAnswer, EvalQuestion, RunRecord } from "@ktb/eval-core";
 
-import { EvalPort, type PortError } from "./ports.ts";
+import { EvalPort, type PortError } from "@ktb/eval-core";
 
 /**
  * ASR error-range detection — decides WHICH chunks of a transcript a

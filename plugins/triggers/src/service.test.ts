@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { EventBus, makeEventBus } from "@effect-server-utils/cqrs";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	defineCollection,
 	DocumentCollections,
 	DocumentStore,
 	DocumentStoreLive,
-	DOCUMENT_STORE_TEST_DDL,
 	f,
 	type DocumentRecordWrittenEvent,
 } from "@ktb/document-store";
@@ -25,11 +25,7 @@ import { Triggers, TriggersServicesLive } from "./service.ts";
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0);
 `;
 
 const src = defineCollection({
@@ -109,7 +105,7 @@ describe("TriggersServicesLive", () => {
 	const ownedCalls: string[] = [];
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1(GROUPS_DDL));
 		// One shared layer graph: the SAME EventBus instance must back
 		// both the store's publisher and the triggers subscriber, and
 		// DocumentStore must be visible to the consumer's serviceOption.
@@ -333,7 +329,7 @@ describe("consumer lifecycle", () => {
 	});
 
 	it("isolates per-event dispatch defects — the write still succeeds", async () => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1(GROUPS_DDL));
 		const shared = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),

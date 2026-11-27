@@ -16,7 +16,7 @@ vi.mock("#/lib/locale-context.ts", async (importOriginal) => {
 });
 
 import { currentLocale } from "#/lib/locale-context.ts";
-import { setAccessLogSink } from "#/lib/access-log.ts";
+import { setAccessLogSink } from "@ktb/observability-edge";
 import { serverFnRequestDuration, serverFnRequests, tagged } from "@ktb/observability";
 import { startInstance } from "./start.ts";
 

@@ -96,17 +96,3 @@ export {
 	type AccountsShape,
 	type CreateAccountResult,
 } from "./accounts.ts";
-export {
-	actingAs,
-	DOCTOR_PROFILE_COOKIE,
-	DoctorDelegations,
-	DoctorProfiles,
-	PATIENT_PROFILE_COOKIE,
-	PatientProfiles,
-	profileIdFromHeaders,
-	resolveDoctorProfile,
-	resolvePatientProfile,
-	type ActingUser,
-	type DoctorProfile,
-	type PatientProfile,
-} from "./profiles.ts";

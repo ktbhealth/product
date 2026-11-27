@@ -73,7 +73,12 @@ export {
 	type MiddlewareState,
 	type MiddlewareVerdict,
 } from "./middleware.ts";
-export { PLUGIN_KEYWORD_SET, PLUGIN_KEYWORDS, type PluginKeyword } from "./keywords.ts";
+export {
+	makeRegistry,
+	type Registry,
+	type RegistryErrors,
+	type RegistryOptions,
+} from "./registry.ts";
 export type {
 	ChromeContent,
 	ChromeContribution,

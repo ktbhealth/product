@@ -1,3 +1,5 @@
+import { getEventListeners } from "node:events";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { JobMessageLike } from "@ktb/jobs-port";
@@ -74,6 +76,18 @@ describe("runJobWorker", () => {
 		};
 		await runJobWorker({ transport, handlers: {}, signal: ac.signal, idleMs: 1 });
 		expect(calls).toBe(3);
+	});
+
+	it("does not leak abort listeners across idle polls", async () => {
+		const ac = new AbortController();
+		const transport: JobWorkerTransport = { receive: async () => [] };
+		const p = runJobWorker({ transport, handlers: {}, signal: ac.signal, idleMs: 1 });
+		await new Promise((r) => setTimeout(r, 30));
+		// Only the in-flight sleep may hold a listener; sleeps that already
+		// timed out must have detached theirs.
+		expect(getEventListeners(ac.signal, "abort").length).toBeLessThanOrEqual(1);
+		ac.abort();
+		await p;
 	});
 
 	it("falls back to console.log when no logger is provided", async () => {

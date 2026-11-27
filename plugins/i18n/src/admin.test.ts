@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -12,13 +13,7 @@ import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
 
 import { I18nAdmin, I18nAdminLive, I18nValidationError, type SaveDraftInput } from "./admin.ts";
-import {
-	I18N_TEST_DDL,
-	i18nCrdtUpdates,
-	i18nLocales,
-	i18nMessages,
-	i18nNamespaces,
-} from "./index.ts";
+import { i18nCrdtUpdates, i18nLocales, i18nMessages, i18nNamespaces } from "./index.ts";
 import { I18nRuntimeLive } from "./runtime.ts";
 
 /**
@@ -120,7 +115,7 @@ const ID = {
 };
 
 beforeAll(async () => {
-	db = makeDb(makeD1(I18N_TEST_DDL));
+	db = makeDb(makeTestD1());
 	// The runtime layer auto-seeds I18N_BASELINE when i18n_namespaces is
 	// empty — these tests assert exact row contents, so register a
 	// sentinel namespace up front to keep the fixture empty.

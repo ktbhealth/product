@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Forbidden, Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
@@ -29,7 +30,7 @@ import { Layouts } from "@ktb/layouts/service";
 import { layoutsServicesPlugin } from "@ktb/layouts";
 
 import { page } from "./schema.ts";
-import { PAGES_TEST_DDL, PagesLive } from "./service.ts";
+import { PagesLive } from "./service.ts";
 
 describe("pages plugins", () => {
 	it("exposes the five single-concern plugins", () => {
@@ -140,7 +141,7 @@ describe("pages page effects", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(PAGES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		sharedDb = db;
 		deps = makeDeps(db);
 		// Merge `deps` into the runtime too: the admin page guard yields

@@ -5,16 +5,16 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import {
-	ensureDoctorUser,
-	ensureSessionUser,
+	doctorHandler,
+	forbiddenTo,
 	getDoctorAccess,
 	getDoctorContext,
-	getDoctorUser,
 	getLocale,
 	getServerRuntime,
 	getSessionUser,
+	optionalDoctorHandler,
 	purgeAudio,
-	runAs,
+	sessionHandler,
 } from "@ktb/server-fns";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import { AnamnesisSchema } from "@ktb/anamnesis/schema";
@@ -195,61 +195,61 @@ export const localeFn = createServerFn({ method: "GET" }).handler(() => getLocal
 // paid model calls and must not be an open endpoint.
 export const extractAnamnesisFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeExtractInput(input))
-	.handler(async ({ data }) => {
-		const user = await ensureDoctorUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				// T-145: a ZK tenant's transcript is client-side content —
-				// the server-side engine (a provider call) must never see
-				// it. ZK clients extract in the browser (T-146 wires the
-				// BYOK port; until then the local heuristic runs there).
-				const db = yield* Db;
-				const tenant = yield* Tenant;
-				const tenantId = tenantScopeId(tenant);
-				if (tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)))) {
-					return null;
-				}
-				// Linked patient → factual history of prior consultations is
-				// fetched server-side and fed to the engine as context only.
-				let history: PatientHistory | null = null;
-				let patient: PatientContext | undefined;
-				if (data.patientId !== undefined) {
-					const consultations = yield* Consultations;
-					// userId is always the caller's own — read authz cannot deny.
-					history = yield* consultations.history(data.patientId, user.id);
-					// Record demographics as drafter context; someone else's
-					// patient is simply not used.
-					const patients = yield* Patients;
-					const record = yield* patients
-						.get(user.id, data.patientId)
-						.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-					if (record) patient = demographicContext(record);
-				}
-				const engine = yield* AnamnesisEngine;
-				return yield* engine.extract({
-					transcript: data.transcript,
-					history: history ?? undefined,
-					patient,
-				});
-			}),
-		);
-	});
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					// T-145: a ZK tenant's transcript is client-side content —
+					// the server-side engine (a provider call) must never see
+					// it. ZK clients extract in the browser (T-146 wires the
+					// BYOK port; until then the local heuristic runs there).
+					const db = yield* Db;
+					const tenant = yield* Tenant;
+					const tenantId = tenantScopeId(tenant);
+					if (tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)))) {
+						return null;
+					}
+					// Linked patient → factual history of prior consultations is
+					// fetched server-side and fed to the engine as context only.
+					let history: PatientHistory | null = null;
+					let patient: PatientContext | undefined;
+					if (data.patientId !== undefined) {
+						const consultations = yield* Consultations;
+						// userId is always the caller's own — read authz cannot deny.
+						history = yield* consultations.history(data.patientId, user.id);
+						// Record demographics as drafter context; someone else's
+						// patient is simply not used.
+						const patients = yield* Patients;
+						const record = yield* patients.get(user.id, data.patientId).pipe(forbiddenTo(null));
+						if (record) patient = demographicContext(record);
+					}
+					const engine = yield* AnamnesisEngine;
+					return yield* engine.extract({
+						transcript: data.transcript,
+						history: history ?? undefined,
+						patient,
+					});
+				}),
+			);
+		}),
+	);
 
 /** Factual summary of a patient's prior consultations (review UI). */
 export const patientHistoryFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeHistoryInput(input))
-	.handler(async ({ data }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations.history(data.patientId, user.id, data.excludeId);
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data }) => null,
+			async ({ data, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						return yield* consultations.history(data.patientId, user.id, data.excludeId);
+					}),
+				);
+			},
+		),
+	);
 
 /**
  * Raw history rows for the client-side history build (T-145): the same
@@ -260,108 +260,112 @@ export const patientHistoryFn = createServerFn({ method: "GET" })
  */
 export const patientHistoryRowsFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeHistoryInput(input))
-	.handler(async ({ data }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations.historyRows(data.patientId, user.id, data.excludeId);
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data }) => null,
+			async ({ data, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						return yield* consultations.historyRows(data.patientId, user.id, data.excludeId);
+					}),
+				);
+			},
+		),
+	);
 
 // ---------- consultations (owner-scoped) ----------
 
 export const saveConsultationFn = createServerFn({ method: "POST" })
 	.validator((input) => decodeSaveInput(input))
-	.handler(async ({ data: { ciphered, grants, version, ...rest } }) => {
-		const user = await ensureDoctorUser();
-		if (!cipheredPayloadOk({ ciphered, ...rest, grants, version })) return null;
-		// T-145: a ciphered row without its wrapped DEKs is unreadable
-		// forever — the create must carry at least one grant (same rule
-		// as createPatientFn).
-		if (ciphered === true && (grants === undefined || grants.length === 0)) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const saved = yield* consultations.save(user.id, { ...rest, version });
-				if (grants !== undefined) {
-					// Atomic-ish: the vault write failing orphans the record —
-					// no device could ever unwrap it — so the row is rolled back.
-					const db = yield* Db;
-					const tenant = yield* Tenant;
-					const tenantId = tenantScopeId(tenant);
-					const vault = yield* Effect.serviceOption(Vault);
-					const granted = yield* tenantId !== null && vault._tag === "Some"
-						? vault.value
-								.grantAccess({
-									tenantId,
-									entityType: consultationCipher.entity,
-									entityId: saved.id,
-									grants,
-								})
-								.pipe(
-									Effect.map(() => true),
-									Effect.catch(() => Effect.succeed(false)),
-								)
-						: Effect.succeed(false);
-					if (!granted) {
-						yield* Effect.promise(() => deleteConsultationRow(db, saved.id));
-						return null;
+	.handler(
+		doctorHandler(async ({ data: { ciphered, grants, version, ...rest }, user, run }) => {
+			if (!cipheredPayloadOk({ ciphered, ...rest, grants, version })) return null;
+			// T-145: a ciphered row without its wrapped DEKs is unreadable
+			// forever — the create must carry at least one grant (same rule
+			// as createPatientFn).
+			if (ciphered === true && (grants === undefined || grants.length === 0)) return null;
+			return run(
+				Effect.gen(function* () {
+					const consultations = yield* Consultations;
+					const saved = yield* consultations.save(user.id, { ...rest, version });
+					if (grants !== undefined) {
+						// Atomic-ish: the vault write failing orphans the record —
+						// no device could ever unwrap it — so the row is rolled back.
+						const db = yield* Db;
+						const tenant = yield* Tenant;
+						const tenantId = tenantScopeId(tenant);
+						const vault = yield* Effect.serviceOption(Vault);
+						const granted = yield* tenantId !== null && vault._tag === "Some"
+							? vault.value
+									.grantAccess({
+										tenantId,
+										entityType: consultationCipher.entity,
+										entityId: saved.id,
+										grants,
+									})
+									.pipe(
+										Effect.map(() => true),
+										Effect.catch(() => Effect.succeed(false)),
+									)
+							: Effect.succeed(false);
+						if (!granted) {
+							yield* Effect.promise(() => deleteConsultationRow(db, saved.id));
+							return null;
+						}
 					}
-				}
-				return saved;
-			}),
-		);
-	});
-
-export const listConsultationsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return [];
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const consultations = yield* Consultations;
-			return yield* consultations.list(user.id);
+					return saved;
+				}),
+			);
 		}),
 	);
-});
+
+export const listConsultationsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => [],
+		async ({ user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const consultations = yield* Consultations;
+					return yield* consultations.list(user.id);
+				}),
+			);
+		},
+	),
+);
 
 export const getConsultationFn = createServerFn({ method: "GET" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		// Non-owner access fails Forbidden inside the service → null (404).
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations
-					.get(id, user.id)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data: id }) => null,
+			async ({ data: id, user, run }) => {
+				// Non-owner access fails Forbidden inside the service → null (404).
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						return yield* consultations.get(id, user.id).pipe(forbiddenTo(null));
+					}),
+				);
+			},
+		),
+	);
 
 export const getLiveConsultationFn = createServerFn({ method: "GET" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations
-					.getLive(id, user.id)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data: id }) => null,
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						return yield* consultations.getLive(id, user.id).pipe(forbiddenTo(null));
+					}),
+				);
+			},
+		),
+	);
 
 /**
  * Re-verify the anamnesis integrity chain (T-139): same read authz as
@@ -369,61 +373,62 @@ export const getLiveConsultationFn = createServerFn({ method: "GET" })
  */
 export const verifyConsultationIntegrityFn = createServerFn({ method: "GET" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations
-					.verifyIntegrity(id, user.id)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			({ data: id }) => null,
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						return yield* consultations.verifyIntegrity(id, user.id).pipe(forbiddenTo(null));
+					}),
+				);
+			},
+		),
+	);
 
 export const attachAnamnesisFn = createServerFn({ method: "POST" })
 	.validator((input) => decodeAttachInput(input))
-	.handler(async ({ data: { ciphered, grants, version, ...rest } }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		if (!cipheredPayloadOk({ ciphered, ...rest, grants, version })) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				if (grants !== undefined && grants.length > 0) {
-					// Grants persist BEFORE the row update: a failed grant
-					// leaves the row readable instead of attaching content no
-					// device could unwrap.
-					const tenant = yield* Tenant;
-					const tenantId = tenantScopeId(tenant);
-					const vault = yield* Effect.serviceOption(Vault);
-					const granted =
-						tenantId !== null && vault._tag === "Some"
-							? yield* vault.value
-									.grantAccess({
-										tenantId,
-										entityType: consultationCipher.entity,
-										entityId: rest.consultationId,
-										grants,
-									})
-									.pipe(
-										Effect.map(() => true),
-										Effect.catch(() => Effect.succeed(false)),
-									)
-							: false;
-					if (!granted) return { ok: false };
-				}
-				const ok = yield* consultations.attachAnamnesis(user.id, { ...rest, version }).pipe(
-					Effect.as(true),
-					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+	.handler(
+		optionalDoctorHandler(
+			({ data: { ciphered, grants, version, ...rest } }) => ({ ok: false }),
+			async ({ data: { ciphered, grants, version, ...rest }, user, run }) => {
+				if (!cipheredPayloadOk({ ciphered, ...rest, grants, version })) return { ok: false };
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						if (grants !== undefined && grants.length > 0) {
+							// Grants persist BEFORE the row update: a failed grant
+							// leaves the row readable instead of attaching content no
+							// device could unwrap.
+							const tenant = yield* Tenant;
+							const tenantId = tenantScopeId(tenant);
+							const vault = yield* Effect.serviceOption(Vault);
+							const granted =
+								tenantId !== null && vault._tag === "Some"
+									? yield* vault.value
+											.grantAccess({
+												tenantId,
+												entityType: consultationCipher.entity,
+												entityId: rest.consultationId,
+												grants,
+											})
+											.pipe(
+												Effect.map(() => true),
+												Effect.catch(() => Effect.succeed(false)),
+											)
+									: false;
+							if (!granted) return { ok: false };
+						}
+						const ok = yield* consultations
+							.attachAnamnesis(user.id, { ...rest, version })
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
 				);
-				return { ok };
-			}),
-		);
-	});
+			},
+		),
+	);
 
 /**
  * Cross-owner audio-pipeline rows for the /platform jobs feed — the
@@ -432,40 +437,40 @@ export const attachAnamnesisFn = createServerFn({ method: "POST" })
  * (the layout guard 404s them first anyway) get the same empty feed as
  * an empty table.
  */
-export const adminListAudioJobsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return [];
-	return runAs(
-		user,
-		Effect.scoped(
-			Effect.gen(function* () {
-				const queries = yield* Query.dispatcher(ConsultationsQueries);
-				return yield* queries["consultations.audioJobs"]({}).pipe(
-					Effect.catchTag("Forbidden", () => Effect.succeed([])),
-				);
-			}),
-		),
-	);
-});
+export const adminListAudioJobsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => [],
+		async ({ run }) => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const queries = yield* Query.dispatcher(ConsultationsQueries);
+						return yield* queries["consultations.audioJobs"]({}).pipe(forbiddenTo([]));
+					}),
+				),
+			);
+		},
+	),
+);
 
 /**
  * Cross-owner consultation rows for the /platform dashboard slots —
  * the service re-checks the PlatformAdmin gate; non-admins and missing
  * sessions get the same empty feed as an empty table.
  */
-export const adminListConsultationsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return [];
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const consultations = yield* Consultations;
-			return yield* consultations
-				.adminList()
-				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as AdminConsultationRow[])));
-		}),
-	);
-});
+export const adminListConsultationsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => [],
+		async ({ run }) => {
+			return run(
+				Effect.gen(function* () {
+					const consultations = yield* Consultations;
+					return yield* consultations.adminList().pipe(forbiddenTo([] as AdminConsultationRow[]));
+				}),
+			);
+		},
+	),
+);
 
 const AdminCreateInput = Schema.Struct({
 	userId: Schema.String,
@@ -482,19 +487,19 @@ const decodeAdminCreateInput = Schema.decodeUnknownSync(AdminCreateInput);
  */
 export const adminCreateConsultationFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAdminCreateInput(input))
-	.handler(async ({ data }) => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const id = yield* consultations
-					.adminCreate({ ...data, source: data.source ?? "manual" })
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-				return id === null ? { ok: false as const } : { ok: true as const, id };
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const consultations = yield* Consultations;
+					const id = yield* consultations
+						.adminCreate({ ...data, source: data.source ?? "manual" })
+						.pipe(forbiddenTo(null));
+					return id === null ? { ok: false as const } : { ok: true as const, id };
+				}),
+			);
+		}),
+	);
 
 /**
  * Platform-admin delete — removes the row and purges the stored
@@ -502,64 +507,64 @@ export const adminCreateConsultationFn = createServerFn({ method: "POST" })
  */
 export const adminDeleteConsultationFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await ensureSessionUser();
-		const result = await runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations
-					.adminDelete(id)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			}),
-		);
-		if (result === null) return { ok: false as const };
-		const leftover = await purgeAudio(
-			getServerRuntime().audio,
-			result.audioKey === null ? [] : [result.audioKey],
-		);
-		return { ok: true as const, orphanedAudio: leftover.length };
-	});
+	.handler(
+		sessionHandler(async ({ data: id, run }) => {
+			const result = await run(
+				Effect.gen(function* () {
+					const consultations = yield* Consultations;
+					return yield* consultations.adminDelete(id).pipe(forbiddenTo(null));
+				}),
+			);
+			if (result === null) return { ok: false as const };
+			const leftover = await purgeAudio(
+				getServerRuntime().audio,
+				result.audioKey === null ? [] : [result.audioKey],
+			);
+			return { ok: true as const, orphanedAudio: leftover.length };
+		}),
+	);
 
 /** Record the doctor's consent declaration (LGPD trail). */
 export const recordConsentFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const ok = yield* consultations.recordConsent(id, user.id).pipe(
-					Effect.as(true),
-					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+	.handler(
+		optionalDoctorHandler(
+			({ data: id }) => ({ ok: false }),
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						const ok = yield* consultations
+							.recordConsent(id, user.id)
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
 				);
-				return { ok };
-			}),
-		);
-	});
+			},
+		),
+	);
 
 // ---------- review state (PL-022) ----------
 
 /** Stamp "transcript confirmed" — `null`/`{ ok: false }` on denial. */
 export const reviewTranscriptFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const ok = yield* consultations.reviewTranscript(id, user.id).pipe(
-					Effect.as(true),
-					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+	.handler(
+		optionalDoctorHandler(
+			() => ({ ok: false }),
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						const ok = yield* consultations
+							.reviewTranscript(id, user.id)
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
 				);
-				return { ok };
-			}),
-		);
-	});
+			},
+		),
+	);
 
 const EditAnamnesisInput = Schema.Struct({
 	consultationId: Schema.Number,
@@ -582,43 +587,43 @@ const decodeEditAnamnesisInput = Schema.decodeUnknownSync(EditAnamnesisInput);
  */
 export const editAnamnesisFn = createServerFn({ method: "POST" })
 	.validator((input) => decodeEditAnamnesisInput(input))
-	.handler(async ({ data: { ciphered, version, ...rest } }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		if (!cipheredPayloadOk({ ciphered, ...rest, version })) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const ok = yield* consultations
-					.attachAnamnesis(user.id, { ...rest, engine: "manual-edit", version })
-					.pipe(
-						Effect.as(true),
-						Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-					);
-				return { ok };
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			() => ({ ok: false }),
+			async ({ data: { ciphered, version, ...rest }, user, run }) => {
+				if (!cipheredPayloadOk({ ciphered, ...rest, version })) return { ok: false };
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						const ok = yield* consultations
+							.attachAnamnesis(user.id, { ...rest, engine: "manual-edit", version })
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
+				);
+			},
+		),
+	);
 
 /** Stamp "anamnesis approved" bound to the current version — `null`/`{ ok: false }` on denial. */
 export const approveAnamnesisFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const ok = yield* consultations.approveAnamnesis(id, user.id).pipe(
-					Effect.as(true),
-					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+	.handler(
+		optionalDoctorHandler(
+			() => ({ ok: false }),
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						const ok = yield* consultations
+							.approveAnamnesis(id, user.id)
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
 				);
-				return { ok };
-			}),
-		);
-	});
+			},
+		),
+	);
 
 const SaveTranscriptEditsInput = Schema.Struct({
 	id: Schema.Number,
@@ -632,21 +637,22 @@ const decodeSaveTranscriptEditsInput = Schema.decodeUnknownSync(SaveTranscriptEd
  * projection base on first write. */
 export const saveTranscriptEditsFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSaveTranscriptEditsInput(input))
-	.handler(async ({ data }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const ok = yield* consultations.saveTranscriptEdits(data.id, user.id, data.edits).pipe(
-					Effect.as(true),
-					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+	.handler(
+		optionalDoctorHandler(
+			() => ({ ok: false }),
+			async ({ data, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						const ok = yield* consultations
+							.saveTranscriptEdits(data.id, user.id, data.edits)
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
 				);
-				return { ok };
-			}),
-		);
-	});
+			},
+		),
+	);
 
 const DeferInput = Schema.Struct({
 	id: Schema.Number,
@@ -660,54 +666,57 @@ const decodeDeferInput = Schema.decodeUnknownSync(DeferInput);
 /** Park (or unpark, `until: null`) a record from the review queue. */
 export const deferConsultationFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDeferInput(input))
-	.handler(async ({ data }) => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				const ok = yield* consultations
-					.deferConsultation(data.id, user.id, data.until ?? null)
-					.pipe(
-						Effect.as(true),
-						Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-					);
-				return { ok };
-			}),
-		);
-	});
+	.handler(
+		optionalDoctorHandler(
+			() => ({ ok: false }),
+			async ({ data, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						const ok = yield* consultations
+							.deferConsultation(data.id, user.id, data.until ?? null)
+							.pipe(Effect.as(true), forbiddenTo(false));
+						return { ok };
+					}),
+				);
+			},
+		),
+	);
 
 /** Caller's review-queue depth — the sidebar badge count (PL-023 F2). */
-export const countPendingReviewFn = createServerFn({ method: "POST" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return { count: 0 };
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const consultations = yield* Consultations;
-			return yield* consultations.countPendingReview(user.id).pipe(
-				Effect.map((count) => ({ count })),
-				Effect.catchTag("Forbidden", () => Effect.succeed({ count: 0 })),
+export const countPendingReviewFn = createServerFn({ method: "POST" }).handler(
+	optionalDoctorHandler(
+		() => ({ count: 0 }),
+		async ({ user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const consultations = yield* Consultations;
+					return yield* consultations.countPendingReview(user.id).pipe(
+						Effect.map((count) => ({ count })),
+						forbiddenTo({ count: 0 }),
+					);
+				}),
 			);
-		}),
-	);
-});
+		},
+	),
+);
 
 /** Next unsigned record in the caller's review queue — `{ id }` or `{ id: null }`. */
 export const nextPendingReviewFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
-	.handler(async ({ data: id }) => {
-		const user = await getDoctorUser();
-		if (!user) return { id: null };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const consultations = yield* Consultations;
-				return yield* consultations.nextPendingReview(id, user.id).pipe(
-					Effect.map((next) => ({ id: next })),
-					Effect.catchTag("Forbidden", () => Effect.succeed({ id: null })),
+	.handler(
+		optionalDoctorHandler(
+			() => ({ id: null }),
+			async ({ data: id, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const consultations = yield* Consultations;
+						return yield* consultations.nextPendingReview(id, user.id).pipe(
+							Effect.map((next) => ({ id: next })),
+							forbiddenTo({ id: null }),
+						);
+					}),
 				);
-			}),
-		);
-	});
+			},
+		),
+	);

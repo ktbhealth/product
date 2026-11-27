@@ -41,8 +41,10 @@ export {
 	TenantNotFound,
 	TenantRequired,
 	tenantScopeId,
+	tenantStorageId,
 	withTenantAccess,
 	type TenantDescriptor,
+	type TenantId,
 	type TenantRole,
 } from "./context.ts";
 export {

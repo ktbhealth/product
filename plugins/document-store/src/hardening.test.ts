@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { documentCollections } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { Tenant, type Tenant as TenantValue } from "@ktb/tenant";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
@@ -19,7 +20,6 @@ import {
 	DocumentStore,
 	DocumentStoreLive,
 	DocumentVersionConflict,
-	DOCUMENT_STORE_TEST_DDL,
 	MAX_COLLECTION_CACHE_ENTRIES,
 	type DocumentBatchResult,
 	type DocumentRecord,
@@ -28,11 +28,7 @@ import {
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a'), (2, 'clinic-b');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0), (2, 'clinic-b', 'clinic-b', 'clinic', 0, 0);
 `;
 
 const notes = defineCollection({
@@ -87,7 +83,7 @@ describe("DocumentStore hardening (T-127/T-129)", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),
@@ -676,7 +672,7 @@ describe("DocumentStore corrupt schema_json (T-147)", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: T147_DEFS }),
