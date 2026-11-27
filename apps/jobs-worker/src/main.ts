@@ -22,6 +22,7 @@
 import { jobHandlers, makeJobs } from "@ktb/jobs-port";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
+import { batchSizeFromEnv } from "./env.ts";
 import { openWorkerDb } from "./db.ts";
 import { registerWorkerHandlers } from "./handlers.ts";
 import { makeOrchestrationWorker } from "./orchestration.ts";
@@ -73,7 +74,7 @@ try {
 		transport,
 		handlers: jobHandlers,
 		db,
-		batchSize: process.env.JOBS_BATCH !== undefined ? Number(process.env.JOBS_BATCH) : 10,
+		batchSize: batchSizeFromEnv(process.env.JOBS_BATCH),
 		signal: ac.signal,
 	});
 } finally {

@@ -87,6 +87,10 @@ export interface RedisJobsTransport {
 
 const DEFAULT_URL = "redis://127.0.0.1:6379";
 const DEFAULT_QUEUE = "ktb:jobs";
+// Once the first message is in hand, batch-fill pops only wait briefly
+// for more — a partial batch must dispatch immediately, not stall for
+// the full blockSeconds before the consumer ever sees it.
+const BATCH_FILL_BLOCK_SECONDS = 0.1;
 
 export const createRedisJobsTransport = async (
 	opts: RedisJobsTransportOptions = {},
@@ -109,7 +113,8 @@ export const createRedisJobsTransport = async (
 	const receive = async (count = 1): Promise<readonly JobMessageLike[]> => {
 		const messages: JobMessageLike[] = [];
 		for (let i = 0; i < count; i++) {
-			const body = await client.blMove(queue, pending, "RIGHT", "LEFT", blockSeconds);
+			const timeout = messages.length === 0 ? blockSeconds : BATCH_FILL_BLOCK_SECONDS;
+			const body = await client.blMove(queue, pending, "RIGHT", "LEFT", timeout);
 			if (body === null) break;
 			messages.push({
 				body: safeParse(body),

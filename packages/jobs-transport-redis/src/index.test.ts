@@ -37,12 +37,16 @@ const fakeRedis = () => {
 		pushSide(listFor(destination), ds, v);
 		return v;
 	};
+	const timeouts: number[] = [];
 	const client: RedisLike = {
 		lPush: async (key, value) => {
 			listFor(key).unshift(value);
 			return 1;
 		},
-		blMove: async (source, destination, ss, ds) => move(source, destination, ss, ds),
+		blMove: async (source, destination, ss, ds, timeoutSeconds) => {
+			timeouts.push(timeoutSeconds);
+			return move(source, destination, ss, ds);
+		},
 		lMove: async (source, destination, ss, ds) => move(source, destination, ss, ds),
 		lRem: async (key, _count, value) => {
 			const l = listFor(key);
@@ -56,7 +60,7 @@ const fakeRedis = () => {
 	};
 	// `list` stays the queue for existing assertions; `pending` is the
 	// in-flight list the transport parks popped entries on.
-	return { client, lists, list: listFor("ktb:jobs"), pending: listFor("ktb:jobs:pending") };
+	return { client, lists, list: listFor("ktb:jobs"), pending: listFor("ktb:jobs:pending"), timeouts };
 };
 
 const envelope = (id: string): JobEnvelope => ({
@@ -82,6 +86,26 @@ describe("createRedisJobsTransport", () => {
 		const { client } = fakeRedis();
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		expect(await t.receive()).toEqual([]);
+		await t.close();
+	});
+
+	it("receive uses the short fill timeout once a message is in hand", async () => {
+		const { client, timeouts } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 5 });
+		await t.send(envelope("one"));
+		const msgs = await t.receive(5);
+		expect(msgs).toHaveLength(1);
+		// First pop may block for the full idle window; the batch-fill
+		// pops that drain the queue must not stall it again.
+		expect(timeouts).toEqual([5, 0.1]);
+		await t.close();
+	});
+
+	it("receive on an empty queue blocks with blockSeconds", async () => {
+		const { client, timeouts } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 3 });
+		expect(await t.receive(5)).toEqual([]);
+		expect(timeouts).toEqual([3]);
 		await t.close();
 	});
 
