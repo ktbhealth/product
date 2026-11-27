@@ -24,11 +24,11 @@ vi.mock("@ktb/auth-better/client", () => ({
 const loaderData = { emailEnabled: false, secretaryLoginEnabled: true };
 
 type DoctorContext = {
-	profiles: { doctorId: number }[];
+	profiles: { doctorId: number; role: "owner" | "secretary" }[];
 	activeDoctorId: number | null;
 } | null;
 const ownProfile: DoctorContext = {
-	profiles: [{ doctorId: 1 }],
+	profiles: [{ doctorId: 1, role: "owner" }],
 	activeDoctorId: 1,
 };
 const doctorContextFn = vi.fn<() => Promise<DoctorContext>>(async () => ownProfile);
@@ -277,28 +277,43 @@ describe("sign-in page", () => {
 			expect(ensureDoctorProfileFn).toHaveBeenCalledTimes(1);
 		});
 
-		it("sends a new account home when email is disabled", async () => {
+		it("sends a new account to the doctor portal when email is disabled", async () => {
 			await signUp();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/doctor"));
 			expect(ensureDoctorProfileFn).toHaveBeenCalledTimes(1);
 		});
 
-		it("sends a sign-in with a single doctor profile straight home", async () => {
+		it("sends a sign-in with a single doctor profile straight to the doctor portal", async () => {
 			loaderData.emailEnabled = true;
 			render(createElement(Page));
 			await fillAndSubmit();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/doctor"));
 			expect(ensureDoctorProfileFn).not.toHaveBeenCalled();
 		});
 
 		it.each([
-			["several profiles", { profiles: [{ doctorId: 1 }, { doctorId: 2 }], activeDoctorId: null }],
-			["no context", null],
-		] as const)("sends a sign-in with %s to the chooser", async (_label, context) => {
+			[
+				"several profiles",
+				{
+					profiles: [
+						{ doctorId: 1, role: "owner" },
+						{ doctorId: 2, role: "secretary" },
+					],
+					activeDoctorId: null,
+				},
+				"/portal/doctor",
+			],
+			[
+				"delegated-only profiles",
+				{ profiles: [{ doctorId: 2, role: "secretary" }], activeDoctorId: 2 },
+				"/portal/secretary",
+			],
+			["no context", null, "/doctors/select"],
+		] as const)("sends a sign-in with %s to %s", async (_label, context, expected) => {
 			doctorContextFn.mockResolvedValueOnce(context as DoctorContext);
 			render(createElement(Page));
 			await fillAndSubmit();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith(expected));
 		});
 
 		it("sends a patient account — no doctor profile — to the patient portal", async () => {
