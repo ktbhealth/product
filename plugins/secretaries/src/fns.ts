@@ -4,9 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Schema } from "effect";
 
-import { EMAIL_OUTBOX_KIND, Email } from "@ktb/email";
-import { Outbox } from "@ktb/outbox";
-import { inviteAcceptPath } from "@ktb/invites";
+import { Email } from "@ktb/email";
+import { sendInviteEmail } from "@ktb/invites";
 import {
 	forbiddenTo,
 	getDoctorContext,
@@ -84,41 +83,20 @@ export type InviteSecretaryResult =
  * Tell the invitee by email, in the inviting doctor's current locale.
  * Someone with no account yet gets a single-use accept link that
  * creates it; an existing account is pointed at the staff sign-in.
- * The rendered message is queued on the outbox (@ktb/outbox) so a
- * provider outage retries instead of losing the invite — the
- * delegation already exists, so a deployment without email or a failed
- * row write never fails the invite. When no Outbox service is bound
- * (partial runtimes/tests) it degrades to the legacy inline send.
+ * Delivery goes through the shared invites-kit sender (@ktb/invites
+ * `sendInviteEmail`): queued on the outbox when bound, inline
+ * otherwise — best effort, the delegation already exists.
  */
-const notifyInvitee = async (to: string, doctorName: string): Promise<void> => {
-	const { getRequestUrl } = await import("@tanstack/react-start/server");
+const notifyInvitee = (to: string, doctorName: string): Promise<boolean> => {
 	const copy = secretaryMessages(getLocale()).inviteEmail;
-	const services = await run(
-		Effect.gen(function* () {
-			const email = yield* Effect.serviceOption(Email);
-			const outbox = yield* Effect.serviceOption(Outbox);
-			return { sender: Option.getOrNull(email), outbox: Option.getOrNull(outbox) };
-		}),
-	);
-	if (!services.sender) return;
-	const acceptPath = await run(
-		inviteAcceptPath({ email: to, kind: "secretary", inviterName: doctorName }),
-	);
-	const url = new URL(acceptPath ?? "/login/secretary", getRequestUrl()).toString();
-	const message = {
+	return sendInviteEmail({
 		to,
+		kind: "secretary",
+		inviterName: doctorName,
 		subject: copy.subject(doctorName),
-		text: copy.body(doctorName, url, acceptPath !== null),
-	};
-	try {
-		if (services.outbox !== null) {
-			await services.outbox.enqueue({ kind: EMAIL_OUTBOX_KIND, payload: message });
-		} else {
-			await services.sender.send(message);
-		}
-	} catch (error) {
-		console.error("secretary invite email failed", error);
-	}
+		body: (url, accept) => copy.body(doctorName, url, accept),
+		errorLabel: "secretary invite email failed",
+	});
 };
 
 /** Invite an email to act for the session doctor. */

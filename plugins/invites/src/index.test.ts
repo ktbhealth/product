@@ -7,9 +7,11 @@ import { eq } from "drizzle-orm";
 import { Accounts, type CreateAccountResult } from "@ktb/auth";
 import { DoctorProfiles, PatientProfiles } from "@ktb/server-fns";
 import { Db, makeDb } from "@ktb/db";
+import { user } from "@ktb/db/schema";
 import { makeTestD1 } from "@ktb/db-testing";
 
 import {
+	accountByEmail,
 	accountExists,
 	consumeInvite,
 	findInvite,
@@ -17,6 +19,7 @@ import {
 	INVITE_DESTINATIONS,
 	INVITE_KINDS,
 	INVITE_TTL_MS,
+	inviteAccessTarget,
 	inviteAcceptPath,
 	InviteRejected,
 	Invites,
@@ -28,6 +31,7 @@ import {
 	newInviteToken,
 	normalizeEmail,
 	plugins,
+	verifiedAccountEmail,
 } from "./index.ts";
 import { inviteTokens } from "./schema.ts";
 
@@ -176,6 +180,43 @@ describe("invites repo", () => {
 			["patient", null],
 		]);
 		expect(await findInvite(db, kept, NOW)).not.toBeNull();
+	});
+});
+
+describe("invite access helpers", () => {
+	it("resolves the account registered under an address", async () => {
+		const db = freshDb();
+		expect(await accountByEmail(db, "taken@ktb.test")).toEqual({
+			id: "u-taken",
+			emailVerified: false,
+		});
+		expect(await accountByEmail(db, "nobody@ktb.test")).toBeUndefined();
+	});
+
+	it("links a verified account at once and waits everyone else as invited", async () => {
+		const db = freshDb();
+		expect(await inviteAccessTarget(db, "nobody@ktb.test")).toEqual({
+			userId: null,
+			status: "invited",
+		});
+		// taken@ktb.test has an account, but the address is unproven.
+		expect(await inviteAccessTarget(db, "taken@ktb.test")).toEqual({
+			userId: null,
+			status: "invited",
+		});
+		await db.update(user).set({ emailVerified: true }).where(eq(user.id, "u-taken"));
+		expect(await inviteAccessTarget(db, "taken@ktb.test")).toEqual({
+			userId: "u-taken",
+			status: "active",
+		});
+	});
+
+	it("yields the account's normalized email only once verified", async () => {
+		const db = freshDb();
+		expect(await verifiedAccountEmail(db, "u-taken")).toBeNull();
+		expect(await verifiedAccountEmail(db, "ghost")).toBeNull();
+		await db.update(user).set({ emailVerified: true }).where(eq(user.id, "u-taken"));
+		expect(await verifiedAccountEmail(db, "u-taken")).toBe("taken@ktb.test");
 	});
 });
 
