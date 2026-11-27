@@ -2,14 +2,11 @@ import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { eq } from "drizzle-orm";
 
 import { doctors } from "./schema.ts";
-
-const DDL = `
-CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-`;
 
 describe("doctors schema", () => {
 	it("exposes table config with a unique cascading user FK", () => {
@@ -33,7 +30,7 @@ describe("doctors schema", () => {
 	});
 
 	it("fires $onUpdate on doctors", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const [created] = await db
 			.insert(doctors)
 			.values({

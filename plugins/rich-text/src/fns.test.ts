@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
@@ -41,16 +42,7 @@ import {
 } from "./fns.ts";
 import { RichTextDeleteHooks, RichTextDeleteHooksLive } from "./delete-hooks.ts";
 import { plugins } from "./index.ts";
-import { RichTexts, RichTextsLive, RICH_TEXT_TEST_DDL } from "./service.ts";
-
-const PLUGIN_STATE_DDL = `
-CREATE TABLE plugin_state (
-	plugin_id TEXT PRIMARY KEY NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	config TEXT,
-	updated_at INTEGER NOT NULL
-);
-`;
+import { RichTexts, RichTextsLive } from "./service.ts";
 
 // The rich-text plugins depend on the platform markers — the test
 // registry includes them so dep edges and PluginStates resolve like the
@@ -65,7 +57,7 @@ describe("rich-text fns", () => {
 		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(RICH_TEXT_TEST_DDL + PLUGIN_STATE_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

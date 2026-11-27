@@ -48,37 +48,6 @@ export {
 	AppointmentUpdated,
 } from "./api.ts";
 
-/** Standalone DDL for tests (and cross-plugin test fixtures) — mirrors
- * the drizzle-generated migration; keep in sync with ./schema.ts. The
- * FK targets (patients/groups/consultations/user) come from the
- * caller's fixture. */
-export const AGENDA_TEST_DDL = `
-CREATE TABLE appointments (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	owner_id TEXT NOT NULL,
-	patient_id INTEGER NOT NULL REFERENCES patients(id),
-	tenant_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
-	status TEXT NOT NULL DEFAULT 'scheduled',
-	starts_at INTEGER NOT NULL,
-	duration_min INTEGER NOT NULL DEFAULT 30,
-	consultation_id INTEGER REFERENCES consultations(id),
-	note TEXT,
-	reminder_sent_at INTEGER,
-	external_provider TEXT,
-	external_calendar_id TEXT,
-	external_event_id TEXT,
-	external_etag TEXT,
-	sync_state TEXT NOT NULL DEFAULT 'local',
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE INDEX appointments_owner_start_idx ON appointments (owner_id, starts_at);
-CREATE INDEX appointments_reminder_idx ON appointments (reminder_sent_at, starts_at);
-CREATE INDEX appointments_tenant_id_idx ON appointments (tenant_id);
-CREATE INDEX appointments_patient_idx ON appointments (patient_id);
-CREATE UNIQUE INDEX appointments_external_idx ON appointments (external_provider, external_calendar_id, external_event_id);
-`;
-
 const agendaLoader = () =>
 	Effect.gen(function* () {
 		const principal = yield* Principal;

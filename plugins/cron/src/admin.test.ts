@@ -6,7 +6,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { insertJobRun } from "@ktb/jobs-port";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { installServerFnRuntime, resetServerFnRuntime, stubAuth } from "@ktb/server-fns/testing";
@@ -14,12 +15,7 @@ import type { CronJobInfo, CronRunResult, ScheduledJobInfo } from "@ktb/server-f
 
 import { CronAdmin, CronAdminLive, type CronRunNowResult } from "./admin.ts";
 
-const DDL = `
-CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE scheduled_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, params TEXT, cron_expr TEXT, run_at INTEGER, next_run_at INTEGER, claimed_until INTEGER, last_run_at INTEGER, status TEXT NOT NULL DEFAULT 'active', tenant_id TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-`;
-
-const db = makeDb(makeD1(DDL));
+const db = makeDb(makeTestD1());
 
 const adminGate = (admin: boolean) =>
 	makePlatformAdminGate(parsePlatformAdminEmails(admin ? "admin@x.com" : ""));
@@ -164,13 +160,13 @@ describe("CronAdminLive", () => {
 	});
 
 	it("collapses an unreadable job_runs projection to null", async () => {
-		// No job_runs DDL — the projection read throws and the console
-		// degrades to the unavailable state instead of failing the page.
+		// job_runs dropped post-migration — the projection read throws
+		// and the console degrades to the unavailable state instead of failing the page.
 		const runtime = ManagedRuntime.make(
 			CronAdminLive.pipe(
 				Layer.provide(
 					Layer.mergeAll(
-						Layer.succeed(Db, makeDb(makeD1())),
+						Layer.succeed(Db, makeDb(makeTestD1("DROP TABLE job_runs;"))),
 						Layer.succeed(PlatformAdmin, adminGate(true)),
 					),
 				),

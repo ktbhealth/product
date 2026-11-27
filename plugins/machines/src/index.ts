@@ -88,17 +88,6 @@ export const machinesPanelPlugin = definePlugin({
 	},
 });
 
-// Re-exported for tests: DDL that creates `machine` (+ a `groups`
-// stub for the tenant FK) in the in-memory better-sqlite3 test
-// databases of instrumented plugins.
-export const MACHINES_TEST_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE machine (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'other', host TEXT NOT NULL, port INTEGER, capabilities TEXT, secret_ref TEXT, health_url TEXT, status TEXT NOT NULL DEFAULT 'unknown', last_seen_at INTEGER, last_check_at INTEGER, check_error TEXT, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE UNIQUE INDEX machine_scope_name_idx ON machine (scope, name);
-CREATE INDEX machine_tenant_idx ON machine (tenant_id);
-CREATE INDEX machine_status_idx ON machine (status);
-`;
-
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [

@@ -5,7 +5,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	loadOrchestrationRun,
 	makeOrchestrationRunner,
@@ -290,49 +291,6 @@ describe("correctTranscriptEffect envCorrect plumbing", () => {
  * `orchestrator.step` consumer takes.
  */
 describe("durable runner env corrector", () => {
-	const DDL = `
-CREATE TABLE orchestration_defs (
-	id TEXT PRIMARY KEY,
-	version TEXT NOT NULL,
-	def TEXT NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_runs (
-	id TEXT PRIMARY KEY,
-	def_id TEXT NOT NULL,
-	def_version TEXT NOT NULL,
-	status TEXT DEFAULT 'running' NOT NULL,
-	state TEXT NOT NULL,
-	runtime TEXT NOT NULL,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_events (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	event_id TEXT NOT NULL,
-	event_type TEXT NOT NULL,
-	payload TEXT NOT NULL,
-	source TEXT NOT NULL,
-	ts INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-CREATE TABLE orchestration_node_runs (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	node_id TEXT NOT NULL,
-	status TEXT NOT NULL,
-	latency_ms INTEGER NOT NULL,
-	error TEXT,
-	fires INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-`;
-
 	const fakeJobs = () => {
 		const sent: { kind: string; payload: unknown }[] = [];
 		return {
@@ -352,7 +310,7 @@ CREATE TABLE orchestration_node_runs (
 			| undefined;
 
 	it("corrects via the ambient EnvCorrector port across durable steps", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const registry = makeTranscriptOrchestratorRegistry();
 		const { jobs, sent } = fakeJobs();
 		const runner = makeOrchestrationRunner({
@@ -380,7 +338,7 @@ CREATE TABLE orchestration_node_runs (
 	});
 
 	it("degrades env-cleanup honestly when ambientContext carries no port", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const registry = makeTranscriptOrchestratorRegistry();
 		const { jobs } = fakeJobs();
 		const runner = makeOrchestrationRunner({ db, jobs, registry });

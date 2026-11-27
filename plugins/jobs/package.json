@@ -27,6 +27,7 @@
 	"devDependencies": {
 		"@ktb/auth": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/db-testing": "workspace:*",
 		"@ktb/patients": "workspace:*",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",

@@ -47,6 +47,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant } from "@ktb/tenant";
 
@@ -68,36 +69,8 @@ import {
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import type { ThemeSeeds, ThemeSummary } from "./types.ts";
 
-const DDL = `
-CREATE TABLE theme_definitions (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	scope text NOT NULL,
-	scope_id text DEFAULT '' NOT NULL,
-	app_name text,
-	seeds text NOT NULL,
-	tokens text NOT NULL,
-	fonts text,
-	brand text,
-	enabled integer DEFAULT true NOT NULL,
-	is_main integer DEFAULT false NOT NULL,
-	version integer DEFAULT 1 NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-CREATE TABLE theme_assets (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	theme_id integer,
-	kind text NOT NULL,
-	r2_key text,
-	status text DEFAULT 'pending' NOT NULL,
-	variants text,
-	created_at integer NOT NULL,
-	FOREIGN KEY (theme_id) REFERENCES theme_definitions(id) ON UPDATE no action ON DELETE set null
-);
-`;
-
 const makeTestDb = () => {
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1();
 	return { db: makeDb(d1), d1 };
 };
 
@@ -531,7 +504,7 @@ describe("ThemeLive admin surface", () => {
 	afterAll(() => runtime.dispose());
 
 	it("list summarizes rows for admins and denies non-admins", async () => {
-		await insertRow(d1, { scope: "platform", appName: "Plat", version: 3 });
+		await insertRow(d1, { scope: "platform", scopeId: "adm-list", appName: "Plat", version: 3 });
 		const rows = (await runtime.runPromise(
 			asUser(
 				ADMIN,
@@ -644,7 +617,7 @@ describe("ThemeLive admin surface", () => {
 	});
 
 	it("setEnabled toggles the stored flag", async () => {
-		const id = await insertRow(d1, { scope: "platform", appName: "Toggle" });
+		const id = await insertRow(d1, { scope: "platform", scopeId: "adm-toggle", appName: "Toggle" });
 		await runtime.runPromise(
 			asUser(
 				ADMIN,
@@ -692,7 +665,7 @@ describe("ThemeLive admin surface", () => {
 	});
 
 	it("publish by id updates that row and can move scopes", async () => {
-		const id = await insertRow(d1, { scope: "platform", appName: "Old" });
+		const id = await insertRow(d1, { scope: "platform", scopeId: "adm-pub", appName: "Old" });
 		const summary = await runtime.runPromise(
 			asUser(
 				ADMIN,
@@ -752,7 +725,7 @@ describe("ThemeLive admin surface", () => {
 	});
 
 	it("remove deletes the row for admins and denies non-admins", async () => {
-		const id = await insertRow(d1, { scope: "platform", appName: "Doomed" });
+		const id = await insertRow(d1, { scope: "platform", scopeId: "adm-del", appName: "Doomed" });
 		await runtime.runPromise(
 			asUser(
 				ADMIN,
@@ -784,7 +757,7 @@ describe("ThemeLive admin surface", () => {
 	});
 
 	it("listAssets summarizes upload rows for admins and denies non-admins", async () => {
-		const themeId = await insertRow(d1, { scope: "platform" });
+		const themeId = await insertRow(d1, { scope: "platform", scopeId: "adm-assets" });
 		const a = await insertAsset(d1, { themeId, kind: "favicon", r2Key: "k1" });
 		const b = await insertAsset(d1, {
 			themeId,
@@ -818,7 +791,7 @@ describe("ThemeLive admin surface", () => {
 	});
 
 	it("previewRow returns disabled rows for admins", async () => {
-		const id = await insertRow(d1, { scope: "platform", enabled: false });
+		const id = await insertRow(d1, { scope: "platform", scopeId: "adm-preview", enabled: false });
 		const row = (await runtime.runPromise(
 			asUser(
 				ADMIN,

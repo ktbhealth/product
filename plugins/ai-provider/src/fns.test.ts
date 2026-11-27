@@ -16,14 +16,15 @@ vi.mock("@tanstack/react-start/server", () => ({
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { LlmFactory } from "@ktb/eval-consultation";
 import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { AI_ENDPOINTS_TEST_DDL, AiEndpointsLive } from "./index.ts";
+import { AiEndpointsLive } from "./index.ts";
 import {
 	createBridgeLinkFn,
 	deleteEndpointFn,
@@ -45,7 +46,7 @@ describe("ai-endpoints fns", () => {
 	let factoryFails: false | "port" | "raw" = false;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(AI_ENDPOINTS_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(

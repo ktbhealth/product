@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { FontCatalogFamily } from "@ktb/fonts/catalog";
-import { makeDb } from "@ktb/db";
+import { makeDb, type SqlDatabase } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	GOOGLE_FONTS_PROVIDER_KIND,
@@ -87,39 +88,12 @@ describe("matchManagedFonts", () => {
 
 // ---------- loadManagedFontAssets ----------
 
-const DDL = `
-CREATE TABLE theme_definitions (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	scope text NOT NULL,
-	scope_id text DEFAULT '' NOT NULL,
-	app_name text,
-	seeds text NOT NULL,
-	tokens text NOT NULL,
-	fonts text,
-	brand text,
-	enabled integer DEFAULT true NOT NULL,
-	is_main integer DEFAULT false NOT NULL,
-	version integer DEFAULT 1 NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-CREATE TABLE theme_assets (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	theme_id integer,
-	kind text NOT NULL,
-	r2_key text,
-	status text DEFAULT 'pending' NOT NULL,
-	variants text,
-	created_at integer NOT NULL
-);
-`;
-
 const makeTestDb = () => {
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1();
 	return { db: makeDb(d1), d1 };
 };
 
-const insertTheme = (d1: ReturnType<typeof makeD1>, fontsJson: string) =>
+const insertTheme = (d1: SqlDatabase, fontsJson: string) =>
 	d1
 		.prepare(
 			`INSERT INTO theme_definitions (scope, scope_id, seeds, tokens, fonts, enabled, created_at)
@@ -128,7 +102,7 @@ const insertTheme = (d1: ReturnType<typeof makeD1>, fontsJson: string) =>
 		.bind(fontsJson)
 		.run();
 
-const insertFontAsset = (d1: ReturnType<typeof makeD1>, themeId: number) =>
+const insertFontAsset = (d1: SqlDatabase, themeId: number) =>
 	d1
 		.prepare(
 			`INSERT INTO theme_assets (theme_id, kind, status, created_at) VALUES (?, 'font', 'ready', 0)`,

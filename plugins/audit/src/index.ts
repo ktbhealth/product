@@ -969,17 +969,6 @@ export const audit = (entry: AuditEntryInput): Effect.Effect<void> =>
 		Option.isSome(option) ? option.value.record(entry) : Effect.void,
 	);
 
-// Re-exported for tests: a DDL snippet that creates admin_audit in the
-// in-memory better-sqlite3 test databases of instrumented plugins.
-export const AUDIT_TEST_DDL = `
-CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, actor_email TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, detail TEXT, tenant_id INTEGER, prev_hash TEXT, created_at INTEGER NOT NULL);
-CREATE INDEX admin_audit_created_at_idx ON admin_audit (created_at);
-CREATE INDEX admin_audit_action_idx ON admin_audit (action);
-CREATE INDEX admin_audit_actor_idx ON admin_audit (actor_user_id);
-CREATE INDEX admin_audit_tenant_created_idx ON admin_audit (tenant_id, created_at);
-CREATE INDEX admin_audit_dedupe_idx ON admin_audit (actor_user_id, action, target_type, target_id, created_at);
-`;
-
 export const auditTablesPlugin = definePlugin({
 	id: "audit.tables",
 	meta: { keywords: ["audit", "tables"] },

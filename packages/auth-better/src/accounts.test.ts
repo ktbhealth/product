@@ -2,19 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { account, user } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
 
 import { makeAccountsService, makeAuth } from "./index.ts";
 
-const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE session (id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ip_address TEXT, user_agent TEXT, user_id TEXT NOT NULL);
-CREATE TABLE account (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, provider_id TEXT NOT NULL, user_id TEXT NOT NULL, access_token TEXT, refresh_token TEXT, id_token TEXT, access_token_expires_at INTEGER, refresh_token_expires_at INTEGER, scope TEXT, password TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-`;
-
 const setup = () => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1());
 	const sendVerificationEmail = vi.fn(async () => {});
 	const auth = makeAuth(db, {
 		secret: "test-secret-at-least-32-characters-long",

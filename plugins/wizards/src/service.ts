@@ -1030,30 +1030,3 @@ export const WizardsLive = Layer.effect(
 /** The services-layer export: Wizards + the shared WizardHooks
  * registry other plugins register completion handlers on. */
 export const WizardsServicesLive = Layer.merge(WizardsLive, WizardHooksLive);
-
-export const WIZARDS_TEST_DDL = `
-CREATE TABLE wizard_defs (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	key TEXT NOT NULL,
-	title TEXT NOT NULL,
-	description TEXT NOT NULL DEFAULT '',
-	definition_json TEXT NOT NULL,
-	published INTEGER NOT NULL DEFAULT 0,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX wizard_defs_key_idx ON wizard_defs (key);
-CREATE TABLE wizard_runs (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	key TEXT NOT NULL,
-	definition_json TEXT NOT NULL,
-	status TEXT NOT NULL DEFAULT 'active',
-	step_index INTEGER NOT NULL DEFAULT 0,
-	answers_json TEXT NOT NULL DEFAULT '{}',
-	owner_id TEXT NOT NULL DEFAULT '',
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL,
-	completed_at INTEGER
-);
-CREATE INDEX wizard_runs_owner_idx ON wizard_runs (owner_id, status);
-`;

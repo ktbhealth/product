@@ -7,12 +7,13 @@ import * as Tracer from "effect/Tracer";
 import { eq } from "drizzle-orm";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Forbidden, Principal } from "@ktb/authz";
 import { kvOpDuration, kvOps, kvRows, tagged } from "@ktb/observability";
 import { Tenant, TenantAccess, type Tenant as TenantT } from "@ktb/tenant";
 
-import { kvEntries, KV_TEST_DDL, plugins } from "./index.ts";
+import { kvEntries, plugins } from "./index.ts";
 import {
 	Kv,
 	KvConflictError,
@@ -27,7 +28,7 @@ let db: DbClient;
 let runtime: ManagedRuntime.ManagedRuntime<Kv, never>;
 
 beforeAll(() => {
-	db = makeDb(makeD1(KV_TEST_DDL));
+	db = makeDb(makeTestD1());
 	// Built here (not at module top level) so Layer.succeed captures the
 	// initialized DbClient — beforeAll runs before any test.
 	runtime = ManagedRuntime.make(Layer.provide(KvLive, Layer.succeed(Db, db)));

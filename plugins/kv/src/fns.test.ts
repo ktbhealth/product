@@ -13,13 +13,13 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { KV_TEST_DDL } from "./index.ts";
 import { KvAdmin, KvAdminLive, type KvAdminShape } from "./admin.ts";
 import { kvDeleteFn, kvGetFn, kvListFn, kvNamespacesFn, kvSetFn } from "./fns.ts";
 
@@ -31,7 +31,7 @@ describe("kv fns", () => {
 		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(KV_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

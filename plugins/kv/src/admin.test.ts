@@ -4,11 +4,12 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 
-import { KV_TEST_DDL, kvEntries } from "./index.ts";
+import { kvEntries } from "./index.ts";
 import { KvAdmin, KvAdminLive, MAX_ADMIN_LIMIT, type KvAdminShape } from "./admin.ts";
 import { KvConflictError, KvNotFoundError, KvValidationError } from "./service.ts";
 
@@ -19,7 +20,7 @@ const ADMIN = { userId: "a1", email: "admin@x.com" };
 const USER = { userId: "u1", email: "doc@x.com" };
 
 beforeAll(() => {
-	db = makeDb(makeD1(KV_TEST_DDL));
+	db = makeDb(makeTestD1());
 	const env = Layer.mergeAll(
 		Layer.succeed(Db, db),
 		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

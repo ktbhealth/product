@@ -4,7 +4,8 @@ import { ApiKeys } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Credentials, CredentialsLive } from "@ktb/credentials";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	DecisionsFactory,
 	DecisionsPort,
@@ -25,7 +26,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
 	agentLinkStatus,
-	AI_ENDPOINTS_TEST_DDL,
 	AiEndpoints,
 	AiEndpointsLive,
 	aiEndpointsPanelPlugin,
@@ -220,7 +220,7 @@ const make = (
 		decisionsPresets,
 		secrets,
 	} = opts;
-	const d1 = makeD1(AI_ENDPOINTS_TEST_DDL);
+	const d1 = makeTestD1();
 	const db = makeDb(d1);
 	const layers = Layer.mergeAll(
 		Layer.succeed(Db, db as never),

@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	decodeJobEnvelope,
@@ -27,21 +27,8 @@ import {
 	type JobRegistration,
 } from "./index.ts";
 
-const DDL = `
-CREATE TABLE job_runs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	status TEXT NOT NULL DEFAULT 'queued',
-	payload_ref TEXT,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-`;
-
 const makeTestDb = () => {
-	const sql = makeD1(DDL);
+	const sql = makeTestD1();
 	return { sql, db: makeDb(sql) };
 };
 

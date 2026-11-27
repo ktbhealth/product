@@ -13,13 +13,14 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { AI_MODEL_TEST_DDL, AiModelsLive } from "./index.ts";
+import { AiModelsLive } from "./index.ts";
 import { modelsApi } from "./apis.ts";
 import { modelsCreateFn, modelsListFn, modelsRemoveFn, modelsUpdateFn } from "./fns.ts";
 
@@ -31,7 +32,7 @@ describe("ai-model fns", () => {
 	const auth = stubAuth(() => sessionUser(currentEmail));
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(AI_MODEL_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN))),

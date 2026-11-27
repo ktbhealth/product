@@ -81,18 +81,6 @@ export const aiModelPanelPlugin = definePlugin({
 	},
 });
 
-// Re-exported for tests: DDL that creates `ai_model` (+ a `groups`
-// stub for the tenant FK) in the in-memory better-sqlite3 test
-// databases of instrumented plugins.
-export const AI_MODEL_TEST_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE ai_model (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, endpoint_id INTEGER, name TEXT NOT NULL, model_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'chat', capabilities TEXT, context_tokens INTEGER, cost_tier TEXT, is_default INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE UNIQUE INDEX ai_model_scope_name_idx ON ai_model (scope, name);
-CREATE INDEX ai_model_tenant_idx ON ai_model (tenant_id);
-CREATE INDEX ai_model_endpoint_idx ON ai_model (endpoint_id);
-CREATE INDEX ai_model_kind_idx ON ai_model (kind);
-`;
-
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [

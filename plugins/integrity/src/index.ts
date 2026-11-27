@@ -287,14 +287,6 @@ export const recordVersion = (input: RecordVersionInput): Effect.Effect<RecordVe
 			: Effect.succeed(null),
 	);
 
-// Re-exported for tests: a DDL snippet that creates record_versions in
-// the in-memory better-sqlite3 test databases of instrumented plugins.
-export const RECORD_VERSIONS_TEST_DDL = `
-CREATE TABLE record_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, version INTEGER NOT NULL, content_hash TEXT NOT NULL, signature TEXT, prev_hash TEXT, payload TEXT NOT NULL, blob_hash TEXT NOT NULL, actor_user_id TEXT, engine TEXT, created_at INTEGER NOT NULL DEFAULT 0);
-CREATE INDEX record_versions_entity_idx ON record_versions (entity_type, entity_id);
-CREATE UNIQUE INDEX record_versions_entity_version_idx ON record_versions (entity_type, entity_id, version);
-`;
-
 export const integrityTablesPlugin = definePlugin({
 	id: "integrity.tables",
 	meta: { keywords: ["integrity", "tables"] },

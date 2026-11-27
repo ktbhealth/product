@@ -8,6 +8,7 @@ import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 import { Tenant, type TenantRole } from "@ktb/tenant";
 import {
 	approveClinicDevice,
@@ -34,14 +35,12 @@ import {
 	vaultSecretsPlugin,
 	vaultServicesPlugin,
 	vaultTablesPlugin,
-	VAULT_TEST_DDL,
 } from "./index.ts";
 
-// `portal_keys` REFERENCES user(id) — the consumer-side stub the
-// VAULT_TEST_DDL comment calls for.
-const DDL =
-	`CREATE TABLE user (id TEXT PRIMARY KEY); INSERT INTO user (id) VALUES ('ana'), ('eva');` +
-	VAULT_TEST_DDL;
+// Seed rows only — the real migrations provide `user`, `groups`,
+// `clinic_keys`, `entity_deks`, `portal_keys` and `vault_secret`.
+const DDL = `INSERT INTO "user" (id, name, email, created_at, updated_at) VALUES
+	('ana', 'ana', 'ana@x.com', 0, 0), ('eva', 'eva', 'eva@x.com', 0, 0);`;
 const TENANT_ID = 7;
 
 const makeRuntime = (db: DbClient) => {
@@ -100,7 +99,7 @@ describe("vault repo", () => {
 	let db: DbClient;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		await seedGroup(db, TENANT_ID);
 		await seedGroup(db, 8, true);
 		await seedGroup(db, 9); // stays non-ZK — setTenantZk flips TENANT_ID
@@ -243,7 +242,7 @@ describe("Vault service", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Vault | Secrets, never>;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		await seedGroup(db, TENANT_ID);
 		await seedGroup(db, 8, true);
 		runtime = makeRuntime(db);

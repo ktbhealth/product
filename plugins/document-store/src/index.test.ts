@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
@@ -26,14 +27,7 @@ import {
 	documentStoreTablesPlugin,
 	plugins,
 } from "./index.ts";
-import { DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
-
-const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-`;
+import { DocumentStoreLive } from "./service.ts";
 
 const notes = defineCollection({
 	name: "idx.notes",
@@ -97,7 +91,7 @@ describe("document-store page effects", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: [notes] }),
