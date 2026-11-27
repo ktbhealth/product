@@ -706,9 +706,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const PipelineRegistryLive = pipelineRegistryLive(plugins).pipe(Layer.orDie);
 	// Orchestrator registry (P-120 cutover): every plugin manifest's
 	// `orchestrations` packs — pipeline.transcript's
-	// consultation-transcript OrchestrationDef twin today — collected
-	// in topo order alongside PipelineRegistryLive. `builtinKinds`
-	// seeds the engine vocabulary (ai/emit/gate/poll/subworkflow)
+	// consultation-transcript OrchestrationDef twin and ai.provider.
+	// services' kinds-only `ai` pack today — collected in topo order
+	// alongside PipelineRegistryLive. `builtinKinds` seeds the
+	// domain-blind engine vocabulary (emit/gate/poll/subworkflow)
 	// ahead of pack kinds so manifest defs may reference them; pack
 	// kinds that shadow a builtin id fail layer build loudly. Same
 	// orDie contract: registration failures are programming errors.

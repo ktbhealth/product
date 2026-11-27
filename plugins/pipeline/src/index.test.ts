@@ -91,7 +91,7 @@ describe("collectOrchestratorPacks", () => {
 			pluginWithOrchestrations("a.only"),
 			pluginWithOrchestrations("b.packs", [orchestrationPack("o1")]),
 		];
-		expect(collectOrchestratorPacks(plugins).map((p) => p.def.id)).toEqual(["o1"]);
+		expect(collectOrchestratorPacks(plugins).map((p) => p.def?.id)).toEqual(["o1"]);
 	});
 
 	it("flattens packs across plugins in plugin order", () => {
@@ -100,7 +100,7 @@ describe("collectOrchestratorPacks", () => {
 			pluginWithOrchestrations("b.none"),
 			pluginWithOrchestrations("c.packs", [orchestrationPack("o3")]),
 		];
-		expect(collectOrchestratorPacks(plugins).map((p) => p.def.id)).toEqual(["o1", "o2", "o3"]);
+		expect(collectOrchestratorPacks(plugins).map((p) => p.def?.id)).toEqual(["o1", "o2", "o3"]);
 	});
 });
 
@@ -134,6 +134,21 @@ describe("orchestratorRegistryLive", () => {
 			).pipe(Effect.provide(layer)),
 		);
 		expect(kinds).toEqual(["builtin.x", "k"]);
+	});
+
+	it("registers kinds-only packs (no def) without adding a def", async () => {
+		const { OrchestratorRegistry } = await import("@ktb/orchestrator");
+		const kindsOnly: OrchestrationPack = { kinds: [kind("vocab.ai")] };
+		const layer = orchestratorRegistryLive([pluginWithOrchestrations("a.packs", [kindsOnly])]);
+		const registry = await Effect.runPromise(
+			Effect.flatMap(OrchestratorRegistry, (r) =>
+				Effect.sync(() => ({
+					ids: r.listDefs().map((d) => d.id),
+					kinds: r.listKinds().map((k) => k.id),
+				})),
+			).pipe(Effect.provide(layer)),
+		);
+		expect(registry).toEqual({ ids: [], kinds: ["vocab.ai"] });
 	});
 
 	it("fails layer build when a def references an unregistered kind", async () => {

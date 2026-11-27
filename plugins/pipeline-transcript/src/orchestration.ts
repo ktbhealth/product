@@ -70,8 +70,9 @@ import {
  *   never from serialized config. `transcriptOrchestrationConfig`
  *   keeps working for in-memory callers as the config-function
  *   fallback.
- * - The builtin `ai` kind is still a stub; llm-cleanup deliberately
- *   keeps using the stage's PlatformLlm port rather than the stub.
+ * - The `ai` orchestration kind lives in @ktb/orchestrator-ai (contributed
+ *   by ai.provider.services' pack); llm-cleanup deliberately keeps using
+ *   the stage's PlatformLlm port rather than routing through it.
  */
 
 /** The wire input for downstream nodes, carried on every emitted

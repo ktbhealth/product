@@ -42,6 +42,7 @@
         "@ktb/jobs-port": "workspace:*",
         "@ktb/jobs-transport-redis": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
+        "@ktb/orchestrator-ai": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -729,6 +730,15 @@
         "@ktb/db-testing": "workspace:*",
       },
     },
+    "packages/orchestrator-ai": {
+      "name": "@ktb/orchestrator-ai",
+      "dependencies": {
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
     "packages/pipeline": {
       "name": "@ktb/pipeline",
       "dependencies": {
@@ -971,6 +981,7 @@
         "@ktb/eval-validator": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/machines": "workspace:*",
+        "@ktb/orchestrator-ai": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -3211,6 +3222,8 @@
     "@ktb/observability-otlp": ["@ktb/observability-otlp@workspace:packages/observability-otlp"],
 
     "@ktb/orchestrator": ["@ktb/orchestrator@workspace:packages/orchestrator"],
+
+    "@ktb/orchestrator-ai": ["@ktb/orchestrator-ai@workspace:packages/orchestrator-ai"],
 
     "@ktb/pages": ["@ktb/pages@workspace:plugins/pages"],
 
