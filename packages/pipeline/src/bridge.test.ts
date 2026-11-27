@@ -127,6 +127,15 @@ describe("pipelineStageKind", () => {
 		});
 	});
 
+	it("omits the input key from the emit payload when input is undefined", async () => {
+		const kind = pipelineStageKind(ok("s", { state: { frag: 1 } }), {
+			emit: { type: "def.s.done" },
+		});
+		const result = await runKind(kind, nodeContext({ event: event("start") }));
+		expect(result.events?.[0]?.payload).toEqual({ frag: 1 });
+		expect(result.events?.[0]?.payload).not.toHaveProperty("input");
+	});
+
 	it("uses a custom emit payload builder", async () => {
 		const kind = pipelineStageKind(ok("s", { output: 7 }), {
 			emit: {
@@ -165,6 +174,19 @@ describe("pipelineStageKind", () => {
 		expect((error as PipelineStageError).message).toBe("sync boom");
 	});
 
+	it("stringifies non-Error synchronous throws into PipelineStageError", async () => {
+		const kind = pipelineStageKind({
+			id: "s",
+			run: () => {
+				// eslint-disable-next-line no-throw-literal -- intentional: proves the bridge stringifies non-Error throws
+				throw "plain string failure";
+			},
+		});
+		const error = await runPromise(Effect.flip(kind.run(nodeContext())));
+		expect(error).toBeInstanceOf(PipelineStageError);
+		expect((error as PipelineStageError).message).toBe("plain string failure");
+	});
+
 	it("skip policy: logs, contributes no state, still emits", async () => {
 		const kind = pipelineStageKind(
 			failWith("s", new PipelineStageError({ stageId: "s", message: "soft" })),
@@ -176,6 +198,16 @@ describe("pipelineStageKind", () => {
 		expect(result.events?.[0]?.type).toBe("def.s.done");
 		// The wire input still forwards so the chain keeps its contract.
 		expect(result.events?.[0]?.payload).toEqual({ input: { text: "x" } });
+	});
+
+	it("skip policy tolerates foreign (non-PipelineStageError) failures", async () => {
+		const kind = pipelineStageKind(failWith("s", { reason: "foreign" }), {
+			onError: "skip",
+			emit: { type: "def.s.done" },
+		});
+		const result = await runKind(kind, nodeContext());
+		expect(result.output).toBeUndefined();
+		expect(result.events?.[0]?.type).toBe("def.s.done");
 	});
 
 	it("skip policy does not catch defects", async () => {
