@@ -90,7 +90,7 @@ describe("createRedisJobsTransport", () => {
 	});
 
 	it("retry() requeues via RPUSH so the retried message is popped next", async () => {
-		const { client, list } = fakeRedis();
+		const { client } = fakeRedis();
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		await t.send(envelope("old"));
 		await t.send(envelope("retried"));
@@ -165,7 +165,7 @@ describe("createRedisJobsTransport", () => {
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		const [msg] = await t.receive();
 		msg?.retry();
-		// Let the fire-and-forget lPush rejection settle through .catch.
+		// Let the fire-and-forget rPush rejection settle through .catch.
 		await new Promise((r) => setTimeout(r, 0));
 		await t.close();
 	});
