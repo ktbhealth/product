@@ -56,6 +56,19 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 }
 
 console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? "ktb:jobs");
+// Recover envelopes orphaned on the pending list by a previous
+// crash/kill — BLMOVE parks popped entries there until ack, so a dead
+// worker's in-flight jobs would otherwise never redeliver.
+try {
+	const requeued = await transport.requeuePending();
+	if (requeued > 0) {
+		console.log(`jobs worker: requeued ${requeued} orphaned job(s) from pending list`);
+	}
+} catch (error) {
+	// Non-fatal: receive() has its own transport-error backoff, and a
+	// failed sweep just defers orphan recovery to the next boot.
+	console.warn("jobs worker: pending-list sweep failed", { error: String(error) });
+}
 try {
 	await runJobWorker({
 		transport,
