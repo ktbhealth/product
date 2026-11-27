@@ -54,7 +54,11 @@ INSERT INTO "user" VALUES ('u-other', 'Dra Other', 'other@x.com', 0, NULL, 0, 0)
 INSERT INTO "user" VALUES ('u-plain', 'Plain Doc', 'plain@x.com', 0, NULL, 0, 0);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
+		transcript_edits TEXT,
+		transcript_edits_base TEXT,
+		transcript_reviewed_edits INTEGER,
+		deferred_until INTEGER);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
@@ -138,10 +142,28 @@ const fakeBucket = {
 		audioBucketStore.set(key, { data, contentType: options?.httpMetadata?.contentType });
 		return {};
 	},
-	get: async (key: string) => {
+	head: async (key: string) => {
 		const object = audioBucketStore.get(key);
 		if (!object) return null;
-		const { data, contentType } = object;
+		return {
+			size: object.data.byteLength,
+			httpMetadata: { contentType: object.contentType },
+		};
+	},
+	get: async (
+		key: string,
+		options?: { range?: { offset?: number; length?: number; suffix?: number } },
+	) => {
+		const object = audioBucketStore.get(key);
+		if (!object) return null;
+		const { contentType } = object;
+		let data = object.data;
+		const range = options?.range;
+		if (range) {
+			const offset =
+				range.suffix != null ? Math.max(0, data.byteLength - range.suffix) : (range.offset ?? 0);
+			data = data.subarray(offset, range.length != null ? offset + range.length : data.byteLength);
+		}
 		const bytes = data.slice();
 		return {
 			key,
@@ -354,8 +376,11 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 			}),
 			params: { id: String(id) },
 		} as never);
-	const get = (id: number | string) =>
-		handlersOf(AudioRoute).GET!({ params: { id: String(id) } } as never);
+	const get = (id: number | string, headers?: Record<string, string>) =>
+		handlersOf(AudioRoute).GET!({
+			request: new Request(`http://x/api/consultations/${id}/audio`, { headers }),
+			params: { id: String(id) },
+		} as never);
 
 	it("rejects unauthenticated upload and download", async () => {
 		useSession("owner");
@@ -517,6 +542,58 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 
 		const noAudio = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
 		expect((await get(noAudio)).status).toBe(404);
+	});
+
+	it("honors Range requests — 206 slices, accept-ranges on every response (seekable media)", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
+		const bytes = new Uint8Array([10, 20, 30, 40, 50]);
+		await post(id, bytes, "audio/wav");
+
+		const full = await get(id);
+		expect(full.status).toBe(200);
+		expect(full.headers.get("accept-ranges")).toBe("bytes");
+		expect(full.headers.get("content-length")).toBe("5");
+		await full.arrayBuffer();
+
+		const slice = await get(id, { range: "bytes=1-3" });
+		expect(slice.status).toBe(206);
+		expect(slice.headers.get("content-range")).toBe("bytes 1-3/5");
+		expect(slice.headers.get("content-length")).toBe("3");
+		expect(new Uint8Array(await slice.arrayBuffer())).toEqual(new Uint8Array([20, 30, 40]));
+
+		const open = await get(id, { range: "bytes=3-" });
+		expect(open.status).toBe(206);
+		expect(open.headers.get("content-range")).toBe("bytes 3-4/5");
+		expect(new Uint8Array(await open.arrayBuffer())).toEqual(new Uint8Array([40, 50]));
+
+		const suffix = await get(id, { range: "bytes=-2" });
+		expect(suffix.status).toBe(206);
+		expect(suffix.headers.get("content-range")).toBe("bytes 3-4/5");
+
+		const over = await get(id, { range: "bytes=99-" });
+		expect(over.status).toBe(416);
+		expect(over.headers.get("content-range")).toBe("bytes */5");
+	});
+
+	it("ignores malformed and inverted Range headers — full-body 200", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
+		const bytes = new Uint8Array([10, 20, 30, 40, 50]);
+		await post(id, bytes, "audio/wav");
+
+		for (const range of [
+			"items=0-1", // not a bytes unit
+			"bytes=1-2,4-5", // multi-range — spec allows ignoring
+			"bytes=-", // empty suffix
+			"bytes=-0", // zero-length suffix
+			"bytes=3-1", // inverted: end before offset
+		]) {
+			const res = await get(id, { range });
+			expect(res.status).toBe(200);
+			expect(res.headers.get("content-length")).toBe("5");
+			expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+		}
 	});
 });
 

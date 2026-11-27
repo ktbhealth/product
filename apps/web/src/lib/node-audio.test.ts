@@ -134,4 +134,44 @@ describe("makeLocalAudioBucket", () => {
 		const bucket = makeLocalAudioBucket(root);
 		await expect(bucket.list()).rejects.toThrow(/ENOTDIR|not a directory/);
 	});
+
+	it("head() returns size and content type, null for missing keys", async () => {
+		const bucket = makeLocalAudioBucket(bucketDir());
+		expect(await bucket.head("nope.bin")).toBeNull();
+
+		await bucket.put("h/take.wav", new Uint8Array([1, 2, 3, 4]), {
+			httpMetadata: { contentType: "audio/wav" },
+		});
+		const head = await bucket.head("h/take.wav");
+		expect(head?.size).toBe(4);
+		expect(head?.httpMetadata?.contentType).toBe("audio/wav");
+	});
+
+	it("head() surfaces non-ENOENT stat errors", async () => {
+		const bucket = makeLocalAudioBucket(bucketDir());
+		// A plain file blocks "blocked/x.bin" — stat fails ENOTDIR, not ENOENT.
+		writeFileSync(join(bucketDir(), "blocked"), "not a dir");
+		await expect(bucket.head("blocked/x.bin")).rejects.toThrow(/ENOTDIR|not a directory/);
+	});
+
+	it("get() honours R2 range options: offset, length and suffix", async () => {
+		const bucket = makeLocalAudioBucket(bucketDir());
+		await bucket.put("r.bin", new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]));
+		const bytes = async (range?: { offset?: number; length?: number; suffix?: number }) => {
+			const object = await bucket.get("r.bin", { range });
+			return new Uint8Array(await object!.arrayBuffer());
+		};
+
+		// offset + length slice.
+		expect(await bytes({ offset: 2, length: 3 })).toEqual(new Uint8Array([2, 3, 4]));
+		// offset alone reads to EOF.
+		expect(await bytes({ offset: 5 })).toEqual(new Uint8Array([5, 6, 7]));
+		// Empty range object: offset defaults to 0, length to EOF.
+		expect(await bytes({})).toEqual(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]));
+		// suffix takes the last N bytes; oversized suffix clamps to the file.
+		expect(await bytes({ suffix: 2 })).toEqual(new Uint8Array([6, 7]));
+		expect(await bytes({ suffix: 99 })).toEqual(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]));
+		// suffix + length: last N bytes then slice.
+		expect(await bytes({ suffix: 4, length: 2 })).toEqual(new Uint8Array([4, 5]));
+	});
 });

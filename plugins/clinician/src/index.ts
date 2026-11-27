@@ -1,4 +1,10 @@
-import { ActivityIcon, ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
+import {
+	ActivityIcon,
+	ClipboardCheckIcon,
+	ClipboardListIcon,
+	HouseIcon,
+	UsersIcon,
+} from "lucide-react";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Query } from "@effect-server-utils/cqrs";
@@ -8,6 +14,7 @@ import { AuditActivityPage } from "@ktb/audit/activity-page";
 import { Principal } from "@ktb/authz";
 import { Consultations } from "@ktb/consultations";
 import { consultationsServicesPlugin } from "@ktb/consultations";
+import { ReviewQueueBadge } from "@ktb/consultations/review-queue-badge";
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 import { Patients } from "@ktb/patients";
 import { PatientRecordConsultationsQueries } from "@ktb/patients/api";
@@ -20,6 +27,7 @@ import {
 	ClinicianHomePage,
 	ClinicianPatientRecordPage,
 	ClinicianPatientsPage,
+	ClinicianReviewPage,
 } from "./views/index.ts";
 
 /**
@@ -183,6 +191,51 @@ const consultationRecordLoader = (prefix: string) => (path: string) =>
 		return { view: "detail", c, history };
 	});
 
+/** Review-mode guard (PL-023): the bare `/review` path is the queue
+ * overview — any admitted principal may see it; `/review/<id>` resolves
+ * like the record guard. */
+const reviewGuard = (prefix: string) => (path: string) =>
+	Effect.gen(function* () {
+		const [head, tail] = subpath(path, prefix);
+		if (head === undefined || head === "") return true;
+		const id = Number(head);
+		if (tail !== undefined || !Number.isInteger(id) || id <= 0) return false;
+		const principal = yield* Principal;
+		if (principal === null) return false;
+		const consultations = yield* Consultations;
+		const c = yield* consultations
+			.get(id, principal.userId)
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+		return c !== null;
+	});
+
+/** Queue rows for the rail plus the selected record; the same loader
+ * backs `/review` (head undefined → queue view) and `/review/<id>`. */
+const reviewLoader = (prefix: string) => (path: string) =>
+	Effect.gen(function* () {
+		const [head] = subpath(path, prefix);
+		const principal = yield* Principal;
+		if (principal === null) return { view: "missing" };
+		const consultations = yield* Consultations;
+		const queue = yield* consultations
+			.list(principal.userId)
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
+		if (head === undefined || head === "") {
+			return { view: "queue", queue, author: principal.userId };
+		}
+		const id = Number(head);
+		if (!Number.isInteger(id) || id <= 0) {
+			return { view: "queue", queue, author: principal.userId };
+		}
+		const c = yield* consultations
+			.get(id, principal.userId)
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+		// A denied/absent id lands on the queue overview — friendlier than
+		// a dead end inside a guided flow.
+		if (c === null) return { view: "queue", queue, author: principal.userId };
+		return { view: "item", queue, c, author: principal.userId };
+	});
+
 /** The clinical page set for one instance — identical descriptors under
  * its base path; per-request `path` resolves wildcard data, so the same
  * loaders serve both portals. */
@@ -222,7 +275,20 @@ const clinicalPages = (instance: ClinicalInstanceId): Page[] => {
 			guard: consultationRecordGuard(consultationsBase),
 			loader: consultationRecordLoader(consultationsBase),
 		},
-		// Staff activity feed: mounted once per clinical
+		{
+			id: `clinician.${instance}.review`,
+			path: `${base}/review`,
+			component: ClinicianReviewPage,
+			loader: reviewLoader(`${base}/review`),
+		},
+		{
+			id: `clinician.${instance}.review.item`,
+			path: `${base}/review/*`,
+			component: ClinicianReviewPage,
+			guard: reviewGuard(`${base}/review`),
+			loader: reviewLoader(`${base}/review`),
+		},
+		// Staff activity feed (P-085): mounted once per clinical
 		// instance so each portal owns its copy — moved here from the
 		// audit plugin. The guard asks the Audit service whether the
 		// bound principal has a visible actor scope (always true for a
@@ -291,6 +357,24 @@ const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
 					label: "Consultations",
 					icon: ClipboardListIcon,
 					group: "Care",
+				},
+			},
+		},
+		{
+			id: `clinician.${instance}.nav.review`,
+			region: "portal.sidebar",
+			portal: instance,
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: `${base}/review`,
+					label: "Review",
+					icon: ClipboardCheckIcon,
+					group: "Care",
+					// Pending-review count pill (PL-023 F2) — reads
+					// PendingReviewCountContext, which the portal layout
+					// provides from countPendingReviewFn; hidden at 0.
+					badge: ReviewQueueBadge,
 				},
 			},
 		},

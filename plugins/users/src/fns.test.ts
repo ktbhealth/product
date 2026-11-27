@@ -28,7 +28,11 @@ INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, 
   ('u2', 'Doc', 'doc@x.com', 0, NULL, 0, 2000, 2000);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER);
 CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, synthetic INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
+		transcript_edits TEXT,
+		transcript_edits_base TEXT,
+		transcript_reviewed_edits INTEGER,
+		deferred_until INTEGER);
 `;
 
 describe("users admin fns", () => {

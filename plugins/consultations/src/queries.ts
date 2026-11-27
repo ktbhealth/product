@@ -1,4 +1,17 @@
-import { and, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, or, type SQL } from "drizzle-orm";
+import {
+	and,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	lte,
+	ne,
+	or,
+	sql,
+	type SQL,
+} from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
@@ -85,6 +98,15 @@ export async function listConsultations(
 			anamnesisReviewedBy: consultations.anamnesisReviewedBy,
 			anamnesisReviewedVersion: consultations.anamnesisReviewedVersion,
 			deferredUntil: consultations.deferredUntil,
+			audioKey: consultations.audioKey,
+			audioStatus: consultations.audioStatus,
+			// Recording duration = last ASR segment end (`$[#]` is the
+			// append index, not "last" — hence length-1). `json_valid`
+			// keeps ZK ciphertext envelopes from failing the query —
+			// those rows just report null.
+			audioDurationSec: sql<
+				number | null
+			>`CASE WHEN json_valid(${consultations.transcriptSegments}) AND json_array_length(${consultations.transcriptSegments}) > 0 THEN json_extract(${consultations.transcriptSegments}, '$[' || (json_array_length(${consultations.transcriptSegments}) - 1) || '].end') ELSE NULL END`,
 		})
 		.from(consultations)
 		.leftJoin(patients, eq(consultations.patientId, patients.id))
@@ -152,17 +174,31 @@ export async function consultationOwner(db: DbClient, id: number) {
 	return rows[0] ?? null;
 }
 
-/** Next record in the physician review queue (PL-022): unsigned — the
+/** Edit-log state for `saveTranscriptEdits`/`reviewTranscript` (PL-023):
+ * the stored log, the pinned base tag, and base-layer presence flags
+ * (IS NOT NULL on ciphertext columns works the same under ZK — an
+ * envelope is non-null content either way). */
+export async function transcriptEditsState(db: DbClient, id: number) {
+	const rows = await db
+		.select({
+			edits: consultations.transcriptEdits,
+			editsBase: consultations.transcriptEditsBase,
+			hasCorrected: sql<boolean>`${consultations.correctedTranscript} IS NOT NULL`,
+			hasServer: sql<boolean>`${consultations.serverTranscript} IS NOT NULL`,
+		})
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/** The review-queue predicates (PL-022/PL-023): unsigned — the
  * anamnesis is unapproved at its current version, or the row is
- * transcript-only and unconfirmed — and not parked. `afterId` seeks the
- * next row below the current one in the list's id-DESC order; the queue
- * wraps to the top so the end-of-day ritual always finds work. */
-export async function nextPendingReviewId(
-	db: DbClient,
-	scope: SQL,
-	afterId: number,
-): Promise<number | null> {
-	const pending = or(
+ * transcript-only and unconfirmed — and not parked (defer in the
+ * future excludes the row until it expires). Shared by the queue
+ * seek and the sidebar badge count so they never drift. */
+const reviewPending = () =>
+	or(
 		and(
 			isNotNull(consultations.anamnesis),
 			or(
@@ -172,10 +208,30 @@ export async function nextPendingReviewId(
 		),
 		and(isNull(consultations.anamnesis), isNull(consultations.transcriptReviewedAt)),
 	);
-	const notParked = or(
-		isNull(consultations.deferredUntil),
-		lte(consultations.deferredUntil, new Date()),
-	);
+const reviewNotParked = () =>
+	or(isNull(consultations.deferredUntil), lte(consultations.deferredUntil, new Date()));
+
+/** How many records sit in the caller's review queue — the sidebar
+ * badge count (PL-023 F2). */
+export async function countPendingReview(db: DbClient, scope: SQL): Promise<number> {
+	const rows = await db
+		.select({ n: sql<number>`count(*)` })
+		.from(consultations)
+		.where(and(scope, reviewPending(), reviewNotParked()));
+	// v8 ignore next -- count(*) always yields one row.
+	return rows[0]?.n ?? 0;
+}
+
+/** Next record in the physician review queue (PL-022). `afterId` seeks
+ * the next row below the current one in the list's id-DESC order; the
+ * queue wraps to the top so the end-of-day ritual always finds work. */
+export async function nextPendingReviewId(
+	db: DbClient,
+	scope: SQL,
+	afterId: number,
+): Promise<number | null> {
+	const pending = reviewPending();
+	const notParked = reviewNotParked();
 	const pick = async (extra: SQL) => {
 		const rows = await db
 			.select({ id: consultations.id })

@@ -63,6 +63,13 @@ export interface ConsultationSummary {
 	readonly anamnesisReviewedVersion: number | null;
 	/** Parked from the review queue until this instant; null = not deferred. */
 	readonly deferredUntil: Date | null;
+	/** Audio pipeline state (PL-023): lets the review queue surface
+	 * playback availability and duration without a per-item fetch. */
+	readonly audioKey: string | null;
+	readonly audioStatus: string | null;
+	/** Last ASR segment end in seconds when segments parse — null under
+	 * ZK (ciphered envelope) and for segment-less rows. */
+	readonly audioDurationSec: number | null;
 }
 
 export type ConsultationDetail = Omit<ConsultationRow, "anamnesis" | "review"> & {

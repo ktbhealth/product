@@ -580,6 +580,34 @@ export const approveAnamnesisFn = createServerFn({ method: "POST" })
 		);
 	});
 
+const SaveTranscriptEditsInput = Schema.Struct({
+	id: Schema.Number,
+	/** Serialized edit log — plaintext JSON outside ZK, `v1.` envelope
+	 * under it. The server never decodes the Loro blobs inside. */
+	edits: Schema.String,
+});
+const decodeSaveTranscriptEditsInput = Schema.decodeUnknownSync(SaveTranscriptEditsInput);
+
+/** Persist the physician's transcript edit log (PL-023) — pins the
+ * projection base on first write. */
+export const saveTranscriptEditsFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeSaveTranscriptEditsInput(input))
+	.handler(async ({ data }) => {
+		const user = await getDoctorUser();
+		if (!user) return { ok: false };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				const ok = yield* consultations.saveTranscriptEdits(data.id, user.id, data.edits).pipe(
+					Effect.as(true),
+					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+				);
+				return { ok };
+			}),
+		);
+	});
+
 const DeferInput = Schema.Struct({
 	id: Schema.Number,
 	/** ISO instant the record re-enters the review queue; null clears the
@@ -609,6 +637,22 @@ export const deferConsultationFn = createServerFn({ method: "POST" })
 			}),
 		);
 	});
+
+/** Caller's review-queue depth — the sidebar badge count (PL-023 F2). */
+export const countPendingReviewFn = createServerFn({ method: "POST" }).handler(async () => {
+	const user = await getDoctorUser();
+	if (!user) return { count: 0 };
+	return runAs(
+		user,
+		Effect.gen(function* () {
+			const consultations = yield* Consultations;
+			return yield* consultations.countPendingReview(user.id).pipe(
+				Effect.map((count) => ({ count })),
+				Effect.catchTag("Forbidden", () => Effect.succeed({ count: 0 })),
+			);
+		}),
+	);
+});
 
 /** Next unsigned record in the caller's review queue — `{ id }` or `{ id: null }`. */
 export const nextPendingReviewFn = createServerFn({ method: "POST" })

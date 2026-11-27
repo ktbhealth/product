@@ -93,6 +93,12 @@ const fakeBucket = {
 		bucketStore.set(key, { data, contentType: options?.httpMetadata?.contentType });
 		return {};
 	},
+	head: async (key: string) => {
+		if (bucketGetFails) throw new Error("head boom");
+		const object = bucketStore.get(key);
+		if (!object) return null;
+		return { size: object.data.byteLength, httpMetadata: { contentType: object.contentType } };
+	},
 	get: async (key: string) => {
 		if (bucketGetFails) throw new Error("get boom");
 		const object = bucketStore.get(key);

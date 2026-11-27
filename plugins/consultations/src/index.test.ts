@@ -68,7 +68,11 @@ CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NUL
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
+		transcript_edits TEXT,
+		transcript_edits_base TEXT,
+		transcript_reviewed_edits INTEGER,
+		deferred_until INTEGER);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
@@ -1098,6 +1102,201 @@ describe("ConsultationsLive", () => {
 				call((c) => c.nextPendingReview(approved!, "u9")),
 			),
 		).toBeNull();
+	});
+
+	it("countPendingReview counts the unsigned, unparked queue (PL-023)", async () => {
+		// Fresh user — leftovers from other tests belong to other scopes.
+		const uid = "u-count";
+		await testDb.insert(userTable).values({
+			id: uid,
+			name: "Dr Count",
+			email: "count@x.com",
+			emailVerified: false,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
+		const create = () =>
+			asUser(
+				uid,
+				call((c) => c.create({ userId: uid, transcript: "t", source: "mic" })),
+			);
+		expect(
+			await asUser(
+				uid,
+				call((c) => c.countPendingReview(uid)),
+			),
+		).toBe(0);
+
+		const pending = await create(); // transcript-only, unconfirmed → counts
+		const done = await create(); // transcript confirmed → excluded
+		await asUser(
+			uid,
+			call((c) => c.reviewTranscript(done!, uid)),
+		);
+		const withAnamnesis = await create(); // unapproved anamnesis → counts
+		await asUser(
+			uid,
+			call((c) =>
+				c.attachAnamnesis(uid, {
+					consultationId: withAnamnesis!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+		const parked = await create(); // parked until tomorrow → excluded
+		await asUser(
+			uid,
+			call((c) => c.deferConsultation(parked!, uid, new Date(Date.now() + 86_400_000))),
+		);
+
+		expect(
+			await asUser(
+				uid,
+				call((c) => c.countPendingReview(uid)),
+			),
+		).toBe(2);
+
+		// Approving/confirming drains the count like it drains the queue.
+		await asUser(
+			uid,
+			call((c) => c.approveAnamnesis(withAnamnesis!, uid)),
+		);
+		await asUser(
+			uid,
+			call((c) => c.reviewTranscript(pending!, uid)),
+		);
+		expect(
+			await asUser(
+				uid,
+				call((c) => c.countPendingReview(uid)),
+			),
+		).toBe(0);
+	});
+
+	it("saveTranscriptEdits pins the projection base and skips no-op writes (PL-023)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		const editLog = JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]);
+		const cols = async () =>
+			(
+				await testDb
+					.select({
+						e: consultationsTable.transcriptEdits,
+						b: consultationsTable.transcriptEditsBase,
+					})
+					.from(consultationsTable)
+					.where(eq(consultationsTable.id, id!))
+			)[0]!;
+
+		// Non-owner denied; missing row no-ops.
+		await expect(
+			asUser(
+				"u2",
+				call((c) => c.saveTranscriptEdits(id!, "u2", editLog)),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(9999, "u1", editLog)),
+		);
+
+		// Empty/invalid plaintext over an absent column is a no-op —
+		// nothing to project anyway.
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "[]")),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "not json")),
+		);
+		expect(await cols()).toMatchObject({ e: null, b: null });
+
+		// First real write pins the base — a transcript-only row derives
+		// "transcript" (no corrected/server layers yet).
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", editLog)),
+		);
+		expect(await cols()).toMatchObject({ e: editLog, b: "transcript" });
+
+		// Once pinned, later base-layer arrivals do not move the base.
+		await testDb
+			.update(consultationsTable)
+			.set({ correctedTranscript: "c", serverTranscript: "s" })
+			.where(eq(consultationsTable.id, id!));
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", editLog)),
+		);
+		expect((await cols()).b).toBe("transcript");
+
+		// An empty log over a populated column is a legit clear.
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "[]")),
+		);
+		expect((await cols()).e).toBe("[]");
+	});
+
+	it("saveTranscriptEdits derives corrected/server bases on first write (PL-023)", async () => {
+		const make = async (over: Record<string, unknown>) => {
+			const id = await asUser(
+				"u1",
+				call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+			);
+			await testDb.update(consultationsTable).set(over).where(eq(consultationsTable.id, id!));
+			return id!;
+		};
+		const editLog = JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]);
+		const baseOf = async (cid: number) =>
+			(
+				await testDb
+					.select({ b: consultationsTable.transcriptEditsBase })
+					.from(consultationsTable)
+					.where(eq(consultationsTable.id, cid))
+			)[0]!.b;
+
+		const corrected = await make({ correctedTranscript: "c" });
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(corrected, "u1", editLog)),
+		);
+		expect(await baseOf(corrected)).toBe("corrected");
+
+		const serverOnly = await make({ serverTranscript: "s" });
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(serverOnly, "u1", editLog)),
+		);
+		expect(await baseOf(serverOnly)).toBe("server");
+	});
+
+	it("reviewTranscript stamps the current edit-log length (PL-023)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		const editLog = JSON.stringify([
+			{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" },
+			{ at: "2026-01-01T00:01:00Z", by: "u1", u: "BBBB" },
+		]);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", editLog)),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(id!, "u1")),
+		);
+		const rows = await testDb
+			.select({ e: consultationsTable.transcriptReviewedEdits })
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, id!));
+		expect(rows[0]!.e).toBe(2);
 	});
 });
 
@@ -2810,6 +3009,44 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 		);
 		expect(detail?.anamnesisRaw).toBe(ENV2);
 		expect(detail?.anamnesis).toBeNull();
+	});
+
+	it("saveTranscriptEdits stores v1. envelopes under zk and rejects plaintext (PL-023)", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		// Plaintext edit log under ZK → the cipher gate fails closed.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) =>
+					c.saveTranscriptEdits(
+						saved.id,
+						"u1",
+						JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]),
+					),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.update" });
+		// Envelope payloads are opaque — stored verbatim even though the
+		// log does not parse as plaintext entries.
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.saveTranscriptEdits(saved.id, "u1", "v1.bG9yby1sb2c")),
+		);
+		const stored = await testDb
+			.select({
+				e: consultationsTable.transcriptEdits,
+				b: consultationsTable.transcriptEditsBase,
+			})
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.e).toBe("v1.bG9yby1sb2c");
+		expect(stored[0]?.b).toBe("transcript");
 	});
 });
 

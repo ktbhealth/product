@@ -34,7 +34,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 import type { Anamnesis } from "@ktb/anamnesis";
-import type { ConsultationDetail } from "./ConsultationDetailPage.tsx";
+import type { ConsultationDetail, ConsultationDetailApi } from "./ConsultationDetailPage.tsx";
 import { ConsultationDetailPage } from "./ConsultationDetailPage.tsx";
 
 const SECTION = { content: "", confidence: "baixa" as const, evidence: [] as string[] };
@@ -1127,6 +1127,102 @@ describe("review stamps (PL-022)", () => {
 		expect(selected).toBeTruthy();
 		await user.click(selected!);
 		await act(async () => {});
+		expect(deferConsultation).not.toHaveBeenCalled();
+	});
+});
+
+describe("ConsultationDetailPage — review edge cases", () => {
+	it("a failed review call leaves the stamp unset", async () => {
+		const user = userEvent.setup();
+		const reviewTranscript = vi.fn(async () => ({ ok: false }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), reviewTranscript }}
+			/>,
+		);
+		await user.click(screen.getByText("Confirm transcript"));
+		await waitFor(() => expect(reviewTranscript).toHaveBeenCalledWith({ data: 10 }));
+		expect(screen.queryByText(/Confirmed/)).toBeNull();
+		expect(screen.getByText("Confirm transcript")).toBeTruthy();
+	});
+
+	it("approve on a record without anamnesisVersion stamps null", async () => {
+		const user = userEvent.setup();
+		const approveAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesisVersion: undefined })}
+				history={null}
+				api={{ getConsultation: vi.fn(), approveAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Approve anamnesis"));
+		await waitFor(() => expect(approveAnamnesis).toHaveBeenCalledWith({ data: 10 }));
+	});
+
+	it("generate hides when the live poll nulls the transcript", async () => {
+		const user = userEvent.setup();
+		const generateAnamnesis = vi.fn(async () => ({ ok: true }));
+		const getConsultation = vi.fn(async () => ({
+			id: 10,
+			audioStatus: "done",
+			serverTranscript: "srv",
+			correctedTranscript: "corr",
+			transcript: null,
+		}));
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesis: null, audioStatus: "processing" })}
+				history={null}
+				api={{ getConsultation, generateAnamnesis }}
+			/>,
+		);
+		// The pipeline poll overlays transcript:null onto the detail — the
+		// Generate button hides while the transcript is empty.
+		await waitFor(() => expect(getConsultation).toHaveBeenCalled());
+		await waitFor(() => expect(screen.queryByText("Generate anamnesis")).toBeNull());
+	});
+
+	it("generate omits patientId for unlinked records", async () => {
+		const user = userEvent.setup();
+		const generateAnamnesis = vi.fn<NonNullable<ConsultationDetailApi["generateAnamnesis"]>>(
+			async () => ({ ok: true }),
+		);
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesis: null, patientId: null })}
+				history={null}
+				api={{ getConsultation: vi.fn(), generateAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Generate anamnesis"));
+		await waitFor(() => expect(generateAnamnesis).toHaveBeenCalled());
+		expect(generateAnamnesis.mock.calls[0]![0].data.patientId).toBeUndefined();
+	});
+
+	it("re-clicking the deferred day deselects without calling defer", async () => {
+		const user = userEvent.setup();
+		const deferConsultation = vi.fn(async () => ({ ok: true }));
+		const until = new Date(Date.now() + 86_400_000);
+		render(
+			<ConsultationDetailPage
+				c={detail({ deferredUntil: until })}
+				history={null}
+				api={{ getConsultation: vi.fn(), deferConsultation }}
+			/>,
+		);
+		await user.click(screen.getAllByText(/Deferred until/)[0]!);
+		// The calendar opens with the deferred day selected — clicking it
+		// again deselects (onSelect(undefined)) instead of re-deferring.
+		// rdp v10 marks the selected gridcell; the DayButton sits inside it.
+		const cell = document.querySelector<HTMLElement>(
+			'[data-slot="popover-content"] [data-day][data-selected]',
+		);
+		const dayButton = cell?.querySelector("button");
+		expect(dayButton).toBeTruthy();
+		await user.click(dayButton!);
 		expect(deferConsultation).not.toHaveBeenCalled();
 	});
 });

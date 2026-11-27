@@ -53,7 +53,11 @@ INSERT INTO patient_access (patient_id, user_id, email, relation, status, source
 CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
 INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES
   ('ana', 'anaDev1', 's1'), ('ana', 'anaDev2', 's2');
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
+		transcript_edits TEXT,
+		transcript_edits_base TEXT,
+		transcript_reviewed_edits INTEGER,
+		deferred_until INTEGER);
 INSERT INTO consultations (id, patient_id, transcript, anamnesis) VALUES
   (10, 1, 'v1.ct', NULL), (11, 1, 'plain', '{}'), (12, 1, 'plain', 'v1.ct');
 -- ZK tenant (group 8) and an unresolvable tenantId (999, fail-closed):

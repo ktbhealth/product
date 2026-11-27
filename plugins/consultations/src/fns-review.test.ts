@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
 	approveAnamnesis: vi.fn(),
 	deferConsultation: vi.fn(),
 	nextPendingReview: vi.fn(),
+	countPendingReview: vi.fn(),
+	saveTranscriptEdits: vi.fn(),
 }));
 
 // Same fake as fns-zk.test.ts: handlers run as plain async fns and the
@@ -34,8 +36,10 @@ import { Consultations } from "./index.ts";
 import { Forbidden } from "@ktb/authz";
 import {
 	approveAnamnesisFn,
+	countPendingReviewFn,
 	deferConsultationFn,
 	nextPendingReviewFn,
+	saveTranscriptEditsFn,
 	reviewTranscriptFn,
 } from "./fns.ts";
 
@@ -51,6 +55,8 @@ const runEffects = () => {
 					approveAnamnesis: mocks.approveAnamnesis,
 					deferConsultation: mocks.deferConsultation,
 					nextPendingReview: mocks.nextPendingReview,
+					countPendingReview: mocks.countPendingReview,
+					saveTranscriptEdits: mocks.saveTranscriptEdits,
 				} as unknown as Consultations["Service"]),
 			),
 		),
@@ -63,6 +69,8 @@ beforeEach(() => {
 	mocks.approveAnamnesis.mockReturnValue(Effect.succeed(undefined));
 	mocks.deferConsultation.mockReturnValue(Effect.succeed(undefined));
 	mocks.nextPendingReview.mockReturnValue(Effect.succeed(44));
+	mocks.countPendingReview.mockReturnValue(Effect.succeed(3));
+	mocks.saveTranscriptEdits.mockReturnValue(Effect.succeed(undefined));
 });
 
 describe("review server fns (PL-022)", () => {
@@ -141,6 +149,51 @@ describe("review server fns (PL-022)", () => {
 	it("nextPendingReviewFn is { id: null } without a session user", async () => {
 		mocks.getDoctorUser.mockResolvedValueOnce(null);
 		await expect(nextPendingReviewFn({ data: 9 } as never)).resolves.toEqual({ id: null });
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("countPendingReviewFn returns the queue depth", async () => {
+		runEffects();
+		await expect(countPendingReviewFn({} as never)).resolves.toEqual({ count: 3 });
+		expect(mocks.countPendingReview).toHaveBeenCalledWith("u1");
+	});
+
+	it("countPendingReviewFn collapses Forbidden to { count: 0 }", async () => {
+		mocks.countPendingReview.mockReturnValue(Effect.fail(new Forbidden({ path: "x" })));
+		runEffects();
+		await expect(countPendingReviewFn({} as never)).resolves.toEqual({ count: 0 });
+	});
+
+	it("countPendingReviewFn is { count: 0 } without a session user", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce(null);
+		await expect(countPendingReviewFn({} as never)).resolves.toEqual({ count: 0 });
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+});
+
+describe("saveTranscriptEditsFn (PL-023)", () => {
+	it("delegates id + edits to the service", async () => {
+		runEffects();
+		const edits = JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]);
+		await expect(saveTranscriptEditsFn({ data: { id: 7, edits } } as never)).resolves.toEqual({
+			ok: true,
+		});
+		expect(mocks.saveTranscriptEdits).toHaveBeenCalledWith(7, "u1", edits);
+	});
+
+	it("collapses Forbidden to { ok: false }", async () => {
+		mocks.saveTranscriptEdits.mockReturnValue(Effect.fail(new Forbidden({ path: "x" })));
+		runEffects();
+		await expect(saveTranscriptEditsFn({ data: { id: 7, edits: "[]" } } as never)).resolves.toEqual(
+			{ ok: false },
+		);
+	});
+
+	it("returns { ok: false } without a session user", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce(null);
+		await expect(saveTranscriptEditsFn({ data: { id: 7, edits: "[]" } } as never)).resolves.toEqual(
+			{ ok: false },
+		);
 		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 });

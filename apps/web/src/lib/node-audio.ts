@@ -74,7 +74,26 @@ export const makeLocalAudioBucket = (dir: string) => {
 			}
 			return {};
 		},
-		get: async (key: string) => {
+		head: async (key: string) => {
+			const file = keyPath(root, key);
+			try {
+				const { size } = await stat(file);
+				return { size, httpMetadata: { contentType: await readMeta(file) } };
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+				throw error;
+			}
+		},
+		get: async (
+			key: string,
+			options?: {
+				readonly range?: {
+					readonly offset?: number;
+					readonly length?: number;
+					readonly suffix?: number;
+				};
+			},
+		) => {
 			const file = keyPath(root, key);
 			let bytes: Uint8Array;
 			try {
@@ -82,6 +101,17 @@ export const makeLocalAudioBucket = (dir: string) => {
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
 				throw error;
+			}
+			// R2Range semantics: suffix = last N bytes; otherwise offset +
+			// optional length (absent = to EOF).
+			const range = options?.range;
+			if (range) {
+				const offset =
+					range.suffix != null ? Math.max(0, bytes.byteLength - range.suffix) : (range.offset ?? 0);
+				bytes = bytes.subarray(
+					offset,
+					range.length != null ? offset + range.length : bytes.byteLength,
+				);
 			}
 			const contentType = await readMeta(file);
 			// Exact-copy ArrayBuffer: Buffer pooling and stream bodies both

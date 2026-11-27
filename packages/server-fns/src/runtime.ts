@@ -15,6 +15,21 @@ export interface AudioObject {
 	readonly httpMetadata?: { readonly contentType?: string } | null;
 }
 
+/** Metadata-only view (R2Object-compatible) — size without the body. */
+export interface AudioHead {
+	readonly size: number;
+	readonly httpMetadata?: { readonly contentType?: string } | null;
+}
+
+/** Byte-range get (R2Range-compatible): offset+length, or suffix = the
+ * last N bytes. Lets the download route honor HTTP Range so browsers
+ * treat stored audio as seekable media. */
+export interface AudioRange {
+	readonly offset?: number;
+	readonly length?: number;
+	readonly suffix?: number;
+}
+
 /**
  * The slice of R2Bucket the consultation audio routes need: store on
  * upload, stream on download, delete on purge. The real R2Bucket
@@ -22,7 +37,8 @@ export interface AudioObject {
  * binding directly.
  */
 export interface AudioStore extends AudioDeleter {
-	get(key: string): Promise<AudioObject | null>;
+	head(key: string): Promise<AudioHead | null>;
+	get(key: string, options?: { readonly range?: AudioRange }): Promise<AudioObject | null>;
 	put(
 		key: string,
 		value: ArrayBuffer | Uint8Array | ReadableStream,

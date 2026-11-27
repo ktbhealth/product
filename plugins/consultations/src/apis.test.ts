@@ -37,6 +37,7 @@ vi.mock("./fns.ts", () => ({
 	recordConsentFn: vi.fn(),
 	reviewTranscriptFn: vi.fn(),
 	saveConsultationFn: vi.fn(),
+	saveTranscriptEditsFn: vi.fn(),
 	verifyConsultationIntegrityFn: vi.fn(),
 }));
 
@@ -163,6 +164,36 @@ describe("api delegates forward to the server fns", () => {
 		expect(fns.deferConsultationFn).toHaveBeenCalledWith({ data: { id: 9, until } });
 		await consultationDetailApi.nextPendingReview!({ data: 10 });
 		expect(fns.nextPendingReviewFn).toHaveBeenCalledWith({ data: 10 });
+		await consultationDetailApi.saveTranscriptEdits!({
+			data: { id: 11, edits: "[]" },
+		});
+		expect(fns.saveTranscriptEditsFn).toHaveBeenCalledWith({
+			data: { id: 11, edits: "[]" },
+		});
+	});
+
+	it("generateAnamnesis extracts then attaches; a null draft short-circuits", async () => {
+		const fns = await import("./fns.ts");
+		const draft = { anamnesis: { q: 1 }, engine: "heuristic" };
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue(draft as never);
+		vi.mocked(fns.attachAnamnesisFn).mockResolvedValue({ ok: true } as never);
+		await expect(
+			consultationDetailApi.generateAnamnesis!({
+				data: { consultationId: 5, transcript: "t", patientId: 2 },
+			}),
+		).resolves.toEqual({ ok: true });
+		expect(fns.extractAnamnesisFn).toHaveBeenCalledWith({
+			data: { transcript: "t", patientId: 2 },
+		});
+		expect(fns.attachAnamnesisFn).toHaveBeenCalledWith({
+			data: { consultationId: 5, anamnesis: draft.anamnesis, engine: "heuristic" },
+		});
+
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue(null as never);
+		await expect(
+			consultationDetailApi.generateAnamnesis!({ data: { consultationId: 5, transcript: "t" } }),
+		).resolves.toEqual({ ok: false });
+		expect(fns.attachAnamnesisFn).toHaveBeenCalledTimes(1);
 	});
 });
 

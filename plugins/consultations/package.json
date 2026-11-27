@@ -17,7 +17,8 @@
 		"./backend": "./src/backend.ts",
 		"./api-route-bots": "./src/api-routes/bots.ts",
 		"./api-route-bots-webhook": "./src/api-routes/bots.webhook.ts",
-		"./audio-consumer": "./src/audio-consumer.ts"
+		"./audio-consumer": "./src/audio-consumer.ts",
+		"./review-queue-badge": "./src/views/ReviewQueueBadge.tsx"
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
@@ -53,6 +54,7 @@
 		"@tanstack/virtual-file-routes": "1.162.0",
 		"drizzle-orm": "^0.45.1",
 		"effect": "4.1.2",
+		"loro-crdt": "1.18.0",
 		"lucide-react": "0.544.0",
 		"react-day-picker": "^10.0.2"
 	},

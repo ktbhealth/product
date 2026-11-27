@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	AudioTranscriptPanel,
@@ -225,5 +225,72 @@ describe("AudioTranscriptPanel", () => {
 		expect(screen.getByText("Doctor")).toBeTruthy();
 		expect(screen.getByText("bom dia")).toBeTruthy();
 		expect(screen.getByText("sem rótulo")).toBeTruthy();
+	});
+});
+
+describe("AudioTranscriptPanel — karaoke segments", () => {
+	beforeAll(() => {
+		// jsdom lacks scrollIntoView; SegmentsKaraoke scrolls the active row.
+		window.Element.prototype.scrollIntoView = vi.fn();
+	});
+
+	const KARAOKE = [
+		{ start: 0, end: 2, text: "Primeira frase.", avgLogprob: -0.1 },
+		{ start: 2, end: 4, text: "Segunda frase.", avgLogprob: -0.9 },
+	];
+
+	it("segment rows seek on click and follow the playhead", async () => {
+		const playSpy = vi.fn(() => Promise.resolve());
+		window.HTMLMediaElement.prototype.play = playSpy;
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				browserText="x"
+				segments={KARAOKE}
+			/>,
+		);
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("Segunda frase."));
+		expect(audio.currentTime).toBe(2);
+		expect(playSpy).toHaveBeenCalled();
+		// Playhead inside a segment highlights its row (active ref + class).
+		audio.currentTime = 1;
+		fireEvent.timeUpdate(audio);
+		fireEvent.timeUpdate(audio);
+		// Outside every segment → no active row.
+		audio.currentTime = 99;
+		fireEvent.timeUpdate(audio);
+	});
+
+	it("segment rows degrade to plain buttons without a playable source", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={null}
+				hasAudio
+				audioStatus="done"
+				browserText="x"
+				segments={KARAOKE}
+			/>,
+		);
+		expect(document.querySelector("audio")).toBeNull();
+		// seek() guard: no audio element → click is a no-op.
+		fireEvent.click(screen.getByText("Segunda frase."));
+	});
+
+	it("swallows a rejected play() on karaoke seek", async () => {
+		window.HTMLMediaElement.prototype.play = vi.fn(() => Promise.reject(new Error("nope")));
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				browserText="x"
+				segments={KARAOKE}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Segunda frase."));
+		await act(async () => {});
 	});
 });

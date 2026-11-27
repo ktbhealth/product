@@ -193,6 +193,7 @@ export type I18nKey =
 	| "app.nav_patient_portal"
 	| "app.nav_patients"
 	| "app.nav_platform_console"
+	| "app.nav_review"
 	| "app.nav_secretaries"
 	| "app.nav_secretary_login"
 	| "app.nav_secretary_portal"
@@ -608,6 +609,7 @@ export type I18nKey =
 	| "consultations.list.reviewedBadge"
 	| "consultations.list.searchLabel"
 	| "consultations.list.searchPlaceholder"
+	| "consultations.list.sidebarPendingReview"
 	| "consultations.list.staleBadge"
 	| "consultations.list.startConsultation"
 	| "consultations.list.statsNeedsReview"
@@ -714,6 +716,31 @@ export type I18nKey =
 	| "consultations.newConsultation.viewConsultation"
 	| "consultations.newConsultation.waitingDescription"
 	| "consultations.newConsultation.waitingTitle"
+	| "consultations.review.backToConsultations"
+	| "consultations.review.cancelEdit"
+	| "consultations.review.confirmAndContinue"
+	| "consultations.review.deferredTag"
+	| "consultations.review.editedTag"
+	| "consultations.review.editFullText"
+	| "consultations.review.editSegment"
+	| "consultations.review.legacyAudioBadge"
+	| "consultations.review.missingDescription"
+	| "consultations.review.missingTitle"
+	| "consultations.review.nextUncertain"
+	| "consultations.review.noAudioBadge"
+	| "consultations.review.notFound"
+	| "consultations.review.pendingCount"
+	| "consultations.review.pendingEdits"
+	| "consultations.review.queueEmptyDescription"
+	| "consultations.review.queueEmptyTitle"
+	| "consultations.review.queueLabel"
+	| "consultations.review.regenerateAnamnesis"
+	| "consultations.review.saveEdit"
+	| "consultations.review.sessionDone"
+	| "consultations.review.staleAnamnesis"
+	| "consultations.review.stepAnamnesis"
+	| "consultations.review.stepTranscript"
+	| "consultations.review.title"
 	| "consultations.sections.alergias"
 	| "consultations.sections.antecedentes"
 	| "consultations.sections.conduta"
@@ -2740,6 +2767,7 @@ export interface I18nTypedT {
 	(key: "app.nav_patient_portal"): Effect.Effect<string>;
 	(key: "app.nav_patients"): Effect.Effect<string>;
 	(key: "app.nav_platform_console"): Effect.Effect<string>;
+	(key: "app.nav_review"): Effect.Effect<string>;
 	(key: "app.nav_secretaries"): Effect.Effect<string>;
 	(key: "app.nav_secretary_login"): Effect.Effect<string>;
 	(key: "app.nav_secretary_portal"): Effect.Effect<string>;
@@ -3274,6 +3302,12 @@ export interface I18nTypedT {
 	(key: "consultations.list.searchLabel"): Effect.Effect<string>;
 	(key: "consultations.list.searchPlaceholder"): Effect.Effect<string>;
 	(
+		key: "consultations.list.sidebarPendingReview",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(
 		key: "consultations.list.staleBadge",
 		params: {
 			n: unknown;
@@ -3465,6 +3499,46 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.viewConsultation"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.waitingDescription"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.waitingTitle"): Effect.Effect<string>;
+	(key: "consultations.review.backToConsultations"): Effect.Effect<string>;
+	(key: "consultations.review.cancelEdit"): Effect.Effect<string>;
+	(key: "consultations.review.confirmAndContinue"): Effect.Effect<string>;
+	(key: "consultations.review.deferredTag"): Effect.Effect<string>;
+	(key: "consultations.review.editedTag"): Effect.Effect<string>;
+	(key: "consultations.review.editFullText"): Effect.Effect<string>;
+	(key: "consultations.review.editSegment"): Effect.Effect<string>;
+	(key: "consultations.review.legacyAudioBadge"): Effect.Effect<string>;
+	(key: "consultations.review.missingDescription"): Effect.Effect<string>;
+	(key: "consultations.review.missingTitle"): Effect.Effect<string>;
+	(key: "consultations.review.nextUncertain"): Effect.Effect<string>;
+	(key: "consultations.review.noAudioBadge"): Effect.Effect<string>;
+	(key: "consultations.review.notFound"): Effect.Effect<string>;
+	(
+		key: "consultations.review.pendingCount",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.review.pendingEdits",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.review.queueEmptyDescription"): Effect.Effect<string>;
+	(key: "consultations.review.queueEmptyTitle"): Effect.Effect<string>;
+	(key: "consultations.review.queueLabel"): Effect.Effect<string>;
+	(key: "consultations.review.regenerateAnamnesis"): Effect.Effect<string>;
+	(key: "consultations.review.saveEdit"): Effect.Effect<string>;
+	(
+		key: "consultations.review.sessionDone",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.review.staleAnamnesis"): Effect.Effect<string>;
+	(key: "consultations.review.stepAnamnesis"): Effect.Effect<string>;
+	(key: "consultations.review.stepTranscript"): Effect.Effect<string>;
+	(key: "consultations.review.title"): Effect.Effect<string>;
 	(key: "consultations.sections.alergias"): Effect.Effect<string>;
 	(key: "consultations.sections.antecedentes"): Effect.Effect<string>;
 	(key: "consultations.sections.conduta"): Effect.Effect<string>;

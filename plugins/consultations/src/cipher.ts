@@ -20,6 +20,9 @@ export const CONSULTATION_CIPHERED_FIELDS = [
 	"review",
 	"serverTranscript",
 	"correctedTranscript",
+	// PL-023: ASR segments + the Loro edit log both carry PHI text.
+	"transcriptSegments",
+	"transcriptEdits",
 ] as const;
 
 export const consultationCipher = defineCipher({
@@ -47,6 +50,20 @@ export const consultationCipher = defineCipher({
 		"anamnesisHash",
 		"anamnesisVersion",
 		"blobHash",
+		// PL-022/PL-023: review + edit-log metadata — stamps, the defer
+		// date, the base tag and the op-count binding are structure,
+		// not content.
+		"transcriptReviewedAt",
+		"transcriptReviewedBy",
+		"anamnesisReviewedAt",
+		"anamnesisReviewedBy",
+		"anamnesisReviewedVersion",
+		"deferredUntil",
+		"transcriptEditsBase",
+		"transcriptReviewedEdits",
+		// Provenance flags (P-098) — analytics metadata, not content.
+		"synthetic",
+		"evalItemId",
 		"createdAt",
 	],
 });

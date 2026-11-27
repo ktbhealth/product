@@ -487,3 +487,78 @@ describe("clinician.activity loader", () => {
 		).resolves.toEqual(EMPTY);
 	});
 });
+
+describe("review mode loaders (PL-023)", () => {
+	const reviewBase = "/portal/doctor/review";
+
+	it("queue overview lists the queue for the rail — no id subpath needed", async () => {
+		const queue = [{ id: 9 }, { id: 8 }];
+		const result = (await run(loader("clinician.doctor.review")(reviewBase), {
+			principal: { userId: "u1" },
+			layer: consultationsLayer({ list: () => Effect.succeed(queue) }),
+		})) as { view: string; queue: unknown[]; author: string };
+		expect(result.view).toBe("queue");
+		expect(result.queue).toEqual(queue);
+		expect(result.author).toBe("u1");
+	});
+
+	it("queue overview collapses a forbidden list to an empty queue", async () => {
+		const result = (await run(loader("clinician.doctor.review")(reviewBase), {
+			principal: { userId: "u1" },
+			layer: consultationsLayer({ list: forbidden }),
+		})) as { view: string; queue: unknown[] };
+		expect(result.view).toBe("queue");
+		expect(result.queue).toEqual([]);
+	});
+
+	it("item view returns queue + record for a resolvable id", async () => {
+		const c = { id: 9 };
+		const result = (await run(loader("clinician.doctor.review.item")(`${reviewBase}/9`), {
+			principal: { userId: "u1" },
+			layer: consultationsLayer({
+				list: () => Effect.succeed([{ id: 9 }]),
+				get: () => Effect.succeed(c),
+			}),
+		})) as { view: string; c: unknown };
+		expect(result.view).toBe("item");
+		expect(result.c).toBe(c);
+	});
+
+	it("a denied or absent id lands on the queue overview, not a dead end", async () => {
+		for (const path of [`${reviewBase}/404`, `${reviewBase}/abc`, `${reviewBase}/9`]) {
+			const result = (await run(loader("clinician.doctor.review.item")(path), {
+				principal: { userId: "u1" },
+				layer: consultationsLayer({
+					get: () => (path.endsWith("/9") ? forbidden() : Effect.succeed(null)),
+				}),
+			})) as { view: string };
+			expect(result.view).toBe("queue");
+		}
+	});
+
+	it("no principal resolves to missing on both review pages", async () => {
+		for (const id of ["clinician.doctor.review", "clinician.doctor.review.item"]) {
+			const result = (await run(loader(id)(`${reviewBase}/9`), {
+				principal: null,
+				layer: consultationsLayer(),
+			})) as { view: string };
+			expect(result.view).toBe("missing");
+		}
+	});
+
+	it("item guard admits owned ids, rejects foreign/queued/malformed paths", async () => {
+		const g = guard("clinician.doctor.review.item");
+		const layer = consultationsLayer({
+			get: (id: number) => (id === 9 ? Effect.succeed({ id: 9 }) : forbidden()),
+		});
+		expect(await run(g(`${reviewBase}/9`), { principal: { userId: "u1" }, layer })).toBe(true);
+		expect(await run(g(`${reviewBase}/404`), { principal: { userId: "u1" }, layer })).toBe(false);
+		expect(await run(g(`${reviewBase}/9/extra`), { principal: { userId: "u1" }, layer })).toBe(
+			false,
+		);
+		// A bare trailing slash inside the wildcard is still the queue.
+		expect(await run(g(`${reviewBase}/`), { principal: { userId: "u1" }, layer })).toBe(true);
+		// Signed-out principals are rejected before the service lookup.
+		expect(await run(g(`${reviewBase}/9`), { principal: null, layer })).toBe(false);
+	});
+});

@@ -14,6 +14,7 @@ import {
 	recordConsentFn,
 	reviewTranscriptFn,
 	saveConsultationFn,
+	saveTranscriptEditsFn,
 	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
@@ -31,6 +32,7 @@ export const consultationDetailApi: ConsultationDetailApi = {
 	approveAnamnesis: (input: { data: number }) => approveAnamnesisFn(input),
 	deferConsultation: (input) => deferConsultationFn({ data: input.data }),
 	nextPendingReview: (input: { data: number }) => nextPendingReviewFn(input),
+	saveTranscriptEdits: (input) => saveTranscriptEditsFn({ data: input.data }),
 	// Detail-page "Generate anamnesis": server-side extract + attach in
 	// one adapter call so the view stays a single button. ZK tenants get
 	// `null` from extract (client-side BYOK is a different path, T-146).

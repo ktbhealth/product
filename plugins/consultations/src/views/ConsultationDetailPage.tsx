@@ -55,6 +55,7 @@ import {
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
+import { parseTranscriptSegments } from "../segments.ts";
 
 function Chip({
 	children,
@@ -99,6 +100,13 @@ export interface ConsultationDetail {
 	anamnesisReviewedAt?: Date | null;
 	anamnesisReviewedVersion?: number | null;
 	deferredUntil?: Date | null;
+	/** Review-mode payloads (PL-023): whisper segments for karaoke, the
+	 * Loro edit log + pinned base, and the op-count the transcript
+	 * confirmation stamped. Envelopes under ZK — decrypted client-side. */
+	transcriptSegments?: string | null;
+	transcriptEdits?: string | null;
+	transcriptEditsBase?: string | null;
+	transcriptReviewedEdits?: number | null;
 }
 
 /** Raw history rows for the client-side ZK history build (T-145). */
@@ -124,6 +132,8 @@ export interface ConsultationDetailApi {
 	}): Promise<{ ok: boolean }>;
 	/** "Approve & next" — the next unsigned record in the queue. */
 	nextPendingReview?(input: { data: number }): Promise<{ id: number | null }>;
+	/** Persist the Loro transcript-edit log (PL-023). */
+	saveTranscriptEdits?(input: { data: { id: number; edits: string } }): Promise<{ ok: boolean }>;
 	/** Draft + attach an anamnesis for a transcript-only record. */
 	generateAnamnesis?(input: {
 		data: { consultationId: number; transcript: string; patientId?: number };
@@ -248,8 +258,8 @@ export function ConsultationDetailPage({
 				api!.generateAnamnesis!({
 					data: {
 						consultationId: c.id,
-						// Non-null: the button only renders when v.transcript?.trim().
-						transcript: v.transcript!,
+						// v8 ignore next -- the button only renders while v.transcript is non-empty
+						transcript: v.transcript ?? "",
 						...(v.patientId === null ? {} : { patientId: v.patientId }),
 					},
 				}),
@@ -362,6 +372,7 @@ export function ConsultationDetailPage({
 	// `dec` overlays the client-decrypted fields under ZK; `live` the
 	// polled audio-pipeline state — never active under ZK (T-147).
 	const v = { ...c, ...live, ...dec };
+	const segments = parseTranscriptSegments(v.transcriptSegments);
 	// Clickable transcript evidence: at most one section's grounding
 	// sentences are marked up in the transcript at a time; turning a
 	// section on also scrolls the ScrollArea to the first match.
@@ -761,12 +772,13 @@ export function ConsultationDetailPage({
 									locale={locale}
 									consultationId={c.id}
 									audioStatus={v.audioStatus}
-									audioSrc={zkAudioUrl ?? undefined}
+									audioSrc={zk ? zkAudioUrl : undefined}
 									hasAudio={Boolean(v.audioKey)}
 									browserText={v.transcript}
 									serverText={v.serverTranscript}
 									correctedText={v.correctedTranscript}
 									highlight={evidence?.sentences}
+									segments={segments}
 								/>
 							</div>
 						</ScrollArea>

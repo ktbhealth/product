@@ -1,15 +1,34 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
+import {
+	AudioPlayer,
+	AudioPlayerControlBar,
+	AudioPlayerDurationDisplay,
+	AudioPlayerElement,
+	AudioPlayerMuteButton,
+	AudioPlayerPlayButton,
+	AudioPlayerSeekBackwardButton,
+	AudioPlayerSeekForwardButton,
+	AudioPlayerTimeDisplay,
+	AudioPlayerTimeRange,
+	AudioPlayerVolumeRange,
+} from "@ktbhealth/ui/components/ai-elements/audio-player";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES, SPEAKER_STYLE } from "./-ui.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
+import type { TranscriptSegment } from "../segments.ts";
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const fmtTime = (s: number) =>
+	`${Math.floor(s / 60)}:${Math.floor(s % 60)
+		.toString()
+		.padStart(2, "0")}`;
 
 /**
  * Builds a case-insensitive matcher for verbatim evidence sentences.
@@ -210,6 +229,95 @@ function SourceBlock({
 }
 
 /**
+ * Karaoke transcript view (PL-023): one timestamped row per ASR
+ * segment, the row under the playhead highlighted live, click-to-seek.
+ * Evidence `highlight` sentences still render as <mark> inside the
+ * segment text.
+ */
+function SegmentsKaraoke({
+	segments,
+	active,
+	highlight,
+	onSeek,
+}: {
+	segments: readonly TranscriptSegment[];
+	/** Index of the segment under the playhead (-1 = none yet). */
+	active: number;
+	highlight?: readonly string[];
+	onSeek: (index: number) => void;
+}) {
+	const markRe = evidenceRegex(highlight);
+	const activeRef = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		activeRef.current?.scrollIntoView({ block: "nearest" });
+	}, [active]);
+	return (
+		<div className="space-y-0.5">
+			{segments.map((s, i) => (
+				<button
+					key={i}
+					ref={i === active ? activeRef : undefined}
+					type="button"
+					onClick={() => onSeek(i)}
+					className={`flex w-full gap-2 rounded-md px-2 py-1.5 text-left text-sm leading-relaxed transition-colors ${
+						i === active ? "bg-primary/10" : "hover:bg-muted/50"
+					}`}
+				>
+					<span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+						{fmtTime(s.start)}
+					</span>
+					<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
+				</button>
+			))}
+		</div>
+	);
+}
+
+/**
+ * Consultation playback bar (PL-023): the design-system media-chrome
+ * player — play, ±10s seek, time range, duration, volume. The inner
+ * <audio> is exposed through `audioRef` so karaoke views can read the
+ * playhead and seek programmatically; `onTimeUpdate` feeds the live
+ * segment highlight.
+ */
+export function ConsultationAudioPlayer({
+	src,
+	audioRef,
+	onTimeUpdate,
+	ariaLabel,
+	preload = "metadata",
+}: {
+	src: string;
+	/** Ref to the underlying <audio> element (seek/playhead). */
+	audioRef?: Ref<HTMLAudioElement>;
+	onTimeUpdate?: (currentTime: number) => void;
+	ariaLabel?: string;
+	preload?: "none" | "metadata" | "auto";
+}) {
+	return (
+		<AudioPlayer className="w-full">
+			<AudioPlayerElement
+				src={src}
+				ref={audioRef}
+				preload={preload}
+				aria-label={ariaLabel}
+				onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+			/>
+			<AudioPlayerControlBar className="flex-wrap">
+				<AudioPlayerPlayButton />
+				<AudioPlayerSeekBackwardButton />
+				<AudioPlayerSeekForwardButton />
+				<AudioPlayerTimeDisplay />
+				<AudioPlayerTimeRange className="min-w-0 flex-1" />
+				<AudioPlayerDurationDisplay />
+				<AudioPlayerMuteButton />
+				<AudioPlayerVolumeRange className="w-24" />
+			</AudioPlayerControlBar>
+		</AudioPlayer>
+	);
+}
+
+/**
  * Transcript area for consultations with (or pending) server-side
  * audio processing: status chip, optional audio playback, and
  * Corrected/Original tabs once an LLM-cleaned transcript exists.
@@ -227,6 +335,7 @@ export function AudioTranscriptPanel({
 	audioSrc,
 	highlight,
 	locale = "en",
+	segments,
 }: {
 	consultationId: number | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -242,14 +351,29 @@ export function AudioTranscriptPanel({
 	 *  generation) use exactly what the doctor is viewing. */
 	onActiveText?: (view: TranscriptView) => void;
 	/** Pre-resolved playback URL — the ZK path (T-147) fetches the
-	 * ciphertext, decrypts it in the browser and hands an object URL;
-	 * absent = the default authenticated endpoint. */
-	audioSrc?: string;
+	 * ciphertext, decrypts it in the browser and hands an object URL.
+	 * `undefined` = fall back to the authenticated endpoint; `null` =
+	 * explicitly unavailable (ZK ciphertext that never unlocks must
+	 * never fall back to the endpoint). */
+	audioSrc?: string | null;
 	/** Active evidence sentences — matched substrings render as <mark>. */
 	highlight?: readonly string[];
+	/** ASR segments (PL-023): when present with audio, the body becomes
+	 * a karaoke view — timestamped rows, live playhead highlight,
+	 * click-to-seek — instead of the prose blocks. */
+	segments?: readonly TranscriptSegment[];
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const [tab, setTab] = useState<"corrected" | "original">("corrected");
+	const audioRef = useRef<HTMLAudioElement>(null);
+	const [activeIdx, setActiveIdx] = useState(-1);
+	const karaoke = useMemo(() => (hasAudio === true ? (segments ?? []) : []), [hasAudio, segments]);
+	const seek = (i: number) => {
+		const el = audioRef.current;
+		if (!el || !karaoke[i]) return;
+		el.currentTime = karaoke[i].start;
+		void el.play().catch(() => {});
+	};
 	const status = audioStatus ?? "none";
 	const sourceLabels: TranscriptSourceLabels = {
 		server: t.transcriptPanel.sourceServer,
@@ -285,10 +409,18 @@ export function AudioTranscriptPanel({
 	}, [active?.text, active?.source, onActiveText]);
 
 	const inFlight = IN_FLIGHT.has(status);
+	// `undefined` audioSrc resolves the default endpoint; `null` means
+	// the caller knows playback is impossible (ZK locked) — no fallback.
+	const playSrc =
+		audioSrc === undefined
+			? consultationId !== null
+				? `/api/consultations/${consultationId}/audio`
+				: undefined
+			: (audioSrc ?? undefined);
 
 	return (
 		<div className="space-y-3">
-			{status === "failed" || inFlight || correctedView || audioSrc ? (
+			{status === "failed" || inFlight || correctedView ? (
 				<div className="flex flex-wrap items-center gap-2">
 					{status === "failed" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.red}`}>
@@ -300,25 +432,34 @@ export function AudioTranscriptPanel({
 							{status === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}
 						</Badge>
 					) : (
-						// Outer condition: failed || inFlight || correctedView — so
-						// here correctedView is set.
+						// Reaching this branch means correctedView is non-null
+						// (the outer guard requires it when nothing else matched).
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.green}`}>
 							{t.transcriptPanel.enhanced}
 						</Badge>
 					)}
-					{hasAudio && (consultationId !== null || audioSrc) ? (
-						<audio
-							controls
-							preload="none"
-							src={audioSrc ?? `/api/consultations/${consultationId}/audio`}
-							aria-label={t.transcriptPanel.audioLabel}
-							className="h-8 w-full max-w-xs"
-						/>
-					) : null}
 				</div>
 			) : null}
+			{hasAudio && playSrc ? (
+				<ConsultationAudioPlayer
+					src={playSrc}
+					audioRef={audioRef}
+					ariaLabel={t.transcriptPanel.audioLabel}
+					preload="none"
+					onTimeUpdate={(now) => {
+						setActiveIdx(karaoke.findIndex((s) => now >= s.start && now < s.end));
+					}}
+				/>
+			) : null}
 
-			{tabbed ? (
+			{karaoke.length > 0 ? (
+				<SegmentsKaraoke
+					segments={karaoke}
+					active={activeIdx}
+					highlight={highlight}
+					onSeek={seek}
+				/>
+			) : tabbed ? (
 				<Tabs
 					value={tab}
 					onValueChange={(v) => setTab(v as "corrected" | "original")}

@@ -14,6 +14,8 @@ const doctorPaths = (instance: string) => [
 	`/portal/${instance}/consultations`,
 	`/portal/${instance}/patients/*`,
 	`/portal/${instance}/consultations/*`,
+	`/portal/${instance}/review`,
+	`/portal/${instance}/review/*`,
 	`/portal/${instance}/activity`,
 ];
 
@@ -53,21 +55,28 @@ describe("clinician portal plugins", () => {
 		// Wildcard record pages guard + load by request path.
 		expect("guard" in pages[3]!).toBe(true);
 		expect("guard" in pages[4]!).toBe(true);
-		// The activity feed guards on the actor scope and loads the
-		// actor-scoped feed.
-		expect("guard" in pages[5]!).toBe(true);
+		// Review mode (PL-023): the queue overview loads without a guard;
+		// the wildcard item page guards like the record page.
 		expect("loader" in pages[5]!).toBe(true);
+		expect("loader" in pages[6]!).toBe(true);
+		expect("guard" in pages[6]!).toBe(true);
+		// The activity feed guards on the audit.read grant and loads the
+		// tenant-scoped feed.
+		expect("guard" in pages[7]!).toBe(true);
+		expect("loader" in pages[7]!).toBe(true);
 	});
 
 	it("scopes every sidebar item to its own instance", () => {
 		expect(clinicianChromePlugin.id).toBe("clinician.chrome");
 		const entries = clinicianChromePlugin.chrome ?? [];
-		expect(entries).toHaveLength(8);
+		expect(entries).toHaveLength(10);
 		expect(entries.map((e) => e.portal)).toEqual([
 			"doctor",
 			"doctor",
 			"doctor",
 			"doctor",
+			"doctor",
+			"secretary",
 			"secretary",
 			"secretary",
 			"secretary",

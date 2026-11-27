@@ -59,6 +59,33 @@ export const consultations = sqliteTable(
 		/** Which engine produced correctedTranscript (e.g. "anthropic", "workers-ai:..."). */
 		enhancementEngine: text("enhancement_engine"),
 		/**
+		 * ASR segments (PL-023): JSON `[{start,end,text,avg_logprob}]`
+		 * from the whisper verbose response — powers karaoke sync and
+		 * uncertainty markers in review mode. NULL = "legacy audio"
+		 * class (audio predates segment persistence).
+		 */
+		transcriptSegments: text("transcript_segments"),
+		/**
+		 * Physician transcript corrections (PL-023): JSON append-only
+		 * log `[{at,by,u}]` of base64 Loro CRDT updates — diffs only,
+		 * the readable transcript is always a projection over the base
+		 * pinned by `transcriptEditsBase`. PHI under ZK (ciphered).
+		 */
+		transcriptEdits: text("transcript_edits"),
+		/**
+		 * Which base the Loro edits project over — "corrected" |
+		 * "server" | "transcript" — pinned by the first
+		 * `appendTranscriptEdits` call so ops never silently
+		 * misalign when a later pipeline layer lands.
+		 */
+		transcriptEditsBase: text("transcript_edits_base"),
+		/**
+		 * Number of edit ops present when `transcriptReviewedAt` was
+		 * stamped — later edits surface as "new unconfirmed edits"
+		 * instead of silently extending the confirmation.
+		 */
+		transcriptReviewedEdits: integer("transcript_reviewed_edits"),
+		/**
 		 * Integrity columns (PL-007 F1, T-138): `anamnesisHash` is the
 		 * SHA-256 content hash of the canonical anamnesis document and
 		 * `anamnesisVersion` the matching `record_versions` row — NULL on
