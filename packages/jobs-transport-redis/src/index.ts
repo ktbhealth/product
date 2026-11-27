@@ -28,6 +28,8 @@ export interface RedisLike {
 	brPop(key: string, timeoutSeconds: number): Promise<readonly [string, string] | null>;
 	lLen(key: string): Promise<number>;
 	quit(): Promise<unknown>;
+	/** Hard socket teardown — optional on the injectable seam. */
+	destroy?(): void;
 }
 
 export interface RedisJobsTransportOptions {
@@ -56,6 +58,10 @@ export interface RedisJobsTransport {
 
 const DEFAULT_URL = "redis://127.0.0.1:6379";
 const DEFAULT_QUEUE = "ktb:jobs";
+// QUIT is queued through node-redis's offline command queue and only
+// flushes once the socket reconnects — bound it so close() never hangs
+// on an unreachable Redis, then destroy the socket outright.
+const CLOSE_TIMEOUT_MS = 1000;
 
 export const createRedisJobsTransport = async (
 	opts: RedisJobsTransportOptions = {},
@@ -100,7 +106,9 @@ export const createRedisJobsTransport = async (
 			return { pending, processing: 0, done: 0, failed: 0 };
 		},
 		close: async () => {
-			await client.quit();
+			const timer = new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS).unref());
+			await Promise.race([client.quit().catch(() => {}), timer]);
+			client.destroy?.();
 		},
 	};
 };
