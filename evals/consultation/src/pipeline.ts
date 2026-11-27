@@ -504,8 +504,10 @@ export interface SampleRun {
 /** Mutable per-sample state the dispatched stage functions share —
  * each stage reads what earlier stages produced and writes its own
  * outputs back. `processSample` hands this object to the pipeline
- * engine as `StageContext.input`, so the stages' writes are visible
- * to assembly exactly as the direct dispatch left them. */
+ * engine inside an {@link EvalRunInput} envelope (as
+ * `StageContext.input.run`), so the stages' writes are visible to
+ * assembly exactly as the direct dispatch left them while the input
+ * object itself stays untouched. */
 interface StageRun {
 	readonly sample: Sample;
 	readonly profile: LocaleProfile;
@@ -680,8 +682,8 @@ export const EVAL_RUN_PIPELINE_ID = "eval.consultation/run";
 /** The stage's products, returned as the PipelineStage `output` — the
  * registry aliases it at `state[stageId]` for observability. The
  * authoritative hand-off stays on the shared {@link StageRun} (the
- * pipeline `input`), which assembly reads — one source of truth, no
- * dual-write divergence. */
+ * `input.run` payload), which assembly reads — one source of truth,
+ * no dual-write divergence. */
 const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
 	switch (id) {
 		case "transcribe":
@@ -697,11 +699,24 @@ const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
 	}
 };
 
+/** The pipeline `input` envelope `processSample` hands to
+ * `registry.run`: the mutable {@link StageRun} rides as a NAMED
+ * payload (`input.run`) so `StageContext.input` itself is never
+ * mutated — the contract's "input is never mutated" holds literally
+ * for every stage, and the shared working state is an explicit
+ * pack-owned object rather than the input aliased. One envelope per
+ * run invocation; the stages of a run share the SAME payload in
+ * declared order (transcribe → cleanup → judge). */
+interface EvalRunInput {
+	readonly run: StageRun;
+}
+
 /** Adapt a RUN_STAGE_FNS runner to the {@link PipelineStage} contract.
- * The shared StageRun arrives as `StageContext.input` — the registry
- * never mutates `input`, and the stage writes land on the same object
- * the direct dispatch used, so records/answers/PHI decisions behave
- * identically. Ambient ports are probed inside the runners exactly as
+ * The shared StageRun arrives as `StageContext.input.run` (see
+ * {@link EvalRunInput}) — the envelope is never mutated, and the
+ * stage writes land on the same payload object the direct dispatch
+ * used, so records/answers/PHI decisions behave identically.
+ * Ambient ports are probed inside the runners exactly as
  * before (`Effect.serviceOption`/`yield*` against the caller-provided
  * layer). The typed `PortError` channel is normalized to
  * `PipelineStageError`; the registry re-wraps it into
@@ -710,7 +725,7 @@ const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
 const toPipelineStage = (id: RunStage): PipelineStage => ({
 	id,
 	run: (sctx) => {
-		const ctx = sctx.input as StageRun;
+		const ctx = (sctx.input as EvalRunInput).run;
 		return RUN_STAGE_FNS[id](ctx).pipe(
 			Effect.map((): StageResult => ({ output: stageOutput(id, ctx) })),
 			Effect.mapError((e) => new PipelineStageError({ stageId: id, message: e.message, cause: e })),
@@ -927,7 +942,9 @@ export const processSample = (input: {
 		// selection becomes the def's ordered stage entries (default
 		// "halt" onError = today's fail-the-sample semantics), the
 		// stage impls are thin adapters over the same runners, and the
-		// mutable StageRun rides as the pipeline `input` — records are
+		// mutable StageRun rides as `input.run` inside an
+		// EvalRunInput envelope — `StageContext.input` itself is never
+		// mutated — records are
 		// collected THROUGH the helpers' onRecord hooks fired the
 		// moment each port call returns, before any subsequent
 		// fallible step (PHI scrub gate, edit application), so even
@@ -956,7 +973,7 @@ export const processSample = (input: {
 		}
 		const registry = makePipelineRegistry();
 		registry.register(evalRunPack(stages));
-		yield* registry.run(EVAL_RUN_PIPELINE_ID, ctx).pipe(
+		yield* registry.run(EVAL_RUN_PIPELINE_ID, { run: ctx }).pipe(
 			// PipelineRunError wraps the stage failure twice
 			// (PipelineStageError → run error); its `cause` is the
 			// ORIGINAL typed error — unwrap so callers see the same
