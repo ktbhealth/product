@@ -3,6 +3,13 @@ import * as Option from "effect/Option";
 
 import { Db } from "@ktb/db";
 import { Fonts } from "@ktb/fonts";
+import {
+	bestEffortDelete,
+	checkUpload,
+	putStoredObject,
+	storedObjectKey,
+	type UploadPolicy,
+} from "@ktb/media";
 import { PlatformAdmin } from "@ktb/platform";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 
@@ -11,7 +18,6 @@ import {
 	THEME_ASSETS_PREFIX,
 	catalogFontFamilyOf,
 	catalogFontSubsetKeysOf,
-	contentTypeForKey,
 	deleteThemeAsset,
 	fontFormatForExt,
 	insertCatalogFontAsset,
@@ -54,6 +60,14 @@ import {
 
 /** Same ceiling the theme asset upload route enforces. */
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Catalog fonts are font files only — extension + declared-MIME
+ * prefix gate; the size/status contract is @ktb/media's. */
+const FONT_UPLOAD_POLICY: UploadPolicy = {
+	maxBytes: MAX_UPLOAD_BYTES,
+	extensions: FONT_UPLOAD_EXTENSIONS,
+	mimePrefixes: ["font/"],
+};
 
 /** Provider name used when the first catalog upload auto-provisions
  * the "local" adapter row. */
@@ -168,25 +182,22 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 					providerId = parsed;
 				}
 
-				const bytes = await file.arrayBuffer();
-				if (bytes.byteLength === 0) {
-					return Response.json({ error: "empty file" }, { status: 400 });
+				// Shared upload contract (@ktb/media): empty → 400,
+				// oversize → 413, extension/MIME gates → 415.
+				const checked = checkUpload(
+					{
+						bytes: await file.arrayBuffer(),
+						fileName: file.name || "upload",
+						mime: file.type || "",
+					},
+					FONT_UPLOAD_POLICY,
+				);
+				if (!checked.ok) {
+					return Response.json({ error: checked.error }, { status: checked.status });
 				}
-				if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-					return Response.json({ error: "file too large (max 10MB)" }, { status: 413 });
-				}
-				/* v8 ignore next -- parsed File.type is never empty */
-				const mime = (file.type || "").split(";")[0]!.trim().toLowerCase();
-				/* v8 ignore next -- unreachable via multipart */
+				const bytes = checked.bytes;
 				const name = file.name || "upload";
-				const dot = name.lastIndexOf(".");
-				const ext = dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
-				if (!(FONT_UPLOAD_EXTENSIONS as readonly string[]).includes(ext)) {
-					return Response.json({ error: "unsupported file type" }, { status: 415 });
-				}
-				if (mime !== "" && mime !== "application/octet-stream" && !mime.startsWith("font/")) {
-					return Response.json({ error: "unsupported content type" }, { status: 415 });
-				}
+				const ext = checked.ext;
 
 				// No explicit weight → filename hint ("Inter-Bold",
 				// "Inter_700"); still nothing → single weightless face.
@@ -231,10 +242,8 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 					return Response.json({ error }, { status: provider.status });
 				}
 
-				const key = `${THEME_ASSETS_PREFIX}catalog/font/${crypto.randomUUID()}.${ext}`;
-				await bucket.put(key, bytes, {
-					httpMetadata: { contentType: contentTypeForKey(key) },
-				});
+				const key = storedObjectKey(THEME_ASSETS_PREFIX, ["catalog", "font"], ext);
+				await putStoredObject(bucket, key, bytes);
 
 				// Subset siblings (one per covered charset) — stored next
 				// to the original; insertCatalogFontAsset emits the
@@ -248,9 +257,7 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 					const stem = key.slice(0, key.length - ext.length - 1);
 					for (const file of subsetPlan.subsets) {
 						const subsetKey = `${stem}-${file.charset}.${file.ext}`;
-						await bucket.put(subsetKey, file.data, {
-							httpMetadata: { contentType: contentTypeForKey(subsetKey) },
-						});
+						await putStoredObject(bucket, subsetKey, file.data);
 						subsetEntries.push({
 							r2Key: subsetKey,
 							format: file.format,
@@ -279,7 +286,7 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 								(k): k is string => k !== null,
 							);
 							if (staleKeys.length > 0) {
-								yield* Effect.promise(() => bucket.delete(staleKeys).catch(() => undefined));
+								yield* Effect.promise(() => bestEffortDelete(bucket, staleKeys));
 							}
 							yield* Effect.promise(() => deleteThemeAsset(db, stale.id));
 						}

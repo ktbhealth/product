@@ -722,6 +722,12 @@
         "react": "^19.2.0",
       },
     },
+    "packages/media": {
+      "name": "@ktb/media",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
     "packages/observability": {
       "name": "@ktb/observability",
       "dependencies": {
@@ -1202,6 +1208,7 @@
         "@ktb/interop": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
@@ -1510,6 +1517,7 @@
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
@@ -1626,6 +1634,7 @@
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/views": "workspace:*",
@@ -2464,6 +2473,7 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/platform-header": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -3251,6 +3261,8 @@
     "@ktb/machines": ["@ktb/machines@workspace:plugins/machines"],
 
     "@ktb/manager": ["@ktb/manager@workspace:plugins/manager"],
+
+    "@ktb/media": ["@ktb/media@workspace:packages/media"],
 
     "@ktb/middleware": ["@ktb/middleware@workspace:plugins/middleware"],
 

@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { asAdmin, orHandled } from "@ktb/admin-store";
+import { bestEffortDelete } from "@ktb/media";
 import { getServerRuntime, pluginHandler, sessionHandler } from "@ktb/server-fns";
 
 import { ImageDeleteHooks, type ImageUsageOwner } from "./delete-hooks.ts";
@@ -171,11 +172,9 @@ export const deleteImageFn = createServerFn({ method: "POST" })
 						// objects are unreachable, never leaked).
 						const bucket = getServerRuntime().images;
 						if (bucket !== undefined) {
-							try {
-								await bucket.delete([storageKey]);
-							} catch (error) {
+							await bestEffortDelete(bucket, [storageKey], (error: unknown) => {
 								console.error("image object delete failed", { storageKey, error });
-							}
+							});
 						}
 						return true;
 					})

@@ -1,5 +1,14 @@
 import { Effect } from "effect";
 
+import {
+	bestEffortDelete,
+	checkUpload,
+	mimeForExtension,
+	multipartFile,
+	putStoredObject,
+	storedObjectKey,
+	type UploadPolicy,
+} from "@ktb/media";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
@@ -31,13 +40,14 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif", "avif"] as const;
 
-const EXT_MIME: Record<string, string> = {
-	png: "image/png",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	webp: "image/webp",
-	gif: "image/gif",
-	avif: "image/avif",
+/** Upload policy — extensions + image/* MIME prefix; the shared
+ * @ktb/media contract owns empty/size/ext/mime status mapping. SVG is
+ * refused outright (script-capable; sanitizing is out of scope). */
+const IMAGE_UPLOAD_POLICY: UploadPolicy = {
+	maxBytes: MAX_UPLOAD_BYTES,
+	extensions: IMAGE_EXTENSIONS,
+	mimePrefixes: ["image/"],
+	deny: [{ mimes: ["image/svg+xml"], error: "svg uploads are not supported" }],
 };
 
 const isAdmin = (user: { id: string; actorId: string; email?: string }) =>
@@ -62,8 +72,8 @@ export const Route = createPluginApiRoute("image.routes")("/api/images")({
 					return Response.json({ error: "expected multipart/form-data" }, { status: 400 });
 				}
 				const form = await request.formData();
-				const file = form.get("file");
-				if (!(file instanceof File)) {
+				const file = multipartFile(form, "file");
+				if (file === null) {
 					return Response.json({ error: "missing file" }, { status: 400 });
 				}
 				const titleRaw = form.get("title");
@@ -71,35 +81,21 @@ export const Route = createPluginApiRoute("image.routes")("/api/images")({
 				const title = (typeof titleRaw === "string" ? titleRaw : "").trim();
 				const alt = (typeof altRaw === "string" ? altRaw : "").trim();
 
-				const bytes = await file.arrayBuffer();
-				if (bytes.byteLength === 0) {
-					return Response.json({ error: "empty file" }, { status: 400 });
+				// Shared upload contract (@ktb/media): empty → 400,
+				// oversize → 413, extension/MIME gates → 415, svg deny.
+				const checked = checkUpload(
+					{
+						bytes: await file.arrayBuffer(),
+						fileName: file.name || "upload",
+						mime: file.type || "",
+					},
+					IMAGE_UPLOAD_POLICY,
+				);
+				if (!checked.ok) {
+					return Response.json({ error: checked.error }, { status: checked.status });
 				}
-				if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-					return Response.json({ error: "file too large (max 10MB)" }, { status: 413 });
-				}
-				// The multipart parser always supplies a content type.
-				/* v8 ignore next -- parsed File.type is never empty */
-				const mime = (file.type || "").split(";")[0]!.trim().toLowerCase();
-				// FormData turns an empty filename into a plain field, so a
-				// parsed File always carries a non-empty name here.
-				/* v8 ignore next -- unreachable via multipart */
-				const name = file.name || "upload";
-				const dot = name.lastIndexOf(".");
-				const ext = dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
-				if (!(IMAGE_EXTENSIONS as readonly string[]).includes(ext)) {
-					return Response.json({ error: "unsupported file type" }, { status: 415 });
-				}
-				// Cross-check the declared MIME against the extension —
-				// octet-stream uploads are allowed (extension is the gate).
-				if (mime !== "" && mime !== "application/octet-stream" && !mime.startsWith("image/")) {
-					return Response.json({ error: "unsupported content type" }, { status: 415 });
-				}
-				// SVG is refused outright: image/svg+xml can carry script
-				// and sanitizing it is out of scope for phase 1 (PL-016).
-				if (ext === "svg" || mime === "image/svg+xml") {
-					return Response.json({ error: "svg uploads are not supported" }, { status: 415 });
-				}
+				const bytes = checked.bytes;
+				const ext = checked.ext;
 
 				const { images: bucket } = getServerRuntime();
 				if (!bucket) {
@@ -107,16 +103,15 @@ export const Route = createPluginApiRoute("image.routes")("/api/images")({
 				}
 
 				// Declared image/* MIME wins; octet-stream/empty falls back
-				// to the extension map (the extension gate already ran, and
-				// EXT_MIME covers every allowed extension).
+				// to the extension map (the extension gate already ran).
 				const storedMime =
-					mime !== "" && mime !== "application/octet-stream" ? mime : EXT_MIME[ext];
+					checked.mime !== "" && checked.mime !== "application/octet-stream"
+						? checked.mime
+						: mimeForExtension(ext);
 
-				const dimensions = sniffImageSize(new Uint8Array(bytes));
-				const key = `images/${crypto.randomUUID()}.${ext}`;
-				await bucket.put(key, bytes, {
-					httpMetadata: { contentType: storedMime },
-				});
+				const dimensions = sniffImageSize(bytes);
+				const key = storedObjectKey("images/", [], ext);
+				await putStoredObject(bucket, key, bytes, storedMime);
 
 				try {
 					const image = await runAs(
@@ -151,12 +146,7 @@ export const Route = createPluginApiRoute("image.routes")("/api/images")({
 				} catch {
 					// Row insert failed after the object landed — best-effort
 					// rollback so a retry doesn't orphan bytes.
-					try {
-						await bucket.delete([key]);
-					} catch {
-						// Rollback is best-effort; the orphan is unreachable
-						// (serving resolves through the row).
-					}
+					await bestEffortDelete(bucket, [key]);
 					return Response.json({ error: "failed to record image" }, { status: 500 });
 				}
 			},

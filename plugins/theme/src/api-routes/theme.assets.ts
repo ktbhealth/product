@@ -1,6 +1,15 @@
 import { Effect } from "effect";
 
 import { Db } from "@ktb/db";
+import {
+	checkUpload,
+	contentTypeForKey,
+	multipartFile,
+	putStoredObject,
+	serveStoredObject,
+	storedObjectKey,
+	type UploadPolicy,
+} from "@ktb/media";
 import { PlatformAdmin } from "@ktb/platform";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 
@@ -10,7 +19,6 @@ import {
 	THEME_ASSET_JOB_KIND,
 	THEME_ASSETS_PREFIX,
 	THEME_FONT_JOB_KIND,
-	contentTypeForKey,
 	decodeThemeAssetJob,
 	decodeThemeFontJob,
 	insertThemeAsset,
@@ -42,6 +50,19 @@ import type { ThemeAssetKind, ThemeFontSlot } from "../types.ts";
 /** Bound worker memory: originals are buffered fully before the R2 put.
  * 10MB covers print-grade logos; WASM decode happens in the queue. */
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Upload policy per asset class — extensions + declared-MIME prefix
+ * are the only domain specifics; size/status contract is @ktb/media's. */
+const IMAGE_UPLOAD_POLICY: UploadPolicy = {
+	maxBytes: MAX_UPLOAD_BYTES,
+	extensions: IMAGE_UPLOAD_EXTENSIONS,
+	mimePrefixes: ["image/"],
+};
+const FONT_UPLOAD_POLICY: UploadPolicy = {
+	maxBytes: MAX_UPLOAD_BYTES,
+	extensions: FONT_UPLOAD_EXTENSIONS,
+	mimePrefixes: ["font/"],
+};
 
 const FONT_SLOTS: readonly ThemeFontSlot[] = ["sans", "heading", "mono"];
 
@@ -76,11 +97,6 @@ const insertAsset = (
 		}),
 	);
 
-const extAllowed = (ext: string, kind: ThemeAssetKind): boolean =>
-	kind === "font"
-		? (FONT_UPLOAD_EXTENSIONS as readonly string[]).includes(ext)
-		: (IMAGE_UPLOAD_EXTENSIONS as readonly string[]).includes(ext);
-
 export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 	server: {
 		handlers: {
@@ -94,10 +110,10 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 					return Response.json({ error: "expected multipart/form-data" }, { status: 400 });
 				}
 				const form = await request.formData();
-				const file = form.get("file");
+				const file = multipartFile(form, "file");
 				const themeId = Number(form.get("themeId"));
 				const kindRaw = String(form.get("kind") ?? "");
-				if (!(file instanceof File)) {
+				if (file === null) {
 					return Response.json({ error: "missing file" }, { status: 400 });
 				}
 				if (!Number.isInteger(themeId) || themeId <= 0) {
@@ -111,53 +127,29 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 					return Response.json({ error: "theme not found" }, { status: 404 });
 				}
 
-				const bytes = await file.arrayBuffer();
-				if (bytes.byteLength === 0) {
-					return Response.json({ error: "empty file" }, { status: 400 });
+				// Shared upload contract (@ktb/media): empty → 400,
+				// oversize → 413, extension/MIME gates → 415. octet-stream
+				// declared types pass — the extension is the gate.
+				const checked = checkUpload(
+					{
+						bytes: await file.arrayBuffer(),
+						fileName: file.name || "upload",
+						mime: file.type || "",
+					},
+					kind === "font" ? FONT_UPLOAD_POLICY : IMAGE_UPLOAD_POLICY,
+				);
+				if (!checked.ok) {
+					return Response.json({ error: checked.error }, { status: checked.status });
 				}
-				if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-					return Response.json({ error: "file too large (max 10MB)" }, { status: 413 });
-				}
-				// The multipart parser always supplies a content type.
-				/* v8 ignore next -- parsed File.type is never empty */
-				const mime = (file.type || "").split(";")[0]!.trim().toLowerCase();
-				// FormData turns an empty filename into a plain field, so a
-				// parsed File always carries a non-empty name here.
-				/* v8 ignore next -- unreachable via multipart */
-				const name = file.name || "upload";
-				const dot = name.lastIndexOf(".");
-				const ext = dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
-				if (!extAllowed(ext, kind)) {
-					return Response.json({ error: "unsupported file type" }, { status: 415 });
-				}
-				// Cross-check the declared MIME against the extension —
-				// octet-stream uploads are allowed (extension is the gate).
-				if (
-					mime !== "" &&
-					mime !== "application/octet-stream" &&
-					kind === "font" &&
-					!mime.startsWith("font/")
-				) {
-					return Response.json({ error: "unsupported content type" }, { status: 415 });
-				}
-				if (
-					mime !== "" &&
-					mime !== "application/octet-stream" &&
-					kind !== "font" &&
-					!mime.startsWith("image/")
-				) {
-					return Response.json({ error: "unsupported content type" }, { status: 415 });
-				}
+				const ext = checked.ext;
 
 				const { themeAssets: bucket, themeJobs } = getServerRuntime();
 				if (!bucket || !themeJobs) {
 					return Response.json({ error: "theme asset storage not configured" }, { status: 503 });
 				}
 
-				const key = `${THEME_ASSETS_PREFIX}${themeId}/${kind}/${crypto.randomUUID()}.${ext}`;
-				await bucket.put(key, bytes, {
-					httpMetadata: { contentType: contentTypeForKey(key) },
-				});
+				const key = storedObjectKey(THEME_ASSETS_PREFIX, [themeId, kind], ext);
+				await putStoredObject(bucket, key, checked.bytes);
 
 				const asset = await insertAsset(user, { themeId, kind, r2Key: key });
 				if (asset === null) {
@@ -220,13 +212,10 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 				}
 				const object = await bucket.get(key);
 				if (object === null) return Response.json({ error: "not found" }, { status: 404 });
-				return new Response(object.body, {
-					headers: {
-						"content-type": object.httpMetadata?.contentType ?? contentTypeForKey(key),
-						"content-length": String(object.size),
-						// Keys embed a uuid — content is immutable per key.
-						"cache-control": "public, max-age=31536000, immutable",
-					},
+				return serveStoredObject(object, {
+					contentType: contentTypeForKey(key),
+					// Keys embed a uuid — content is immutable per key.
+					cacheControl: "public, max-age=31536000, immutable",
 				});
 			},
 		},
