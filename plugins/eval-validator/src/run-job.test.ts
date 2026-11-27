@@ -7,13 +7,12 @@ import { consultations } from "@ktb/db/schema";
 
 import { EvalRunner } from "@ktb/eval-consultation";
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
-import { jobHandlers } from "@ktb/jobs-port";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { EVAL_RUN_JOB_KIND, executeEvalRun, registerEvalRunJobHandler } from "./run-job.ts";
+import { EVAL_RUN_JOB_KIND, evalRunJobRegistration, executeEvalRun } from "./run-job.ts";
 import { evalRun, evalRunSample } from "./schema.ts";
 
 /** WS-E: eval.run job kind — payload decode, the DB-driven
@@ -106,12 +105,7 @@ const runtimeFor = (layer: Layer.Layer<unknown, never, never>) => {
 	return rt;
 };
 
-const handler = () => {
-	registerEvalRunJobHandler();
-	const reg = jobHandlers[EVAL_RUN_JOB_KIND];
-	if (reg === undefined) throw new Error("eval.run handler not registered");
-	return reg;
-};
+const handler = () => evalRunJobRegistration();
 
 const envelope = (runId: number) => ({
 	id: `env-${runId}`,

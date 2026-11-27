@@ -29,7 +29,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
 import type { DbClient } from "@ktb/db";
-import { registerJobHandler, type JobRegistration, type JobsEnqueuer } from "@ktb/jobs-port";
+import type { JobHandlerRegistry, JobRegistration, JobsEnqueuer } from "@ktb/jobs-port";
 import {
 	ORCHESTRATOR_STEP_KIND,
 	OrchestratorRegistry,
@@ -60,10 +60,10 @@ export interface OrchestrationWorker {
 	 * The worker exposes no admin surface today; this exists for tests
 	 * and manual `bun -e` driving. */
 	readonly startRun: (defId: string, input?: unknown, opts?: RunOptions) => Promise<string>;
-	/** Register `orchestrator.step` in the shared `jobHandlers`
-	 * registry — idempotent flag set, `{runId}` decoded synchronously,
-	 * runner construction deferred to first delivery. */
-	readonly registerStepHandler: () => void;
+	/** Register `orchestrator.step` in the worker's composition-built
+	 * job-handler registry — `{runId}` decoded synchronously, runner
+	 * construction deferred to first delivery. */
+	readonly registerStepHandler: (registry: JobHandlerRegistry) => void;
 }
 
 export const makeOrchestrationWorker = (deps: OrchestrationWorkerDeps): OrchestrationWorker => {
@@ -101,8 +101,8 @@ export const makeOrchestrationWorker = (deps: OrchestrationWorkerDeps): Orchestr
 		runner,
 		startRun: (defId, input, opts) =>
 			runner().then((r) => Effect.runPromise(r.start(defId, input, opts))),
-		registerStepHandler: () => {
-			registerJobHandler(ORCHESTRATOR_STEP_KIND, {
+		registerStepHandler: (registry) => {
+			registry.register(ORCHESTRATOR_STEP_KIND, {
 				decodePayload: decodeOrchestrationStepPayload,
 				handle: async (payload, envelope) => {
 					const registration = await stepRegistration();

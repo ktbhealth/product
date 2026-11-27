@@ -5,7 +5,8 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./schema": "./src/schema.ts",
-		"./fns": "./src/fns.ts"
+		"./fns": "./src/fns.ts",
+		"./run-job": "./src/run-job.ts"
 	},
 	"dependencies": {
 		"@ktb/authz": "workspace:*",

@@ -36,13 +36,7 @@ import {
 	scheduleParamsError,
 	schedulableKindInfos,
 } from "./platform-capabilities.ts";
-import {
-	jobHandlers,
-	makeJobs,
-	registerJobHandler,
-	upsertJobRun,
-	listJobRuns,
-} from "@ktb/jobs-port";
+import { makeJobHandlerRegistry, makeJobs, upsertJobRun, listJobRuns } from "@ktb/jobs-port";
 import type { JobRecord, JobStatus } from "@ktb/jobs-port";
 import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
 import {
@@ -87,6 +81,7 @@ import { resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { makeOrchestrationHost } from "./orchestration.ts";
+import { EVAL_RUN_JOB_KIND, evalRunJobRegistration } from "@ktb/eval-validator/run-job";
 import { portalInstances } from "./registry.ts";
 import { builtinMiddlewareStages } from "./middleware-stages.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
@@ -256,7 +251,8 @@ const audioBucketLister = env.AUDIO_BUCKET as unknown as AudioObjectLister | und
 // enqueue writes the job_runs projection (via `db`) then sends the
 // kind-dispatched envelope. Undefined when the queue is unbound; the
 // consumer side lives in @ktb/consultations/audio-consumer (kind →
-// handler registry in @ktb/jobs-port, wired by lib/audio-jobs.ts).
+// handler dispatch over jobHandlerRegistry below, wired by
+// lib/audio-jobs.ts).
 const jobsQueue = env.AUDIO_QUEUE as unknown as
 	| { send(body: unknown): Promise<unknown> }
 	| undefined;
@@ -265,12 +261,23 @@ const jobs =
 		? undefined
 		: makeJobs({ send: (envelope) => jobsQueue.send(envelope), db });
 
-// The /platform/queue console's smoke kind: jobs-worker registers
-// jobs.ping for the Redis transport; the web consumer needs its own
-// registration or console enqueues would land as "unknown job kind".
-// Registered unconditionally — the registry is per-process and a
-// no-op handler is harmless when AUDIO_QUEUE is unbound.
-registerJobHandler("jobs.ping", { handle: async () => {} });
+// Composition-built kind → handler registry for this process's queue
+// consumers (PL-007). Every kind the web consumer dispatches is
+// registered here at module init — builtin kinds plus plugin-owned
+// kinds wired through their edge modules (eval.run below; the audio
+// consumer merges its own registration in lib/audio-jobs.ts). Exported
+// for that wiring and for tests that recompose this module.
+export const jobHandlerRegistry = makeJobHandlerRegistry();
+
+// The /platform/queue console's smoke kind. Registered
+// unconditionally — a no-op handler is harmless when AUDIO_QUEUE is
+// unbound.
+jobHandlerRegistry.register("jobs.ping", { handle: async () => {} });
+
+// eval.run — the eval-validator plugin's consumer. Plugin manifests
+// stay data-only (contribution meta is serializable), so the handler
+// value is wired here at the edge, same pattern as the audio consumer.
+jobHandlerRegistry.register(EVAL_RUN_JOB_KIND, evalRunJobRegistration());
 
 // Durable orchestration runner (P-120 phase 2): `orchestrator.step`
 // rides the same AUDIO_QUEUE transport — start() persists the run and
@@ -282,7 +289,7 @@ registerJobHandler("jobs.ping", { handle: async () => {} });
 // can produce or consume step jobs, and "unknown job kind" is the
 // honest signal for a stray message.
 const orchestration = jobs === undefined ? undefined : makeOrchestrationHost({ run, db, jobs });
-orchestration?.registerStepHandler();
+orchestration?.registerStepHandler(jobHandlerRegistry);
 
 // PL-006 phase 4: theme asset uploads ride a DEDICATED queue
 // (ktb-theme-assets) — image derivatives and font downloads never
@@ -425,7 +432,7 @@ const dispatchScheduledJob: ScheduledJobDispatch = async (job) => {
 		await jobs.enqueue(job.kind, payload, { tenantId: job.tenantId });
 		return;
 	}
-	const registration = jobHandlers[job.kind];
+	const registration = jobHandlerRegistry.lookup(job.kind);
 	if (registration === undefined) throw new Error(`unknown job kind: ${job.kind}`);
 	const id = crypto.randomUUID();
 	const mark = (status: "processing" | "done" | "failed", error?: string) =>
@@ -722,11 +729,13 @@ setServerRuntime({
 		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
 		create: async (input) => {
 			try {
-				// Kind must be dispatchable: a registered jobHandlers
+				// Kind must be dispatchable: a registered handler
 				// entry or a jobs.schedulable declaration (declared kinds
 				// may ride transports with special normalizers). Anything
 				// else can only ever fail at fire time — reject early.
-				if (!scheduleKindDispatchable(input.kind, jobHandlers, schedulableDecls)) {
+				if (
+					!scheduleKindDispatchable(input.kind, jobHandlerRegistry.handlers(), schedulableDecls)
+				) {
 					throw new InvalidScheduleError(`unknown job kind: ${input.kind}`);
 				}
 				// Declared paramsSchemas gate schedule params: the value
@@ -782,7 +791,7 @@ setServerRuntime({
 					};
 		},
 	},
-	jobKinds: () => Object.keys(jobHandlers),
+	jobKinds: () => jobHandlerRegistry.kinds(),
 	// P-120 phase 2: durable orchestration start surface — plugin fns
 	// (pipeline admin) reach runner.start through this capability; the
 	// consumer side is the orchestrator.step registration above.
@@ -796,7 +805,7 @@ setServerRuntime({
 	// P-094: capability-declaration views — handler registration merged
 	// with jobs.kind/jobs.schedulable declarations, plus the
 	// events.topic catalog for the pub/sub console.
-	jobKindInfo: () => jobKindInfos(jobHandlers, jobKindDecls, schedulableDecls),
+	jobKindInfo: () => jobKindInfos(jobHandlerRegistry.handlers(), jobKindDecls, schedulableDecls),
 	schedulableKinds: () => schedulableKindInfos(schedulableDecls),
 	// Pub/sub capability: `topics` merges the in-process bus's known
 	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);

@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
 import type { JobEnvelope, JobsEnqueuer } from "@ktb/jobs-port";
-import { jobHandlers } from "@ktb/jobs-port";
+import { makeJobHandlerRegistry } from "@ktb/jobs-port";
 import {
 	ORCHESTRATOR_STEP_KIND,
 	getOrchestrationRun,
@@ -59,19 +59,16 @@ const stepEnvelope = (payload: unknown): JobEnvelope => ({
 	tenantId: null,
 });
 
-afterEach(() => {
-	delete jobHandlers[ORCHESTRATOR_STEP_KIND];
-});
-
 describe("makeOrchestrationWorker", () => {
 	it("registers orchestrator.step: decodes {runId}, is idempotent, and a ghost run no-ops", async () => {
 		const db = makeTestDb();
 		const { jobs } = fakeJobs();
 		const worker = makeOrchestrationWorker({ db, jobs });
-		worker.registerStepHandler();
-		worker.registerStepHandler();
+		const registry = makeJobHandlerRegistry();
+		worker.registerStepHandler(registry);
+		worker.registerStepHandler(registry);
 
-		const registration = jobHandlers[ORCHESTRATOR_STEP_KIND];
+		const registration = registry.lookup(ORCHESTRATOR_STEP_KIND);
 		expect(registration).toBeDefined();
 		expect(registration?.idempotent).toBe(true);
 		expect(registration?.decodePayload?.({ runId: "r1" })).toEqual({ runId: "r1" });
@@ -87,7 +84,8 @@ describe("makeOrchestrationWorker", () => {
 		await upsertOrchestrationDef(db, emitDef("stored-emit"));
 		const { jobs, sent } = fakeJobs();
 		const worker = makeOrchestrationWorker({ db, jobs });
-		worker.registerStepHandler();
+		const registry = makeJobHandlerRegistry();
+		worker.registerStepHandler(registry);
 
 		const runId = await worker.startRun("stored-emit");
 		expect(runId).toMatch(/^orun-/);
@@ -97,7 +95,7 @@ describe("makeOrchestrationWorker", () => {
 			payload: { runId },
 		});
 
-		const registration = jobHandlers[ORCHESTRATOR_STEP_KIND];
+		const registration = registry.lookup(ORCHESTRATOR_STEP_KIND);
 		const payload = registration?.decodePayload?.(sent[0]?.payload);
 		await registration?.handle(payload, stepEnvelope(sent[0]?.payload));
 		expect((await getOrchestrationRun(db, runId))?.status).toBe("done");
@@ -116,10 +114,11 @@ describe("makeOrchestrationWorker", () => {
 		);
 		const { jobs, sent } = fakeJobs();
 		const worker = makeOrchestrationWorker({ db, jobs });
-		worker.registerStepHandler();
+		const registry = makeJobHandlerRegistry();
+		worker.registerStepHandler(registry);
 
 		const runId = await worker.startRun("parent");
-		const registration = jobHandlers[ORCHESTRATOR_STEP_KIND];
+		const registration = registry.lookup(ORCHESTRATOR_STEP_KIND);
 		const payload = registration?.decodePayload?.(sent[0]?.payload);
 		await registration?.handle(payload, stepEnvelope(sent[0]?.payload));
 

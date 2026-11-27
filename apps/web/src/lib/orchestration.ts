@@ -1,8 +1,7 @@
 import * as Effect from "effect/Effect";
 
 import type { DbClient } from "@ktb/db";
-import type { JobRegistration, JobsEnqueuer } from "@ktb/jobs-port";
-import { registerJobHandler } from "@ktb/jobs-port";
+import type { JobHandlerRegistry, JobRegistration, JobsEnqueuer } from "@ktb/jobs-port";
 import {
 	ORCHESTRATOR_STEP_KIND,
 	OrchestratorRegistry,
@@ -69,13 +68,13 @@ export interface OrchestrationHost {
 		opts?: RunOptions,
 		tenantId?: number | null,
 	) => Promise<string>;
-	/** Register `orchestrator.step` in the shared `jobHandlers`
-	 * registry. The registration defers runner construction to first
-	 * delivery (queue batches can arrive before any admin fn calls
-	 * `startRun`), validates `{runId}` synchronously through the
-	 * package's exported decoder, and stays `idempotent` so
-	 * ack-loss redeliveries of a completed step don't re-run it. */
-	readonly registerStepHandler: () => void;
+	/** Register `orchestrator.step` in the app's composition-built
+	 * job-handler registry. The registration defers runner construction
+	 * to first delivery (queue batches can arrive before any admin fn
+	 * calls `startRun`), validates `{runId}` synchronously through the
+	 * package's exported decoder, and stays `idempotent` so ack-loss
+	 * redeliveries of a completed step don't re-run it. */
+	readonly registerStepHandler: (registry: JobHandlerRegistry) => void;
 }
 
 export const makeOrchestrationHost = (deps: OrchestrationHostDeps): OrchestrationHost => {
@@ -123,8 +122,8 @@ export const makeOrchestrationHost = (deps: OrchestrationHostDeps): Orchestratio
 		runner,
 		startRun: (defId, input, opts, tenantId) =>
 			runner().then((r) => Effect.runPromise(r.start(defId, input, opts, tenantId))),
-		registerStepHandler: () => {
-			registerJobHandler(ORCHESTRATOR_STEP_KIND, {
+		registerStepHandler: (registry) => {
+			registry.register(ORCHESTRATOR_STEP_KIND, {
 				decodePayload: decodeOrchestrationStepPayload,
 				handle: async (payload, envelope) => {
 					const registration = await stepRegistration();

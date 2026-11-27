@@ -62,7 +62,7 @@ import type { LoadedOrchestrationRun } from "./types.ts";
  *   //   Effect.serviceOption port probes resolve here — the only way
  *   //   live services reach durable steps (config/events stay JSON).
  * });
- * registerJobHandler(
+ * jobHandlerRegistry.register(
  *   ORCHESTRATOR_STEP_KIND,
  *   orchestratorStepRegistration(runner),
  * );
@@ -143,7 +143,7 @@ const ignorePromise = (run: () => Promise<unknown>): Effect.Effect<void> =>
  * Build the durable runner. Deps are plain values (DbClient,
  * JobsEnqueuer, registry service) — no Layer; the composition root
  * constructs it once and hands `orchestratorStepRegistration(runner)`
- * to `registerJobHandler`.
+ * to the composition-built job-handler registry.
  */
 export const makeOrchestrationRunner = (
 	deps: OrchestrationRunnerDeps,
@@ -326,7 +326,7 @@ const StepPayload = Schema.Struct({ runId: Schema.String });
 
 /** Decode an `orchestrator.step` payload (`{runId}`) — the wire
  * contract, exported so composition-side wrappers that defer runner
- * construction (lazy `jobHandlers` registrations, server-fn starters)
+ * construction (lazy job-handler registrations, server-fn starters)
  * validate identically without owning a runner instance. Throws a
  * `ParseError` on any other shape — the consumer's poison path. */
 export const decodeOrchestrationStepPayload = (payload: unknown): { readonly runId: string } =>
@@ -337,7 +337,7 @@ export const decodeOrchestrationStepPayload = (payload: unknown): { readonly run
  * composition:
  *
  * ```ts
- * registerJobHandler(ORCHESTRATOR_STEP_KIND, orchestratorStepRegistration(runner));
+ * jobHandlerRegistry.register(ORCHESTRATOR_STEP_KIND, orchestratorStepRegistration(runner));
  * ```
  *
  * `decodePayload` rejects non-`{runId}` bodies (poison → ack, never

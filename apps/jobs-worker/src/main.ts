@@ -19,7 +19,7 @@
  *     orchestration_* tables in the same db).
  */
 
-import { jobHandlers, makeJobs } from "@ktb/jobs-port";
+import { makeJobHandlerRegistry, makeJobs } from "@ktb/jobs-port";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
 import { batchSizeFromEnv } from "./env.ts";
@@ -28,7 +28,11 @@ import { registerWorkerHandlers } from "./handlers.ts";
 import { makeOrchestrationWorker } from "./orchestration.ts";
 import { runJobWorker } from "./worker.ts";
 
-registerWorkerHandlers();
+// Composition-built kind → handler registry: builtin kinds only —
+// this process composes no plugins, so plugin-owned kinds (eval.run,
+// …) stay unregistered and degrade to "unknown job kind".
+const jobHandlerRegistry = makeJobHandlerRegistry();
+registerWorkerHandlers(jobHandlerRegistry);
 
 const transport = await createRedisJobsTransport({
 	url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
@@ -42,7 +46,7 @@ if (db !== undefined) {
 	// queue console reads. See orchestration.ts for the dev-mode gaps
 	// (no plugin packs, registry-only ambientContext).
 	const jobs = makeJobs({ send: (envelope) => transport.send(envelope), db });
-	makeOrchestrationWorker({ db, jobs }).registerStepHandler();
+	makeOrchestrationWorker({ db, jobs }).registerStepHandler(jobHandlerRegistry);
 	console.log("jobs worker: orchestrator.step registered");
 } else {
 	console.log(
@@ -72,7 +76,7 @@ try {
 try {
 	await runJobWorker({
 		transport,
-		handlers: jobHandlers,
+		handlers: jobHandlerRegistry.handlers(),
 		db,
 		batchSize: batchSizeFromEnv(process.env.JOBS_BATCH),
 		signal: ac.signal,

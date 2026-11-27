@@ -1,12 +1,17 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
 
-import { jobHandlers, type JobEnvelope, type JobsEnqueuer } from "@ktb/jobs-port";
+import {
+	makeJobHandlerRegistry,
+	type JobEnvelope,
+	type JobHandlerRegistry,
+	type JobsEnqueuer,
+} from "@ktb/jobs-port";
 import {
 	getOrchestrationRun,
 	makeOrchestratorRegistry,
@@ -74,6 +79,7 @@ interface HostHarness {
 	readonly host: ReturnType<typeof makeOrchestrationHost>;
 	readonly db: DbClient;
 	readonly registry: ReturnType<typeof makeOrchestratorRegistry>;
+	readonly jobHandlers: JobHandlerRegistry;
 	readonly sent: {
 		kind: string;
 		payload: unknown;
@@ -111,21 +117,18 @@ const harness = (opts?: {
 			) as Effect.Effect<A, E>,
 		);
 	};
-	return { host: makeOrchestrationHost({ run, db, jobs }), db, registry, sent };
+	const jobHandlers = makeJobHandlerRegistry();
+	return { host: makeOrchestrationHost({ run, db, jobs }), db, registry, jobHandlers, sent };
 };
-
-afterEach(() => {
-	delete jobHandlers[ORCHESTRATOR_STEP_KIND];
-});
 
 describe("makeOrchestrationHost", () => {
 	it("registers orchestrator.step: decodes {runId}, is idempotent, and drives a run to done", async () => {
 		const h = harness({ kinds: [noopKind] });
 		// "input" — startRun's payload becomes the run's initial event.
 		h.registry.registerDef(def("d", [node("a", "noop", ["input"])]));
-		h.host.registerStepHandler();
+		h.host.registerStepHandler(h.jobHandlers);
 
-		const registration = jobHandlers[ORCHESTRATOR_STEP_KIND];
+		const registration = h.jobHandlers.lookup(ORCHESTRATOR_STEP_KIND);
 		expect(registration).toBeDefined();
 		expect(registration?.idempotent).toBe(true);
 		expect(registration?.decodePayload?.({ runId: "r1" })).toEqual({ runId: "r1" });
@@ -153,10 +156,10 @@ describe("makeOrchestrationHost", () => {
 	it("carries ambient runtime services into kind probes during steps", async () => {
 		const h = harness({ kinds: [probeKind] });
 		h.registry.registerDef(def("p", [node("a", "probe", ["input"])]));
-		h.host.registerStepHandler();
+		h.host.registerStepHandler(h.jobHandlers);
 
 		const runId = await h.host.startRun("p", {});
-		const registration = jobHandlers[ORCHESTRATOR_STEP_KIND];
+		const registration = h.jobHandlers.lookup(ORCHESTRATOR_STEP_KIND);
 		const payload = registration?.decodePayload?.(h.sent[0]?.payload);
 		await registration?.handle(payload, {
 			id: "env-0",
@@ -220,8 +223,8 @@ describe("makeOrchestrationHost", () => {
 
 	it("registration handle retries runner construction after a failed build", async () => {
 		const h = harness({ kinds: [noopKind], rejectRuns: 1 });
-		h.host.registerStepHandler();
-		const registration = jobHandlers[ORCHESTRATOR_STEP_KIND];
+		h.host.registerStepHandler(h.jobHandlers);
+		const registration = h.jobHandlers.lookup(ORCHESTRATOR_STEP_KIND);
 		// First delivery: runner build rejects → handle rejects (consumer retries).
 		await expect(
 			registration?.handle(

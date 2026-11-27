@@ -337,18 +337,46 @@ export interface JobRegistration {
 export type JobHandlers = Readonly<Record<string, JobRegistration>>;
 
 /**
- * Kind → handler registry for the shared jobs queue consumer (PL-007).
- * The composition root (apps/web) registers non-built-in kinds here at
- * startup — domain plugins contribute their registrations through the
- * edge modules that own the platform bindings, never from request
- * paths.
+ * Composition-built kind → handler registry (PL-007). Each composition
+ * root constructs its own via {@link makeJobHandlerRegistry} and
+ * registers the kinds it owns — builtin kinds plus whatever its edge
+ * wiring contributes (apps/web wires plugin-owned kinds like
+ * `eval.run` through lib/platform.ts; apps/jobs-worker composes no
+ * plugins, so its registry holds builtin kinds only and unknown kinds
+ * degrade honestly to "unknown job kind"). There is no module-global:
+ * registrations can never leak across processes or test modules.
  */
-export const jobHandlers: Record<string, JobRegistration> = {};
+export interface JobHandlerRegistry {
+	/** Register (or replace) a kind handler — composition time only,
+	 * never from request or consumer paths. */
+	readonly register: (kind: string, registration: JobRegistration) => void;
+	/** The registration for `kind`, or undefined when absent. */
+	readonly lookup: (kind: string) => JobRegistration | undefined;
+	readonly has: (kind: string) => boolean;
+	/** Registered kinds in registration order. */
+	readonly kinds: () => readonly string[];
+	/** Snapshot of the kind → registration table for consumers that
+	 * take the {@link JobHandlers} record shape (makeJobConsumer, the
+	 * scheduler's inline fallback, console projections). Registrations
+	 * added after the snapshot are not visible — call again for a
+	 * fresh view. */
+	readonly handlers: () => JobHandlers;
+}
 
-/** Register (or replace) a job kind handler. Called once at app
- * composition by the owning edge module — never from request paths. */
-export const registerJobHandler = (kind: string, registration: JobRegistration): void => {
-	jobHandlers[kind] = registration;
+/** Build an empty job-handler registry. Registrations are last-wins
+ * (replace) — re-registering a kind at composition time overrides the
+ * earlier entry. */
+export const makeJobHandlerRegistry = (): JobHandlerRegistry => {
+	const entries = new Map<string, JobRegistration>();
+	return {
+		register: (kind, registration) => {
+			entries.set(kind, registration);
+		},
+		lookup: (kind) => entries.get(kind),
+		has: (kind) => entries.has(kind),
+		kinds: () => [...entries.keys()],
+		handlers: () => Object.fromEntries(entries),
+	};
 };
 
 export interface JobConsumerDeps {

@@ -132,7 +132,7 @@ export const consultationsServicesPlugin = definePlugin({
 	),
 	// P-094: capability declaration — transcription.audio rides the
 	// dedicated audio consumer normalizer (not the generic
-	// jobHandlers registry), so `registered` stays false in
+	// job-handler registry), so `registered` stays false in
 	// jobKindInfo while the kind remains dispatchable through the
 	// queue. Not schedulable: payloads carry recording refs that only
 	// the upload flow can mint.

@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 
 import type { Forbidden } from "@ktb/authz";
 import { Db } from "@ktb/db";
-import { jobHandlers, listJobRuns, type JobRecord, type JobStatus } from "@ktb/jobs-port";
+import { listJobRuns, type JobRecord, type JobStatus } from "@ktb/jobs-port";
 import { PlatformAdmin } from "@ktb/platform";
 import { runtimeProbe, type QueueInfo } from "@ktb/server-fns";
 
@@ -15,8 +15,9 @@ import { runtimeProbe, type QueueInfo } from "@ktb/server-fns";
  *   with best-effort depth) — null when the runtime cannot report.
  * - `jobRuns`: the transport-agnostic `job_runs` projection, newest
  *   first, optionally filtered by kind/status.
- * - `kinds`: job kinds the consumer registry knows plus the built-in
- *   `jobs.ping` smoke kind — the enqueue picker's options.
+ * - `kinds`: job kinds the composition-built handler registry knows
+ *   (via the runtime `jobKinds` probe) plus the built-in `jobs.ping`
+ *   smoke kind — the enqueue picker's options.
  * - `enqueue`: admin test-enqueue through the host's Jobs enqueuer
  *   (writes job_runs, then sends on the bound transport).
  *
@@ -50,11 +51,13 @@ export class QueueAdmin extends Context.Service<
 	}
 >()("@ktb/queue/QueueAdmin") {}
 
-/** Registered consumer kinds + the built-in smoke kind, sorted. The
- * registry is populated at composition time; `jobs.ping` is registered
- * by apps/jobs-worker only, so it is added explicitly for the picker. */
-export const knownJobKinds = (): readonly string[] =>
-	[...new Set([...Object.keys(jobHandlers), "jobs.ping"])].sort();
+/** Registered consumer kinds + the built-in smoke kind, sorted.
+ * `registered` is the host-published `jobKinds` capability — the
+ * composition root's job-handler registry keys; `jobs.ping` is added
+ * explicitly so the picker still offers it when the capability is
+ * absent (e.g. a runtime that predates the probe). */
+export const knownJobKinds = (registered?: () => readonly string[]): readonly string[] =>
+	[...new Set([...(registered?.() ?? []), "jobs.ping"])].sort();
 
 export const QueueAdminLive = Layer.effect(
 	QueueAdmin,
@@ -94,7 +97,10 @@ export const QueueAdminLive = Layer.effect(
 						}),
 					),
 				),
-			kinds: () => platformAdmin.requireAdmin().pipe(Effect.as(knownJobKinds())),
+			kinds: () =>
+				platformAdmin
+					.requireAdmin()
+					.pipe(Effect.andThen(Effect.sync(() => knownJobKinds(runtimeProbe((r) => r.jobKinds))))),
 			enqueue: (kind, payload) =>
 				platformAdmin.requireAdmin().pipe(
 					Effect.andThen(

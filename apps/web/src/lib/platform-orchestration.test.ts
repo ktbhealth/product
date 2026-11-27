@@ -3,14 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { JobEnvelope } from "@ktb/jobs-port";
 
 // platform.ts wires the durable orchestration runner (P-120 phase 2):
-// `orchestrator.step` registers in jobHandlers and the ServerRuntime
-// gains the `orchestration.startRun` capability — both only when
-// AUDIO_QUEUE is bound. Same recompose pattern as platform-jobs.test.ts.
+// `orchestrator.step` registers in the composition-built
+// jobHandlerRegistry and the ServerRuntime gains the
+// `orchestration.startRun` capability — both only when AUDIO_QUEUE is
+// bound. Same recompose pattern as platform-jobs.test.ts.
 //
 // NOTE on module identity: vi.resetModules() gives every re-imported
-// module a FRESH instance — @ktb/jobs-port's jobHandlers registry and
-// @ktb/orchestrator's helpers must be imported AFTER compose so the
-// test touches the same registry platform.ts populated.
+// module a FRESH instance — the job-handler registry platform.ts
+// exports and @ktb/orchestrator's helpers must be read off the same
+// post-compose module instances the test inspects.
 
 const compose = async (configure: (env: Record<string, unknown>) => void) => {
 	vi.resetModules();
@@ -18,9 +19,8 @@ const compose = async (configure: (env: Record<string, unknown>) => void) => {
 	configure(env as Record<string, unknown>);
 	const platform = await import("./platform.ts");
 	const { getServerRuntime } = await import("@ktb/server-fns");
-	const { jobHandlers } = await import("@ktb/jobs-port");
 	const orchestrator = await import("@ktb/orchestrator");
-	return { runtime: getServerRuntime(), platform, jobHandlers, orchestrator };
+	return { runtime: getServerRuntime(), platform, orchestrator };
 };
 
 describe("platform orchestrator.step wiring", () => {
@@ -28,13 +28,18 @@ describe("platform orchestrator.step wiring", () => {
 		"registers the kind, exposes startRun, and drives a durable run end to end",
 		{ timeout: 60_000 }, // first compose pays the full app import cost
 		async () => {
-			const { runtime, platform, jobHandlers, orchestrator } = await compose(() => {});
+			const { runtime, platform, orchestrator } = await compose(() => {});
 
 			// Kind registered + listed for the consoles.
-			const registration = jobHandlers[orchestrator.ORCHESTRATOR_STEP_KIND];
+			const registration = platform.jobHandlerRegistry.lookup(orchestrator.ORCHESTRATOR_STEP_KIND);
 			expect(registration).toBeDefined();
 			expect(registration?.idempotent).toBe(true);
 			expect(runtime.jobKinds?.()).toContain(orchestrator.ORCHESTRATOR_STEP_KIND);
+			// Plugin-owned kinds wire through the same composition-built
+			// registry — eval-validator's run-job module is imported and
+			// registered by lib/platform.ts, not by a module-global.
+			expect(runtime.jobKinds?.()).toContain("eval.run");
+			expect(platform.jobHandlerRegistry.lookup("eval.run")).toBeDefined();
 			expect(runtime.orchestration?.startRun).toBeDefined();
 
 			// Persist a data-only def (builtin "emit" kind — no handler
@@ -80,10 +85,12 @@ describe("platform orchestrator.step wiring", () => {
 		"leaves the kind unregistered and the capability absent without a queue",
 		{ timeout: 60_000 },
 		async () => {
-			const { runtime, jobHandlers, orchestrator } = await compose((env) => {
+			const { runtime, platform, orchestrator } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
 			});
-			expect(jobHandlers[orchestrator.ORCHESTRATOR_STEP_KIND]).toBeUndefined();
+			expect(
+				platform.jobHandlerRegistry.lookup(orchestrator.ORCHESTRATOR_STEP_KIND),
+			).toBeUndefined();
 			expect(runtime.orchestration).toBeUndefined();
 			expect(runtime.jobKinds?.()).not.toContain(orchestrator.ORCHESTRATOR_STEP_KIND);
 		},

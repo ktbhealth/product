@@ -36,9 +36,9 @@ export const compileSchedulableValidators = (
 	return validators;
 };
 
-/** A kind is dispatchable when a jobHandlers registration exists or a
- * `jobs.schedulable` declaration targets it (declared kinds may ride
- * transports with special normalizers). */
+/** A kind is dispatchable when a job-handler registry registration
+ * exists or a `jobs.schedulable` declaration targets it (declared
+ * kinds may ride transports with special normalizers). */
 export const scheduleKindDispatchable = (
 	kind: string,
 	handlers: JobHandlers,
@@ -67,7 +67,7 @@ export const scheduleParamsError = (
 };
 
 /** Handler registration merged with `jobs.kind`/`jobs.schedulable`
- * declarations: `registered` is the live jobHandlers state (a
+ * declarations: `registered` is the live registry state (a
  * declared-but-unregistered kind is catalog data, not dispatchable);
  * declared concurrency/attempt hints fill in only when the registration
  * leaves them unset. */

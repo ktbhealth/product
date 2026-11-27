@@ -192,8 +192,8 @@ describe("platform cron projection degradation", () => {
 
 describe("platform jobs.ping registration", () => {
 	it("registers the console smoke kind as a no-op handler", { timeout: 30_000 }, async () => {
-		await compose();
-		const { jobHandlers } = await import("@ktb/jobs-port");
-		await expect(jobHandlers["jobs.ping"]!.handle({}, {} as never)).resolves.toBeUndefined();
+		const { platform } = await compose();
+		const registration = platform.jobHandlerRegistry.lookup("jobs.ping");
+		await expect(registration?.handle({}, {} as never)).resolves.toBeUndefined();
 	});
 });

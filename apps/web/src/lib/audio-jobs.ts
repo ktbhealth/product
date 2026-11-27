@@ -4,9 +4,7 @@ import {
 	type AudioJobDeps,
 	type QueueMessageLike,
 } from "@ktb/consultations/audio-consumer";
-import { jobHandlers } from "@ktb/jobs-port";
-
-import { correctTranscript } from "#/lib/platform.ts";
+import { correctTranscript, jobHandlerRegistry } from "#/lib/platform.ts";
 
 export type { AudioJobDeps, QueueMessageLike } from "@ktb/consultations/audio-consumer";
 
@@ -15,8 +13,8 @@ export type { AudioJobDeps, QueueMessageLike } from "@ktb/consultations/audio-co
  * pipeline itself lives in `@ktb/consultations/audio-consumer` — this
  * module only resolves the host deps (runtime registry bindings via
  * `defaultAudioJobDeps`, the app-host-composed LLM cleanup) and merges
- * the shared `jobHandlers` registry (@ktb/jobs-port) for non-audio
- * kinds on the same transport.
+ * the composition-built job-handler registry (lib/platform.ts) for
+ * non-audio kinds on the same transport.
  */
 export async function handleAudioQueueBatch(
 	messages: readonly QueueMessageLike[],
@@ -24,5 +22,5 @@ export async function handleAudioQueueBatch(
 ): Promise<void> {
 	const resolved =
 		deps ?? (await defaultAudioJobDeps((input) => correctTranscript(input).catch(() => null)));
-	await consumeAudioQueueBatch(messages, resolved, jobHandlers);
+	await consumeAudioQueueBatch(messages, resolved, jobHandlerRegistry.handlers());
 }

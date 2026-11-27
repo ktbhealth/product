@@ -8,7 +8,7 @@ import { makeDb, Db, type DbClient } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
 
 import { consultations, jobRuns } from "@ktb/db/schema";
-import { jobHandlers, registerJobHandler } from "@ktb/jobs-port";
+import { makeJobHandlerRegistry } from "@ktb/jobs-port";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import type { AudioJobMessage } from "@ktb/server-fns";
 
@@ -688,24 +688,21 @@ describe("handleAudioQueueBatch", () => {
 	it("dispatches registered kinds through the shared registry", async () => {
 		const { db, deps } = makeDeps();
 		const seen: unknown[] = [];
-		registerJobHandler("test.ping", {
+		const registry = makeJobHandlerRegistry();
+		registry.register("test.ping", {
 			handle: async (payload) => {
 				seen.push(payload);
 			},
 		});
-		try {
-			const log: string[] = [];
-			await handleAudioQueueBatch(
-				[msg({ id: "ping-1", kind: "test.ping", payload: { hi: 1 } }, log)],
-				deps,
-				jobHandlers,
-			);
-			expect(log).toEqual(["ack"]);
-			expect(seen).toEqual([{ hi: 1 }]);
-			expect((await jobRun(db, "ping-1"))?.status).toBe("done");
-		} finally {
-			delete jobHandlers["test.ping"];
-		}
+		const log: string[] = [];
+		await handleAudioQueueBatch(
+			[msg({ id: "ping-1", kind: "test.ping", payload: { hi: 1 } }, log)],
+			deps,
+			registry.handlers(),
+		);
+		expect(log).toEqual(["ack"]);
+		expect(seen).toEqual([{ hi: 1 }]);
+		expect((await jobRun(db, "ping-1"))?.status).toBe("done");
 	});
 
 	it("retries when processing throws unexpectedly", async () => {
