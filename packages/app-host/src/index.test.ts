@@ -4,6 +4,7 @@ import { Command, CommandBus, Query, QueryBus } from "@effect-server-utils/cqrs"
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { makeTestD1 } from "@ktb/db-testing";
+import { outbox } from "@ktb/db/schema";
 import { Jobs } from "@ktb/jobs-port";
 import { OrchestratorRegistry } from "@ktb/orchestrator";
 import { PluginStates } from "@ktb/platform/plugin-states";
@@ -701,7 +702,7 @@ describe("verification email", () => {
 		await expect(verify(app)).resolves.toBeUndefined();
 	});
 
-	it("sends through the provider binding with the configured sender", async () => {
+	it("queues the rendered message on the outbox instead of sending inline", async () => {
 		const send = vi.fn<(builder: unknown) => Promise<unknown>>(async () => ({}));
 		const withEmail = createApp({
 			...base,
@@ -712,8 +713,13 @@ describe("verification email", () => {
 		try {
 			expect(withEmail.auth.options.emailVerification.sendOnSignUp).toBe(true);
 			await verify(withEmail, "Ana");
-			expect(send).toHaveBeenCalledWith({
-				from: "noreply@ktb.test",
+			// Delivery is the drainer's job — the provider binding is not
+			// touched from the sign-up path.
+			expect(send).not.toHaveBeenCalled();
+			const rows = await withEmail.db.select().from(outbox);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]).toMatchObject({ kind: "email", status: "pending" });
+			expect(JSON.parse(rows[0]!.payload)).toEqual({
 				to: "a@ktb.test",
 				...defaultVerificationEmail({ name: "Ana", url }),
 			});
@@ -722,35 +728,44 @@ describe("verification email", () => {
 		}
 	});
 
-	it("uses the app-supplied copy and survives a failed delivery", async () => {
-		const failure = new Error("sender not verified");
+	it("uses the app-supplied copy and survives a composer failure", async () => {
+		const failure = new Error("catalog exploded");
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		const withEmail = createApp(
 			{
 				...base,
 				DB: makeTestD1(),
-				EMAIL: { send: async () => Promise.reject(failure) },
+				EMAIL: { send: async () => Promise.reject(new Error("unused")) },
 				EMAIL_FROM: "noreply@ktb.test",
 			},
-			{ verificationEmail: ({ url: link }) => ({ subject: "Confirme", text: link }) },
+			{
+				verificationEmail: () => {
+					throw failure;
+				},
+			},
 		);
 		try {
 			await expect(verify(withEmail)).resolves.toBeUndefined();
-			expect(errors).toHaveBeenCalledWith(
-				"verification email failed",
-				expect.objectContaining({ name: "EmailSendError", cause: failure }),
-			);
+			expect(errors).toHaveBeenCalledWith("verification email failed", failure);
 		} finally {
 			await withEmail.runtime.dispose();
 		}
 	});
 
-	it("logs instead of sending under EMAIL_STUB", async () => {
+	it("queues the email under EMAIL_STUB for the drainer to deliver", async () => {
 		const info = vi.spyOn(console, "info").mockImplementation(() => {});
 		const stubbed = createApp({ ...base, DB: makeTestD1(), EMAIL_STUB: "1" });
 		try {
 			await verify(stubbed);
-			expect(info).toHaveBeenCalledWith(expect.stringContaining("[email-stub] to=a@ktb.test"));
+			// The stub sender only runs at drain time — the sign-up path
+			// itself just leaves a pending outbox row.
+			const rows = await stubbed.db.select().from(outbox);
+			expect(rows).toHaveLength(1);
+			expect(JSON.parse(rows[0]!.payload)).toMatchObject({
+				to: "a@ktb.test",
+				subject: expect.stringContaining("Confirm your email"),
+			});
+			expect(info).not.toHaveBeenCalledWith(expect.stringContaining("[email-stub] to=a@ktb.test"));
 		} finally {
 			await stubbed.runtime.dispose();
 		}
@@ -782,7 +797,7 @@ describe("password reset email", () => {
 		expect(request(app)).toBeUndefined();
 	});
 
-	it("sends through the provider binding with the configured sender", async () => {
+	it("queues the rendered message on the outbox instead of sending inline", async () => {
 		const send = vi.fn<(builder: unknown) => Promise<unknown>>(async () => ({}));
 		const withEmail = createApp({
 			...base,
@@ -793,8 +808,11 @@ describe("password reset email", () => {
 		try {
 			expect(withEmail.auth.options.emailAndPassword?.sendResetPassword).toBeDefined();
 			await request(withEmail, "Ana");
-			expect(send).toHaveBeenCalledWith({
-				from: "noreply@ktb.test",
+			expect(send).not.toHaveBeenCalled();
+			const rows = await withEmail.db.select().from(outbox);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]).toMatchObject({ kind: "email", status: "pending" });
+			expect(JSON.parse(rows[0]!.payload)).toEqual({
 				to: "a@ktb.test",
 				...defaultPasswordResetEmail({ name: "Ana", url }),
 			});
@@ -803,24 +821,25 @@ describe("password reset email", () => {
 		}
 	});
 
-	it("uses the app-supplied copy and survives a failed delivery", async () => {
-		const failure = new Error("sender not verified");
+	it("uses the app-supplied copy and survives a composer failure", async () => {
+		const failure = new Error("catalog exploded");
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		const withEmail = createApp(
 			{
 				...base,
 				DB: makeTestD1(),
-				EMAIL: { send: async () => Promise.reject(failure) },
+				EMAIL: { send: async () => Promise.reject(new Error("unused")) },
 				EMAIL_FROM: "noreply@ktb.test",
 			},
-			{ passwordResetEmail: ({ url: link }) => ({ subject: "Redefina", text: link }) },
+			{
+				passwordResetEmail: () => {
+					throw failure;
+				},
+			},
 		);
 		try {
 			await expect(request(withEmail)).resolves.toBeUndefined();
-			expect(errors).toHaveBeenCalledWith(
-				"password reset email failed",
-				expect.objectContaining({ name: "EmailSendError", cause: failure }),
-			);
+			expect(errors).toHaveBeenCalledWith("password reset email failed", failure);
 		} finally {
 			await withEmail.runtime.dispose();
 		}

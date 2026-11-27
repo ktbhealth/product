@@ -27,6 +27,17 @@ export const APP_CRON_JOBS: readonly AppCronJob[] = [
 			"Claim due scheduled_jobs rows (lease-conditional) and dispatch each through the jobs queue.",
 	},
 	{
+		id: "outbox-drain",
+		// Same every-minute expression as scheduler-heartbeat — the
+		// registry dispatches every job bound to a fired expression, so
+		// no extra cron trigger is provisioned. Claims due `outbox`
+		// rows (lease-conditional) and delivers them through the
+		// registered kind deliverers with retry/backoff.
+		schedules: ["* * * * *"],
+		description:
+			"Claim due outbox rows and deliver them through registered kind deliverers (email) with retry and backoff.",
+	},
+	{
 		id: "agenda-reminders",
 		// The reminder sweep also runs on the daily fire — it is cheap
 		// and idempotent (reminderSentAt claim), so a missed 5-minute

@@ -31,6 +31,7 @@ import { makeTestD1 } from "@ktb/db-testing";
 
 import { Email, type EmailSender } from "@ktb/email";
 import { Invites } from "@ktb/invites";
+import { Outbox } from "@ktb/outbox";
 
 import { PatientInviteRejected, PatientLinks } from "./index.ts";
 import {
@@ -88,6 +89,9 @@ const sent: Array<{ to: string; subject: string; text: string }> = [];
 let sender: EmailSender | null = null;
 /** The invites plugin's `issue`, or null when it is not deployed. */
 let issue: ReturnType<typeof vi.fn> | null = null;
+/** The outbox service's enqueue spy; null = service unbound (legacy
+ * inline-send fallback). */
+let enqueue: ReturnType<typeof vi.fn> | null = null;
 const delivering: EmailSender = {
 	send: async (message) => {
 		sent.push(message);
@@ -99,6 +103,7 @@ beforeEach(() => {
 	sent.length = 0;
 	sender = delivering;
 	issue = null;
+	enqueue = null;
 	mocks.getLocale.mockReturnValue("en");
 	mocks.getDoctorUser.mockResolvedValue(acting);
 	const provide = (effect: Effect.Effect<unknown, unknown, unknown>) => {
@@ -107,10 +112,19 @@ beforeEach(() => {
 			Effect.provideService(Db, db),
 			Effect.provideService(Email, sender),
 		);
-		return Effect.runPromise(
-			issue === null
+		const withOutbox =
+			enqueue === null
 				? base
 				: base.pipe(
+						Effect.provideService(Outbox, {
+							enqueue,
+							drain: vi.fn(),
+						} as never),
+					);
+		return Effect.runPromise(
+			issue === null
+				? withOutbox
+				: withOutbox.pipe(
 						Effect.provideService(Invites, {
 							issue: issue as never,
 							preview: vi.fn(),
@@ -267,6 +281,34 @@ describe("invitePatientFn", () => {
 			ok: true,
 			emailed: false,
 		});
+	});
+
+	it("queues the invite email on the outbox when the service is bound", async () => {
+		enqueue = vi.fn().mockResolvedValue({ id: "ob1" });
+		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({
+			ok: true,
+			emailed: true,
+		});
+		expect(sent).toHaveLength(0);
+		expect(enqueue).toHaveBeenCalledWith({
+			kind: "email",
+			payload: expect.objectContaining({
+				to: "ana@ktb.test",
+				subject: expect.any(String),
+				text: expect.any(String),
+			}),
+		});
+	});
+
+	it("reports emailed:false when the outbox write fails", async () => {
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		enqueue = vi.fn().mockRejectedValue(new Error("db down"));
+		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({
+			ok: true,
+			emailed: false,
+		});
+		expect(logged).toHaveBeenCalledWith("patient invite email failed", expect.any(Error));
+		logged.mockRestore();
 	});
 
 	it("still grants access, but says so, when the delivery fails", async () => {

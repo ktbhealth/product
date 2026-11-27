@@ -45,6 +45,7 @@
 		"@ktb/observability": "workspace:*",
 		"@ktb/observability-otlp": "workspace:*",
 		"@ktb/orchestrator": "workspace:*",
+		"@ktb/outbox": "workspace:*",
 		"@ktb/pipeline": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/plugin-pipeline": "workspace:*",

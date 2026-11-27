@@ -498,6 +498,13 @@
       "when": 1795728197635,
       "tag": "0071_hesitant_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1795817380357,
+      "tag": "0072_faulty_mauler",
+      "breakpoints": true
     }
   ]
 }
