@@ -1945,6 +1945,9 @@ export const I18N_MANIFEST = {
 		"detail.queueDoneToast": {
 			params: [],
 		},
+		"detail.audioFailed": {
+			params: [],
+		},
 		"review.title": {
 			params: [],
 		},
@@ -2137,6 +2140,12 @@ export const I18N_MANIFEST = {
 				},
 			],
 			template: "Speaker {n}",
+		},
+		"transcriptPanel.speakerUnknown": {
+			params: [],
+		},
+		"transcriptPanel.encryptionNote": {
+			params: [],
 		},
 		"newConsultation.title": {
 			params: [],
@@ -2532,6 +2541,35 @@ export const I18N_MANIFEST = {
 			template: "bot failed: HTTP {status}",
 		},
 		"newConsultation.patientFallback": {
+			params: [],
+		},
+		"newConsultation.anamnesisDrawer": {
+			params: [],
+		},
+		"newConsultation.anamnesisDrawerDescription": {
+			params: [],
+		},
+		"newConsultation.stopCapture": {
+			params: [],
+		},
+		"newConsultation.copyTranscript": {
+			params: [],
+		},
+		"newConsultation.transcriptCopied": {
+			params: [],
+		},
+		"newConsultation.exportTranscript": {
+			params: [],
+		},
+		"newConsultation.yearsOld": {
+			params: [
+				{
+					name: "age",
+				},
+			],
+			template: "{age} years",
+		},
+		"newConsultation.listening": {
 			params: [],
 		},
 		"admin.title": {

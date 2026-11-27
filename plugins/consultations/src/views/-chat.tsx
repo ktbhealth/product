@@ -43,11 +43,14 @@ const NAME_TONES: Record<string, string> = {
 
 const FALLBACK_BADGE = "bg-muted text-muted-foreground ring-border";
 
-const avatarTone = (speaker?: string) =>
-	AVATAR_TONES[speaker ? speakerTone(speaker) : FALLBACK_BADGE] ?? AVATAR_TONES[FALLBACK_BADGE]!;
+const toneClasses = (map: Record<string, string>, speaker?: string) => {
+	const badge = speaker ? speakerTone(speaker) : FALLBACK_BADGE;
+	/* v8 ignore next -- every speakerTone output is a map key by construction */
+	return map[badge] ?? map[FALLBACK_BADGE]!;
+};
 
-const nameTone = (speaker?: string) =>
-	NAME_TONES[speaker ? speakerTone(speaker) : FALLBACK_BADGE] ?? NAME_TONES[FALLBACK_BADGE]!;
+const avatarTone = (speaker?: string) => toneClasses(AVATAR_TONES, speaker);
+const nameTone = (speaker?: string) => toneClasses(NAME_TONES, speaker);
 
 /** Initials for the speaker avatar: `SPEAKER_NN` → its number, named
  * roles → first letters of the first two words ("Dr. Emmanuel" → DE). */

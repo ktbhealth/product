@@ -777,6 +777,8 @@ export function AudioTranscriptPanel({
 	}, [active?.text, active?.source, onActiveText]);
 
 	const inFlight = IN_FLIGHT.has(status);
+	const statusBadge =
+		status === "failed" ? "failed" : inFlight ? "inflight" : correctedView ? "enhanced" : null;
 	// `undefined` audioSrc resolves the default endpoint; `null` means
 	// the caller knows playback is impossible (ZK locked) — no fallback.
 	const playSrc =
@@ -788,13 +790,13 @@ export function AudioTranscriptPanel({
 
 	return (
 		<div className="space-y-3">
-			{status === "failed" || inFlight || correctedView ? (
+			{statusBadge ? (
 				<div className="flex flex-wrap items-center gap-2">
-					{status === "failed" ? (
+					{statusBadge === "failed" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.red}`}>
 							{t.transcriptPanel.enhancementFailed}
 						</Badge>
-					) : inFlight ? (
+					) : statusBadge === "inflight" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.blue}`}>
 							<span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-info" />
 							{status === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}

@@ -213,6 +213,26 @@ describe("AudioTranscriptPanel", () => {
 		expect(screen.getByText("browser")).toBeTruthy();
 	});
 
+	it("swallows a rejected play() promise on karaoke seek", async () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				audioStatus="done"
+				hasAudio
+				serverText="bom dia"
+				segments={[
+					{ start: 0, end: 2, text: "bom dia" },
+					{ start: 5, end: 8, text: "como está" },
+				]}
+			/>,
+		);
+		const audio = document.querySelector("audio")!;
+		audio.play = () => Promise.reject(new Error("interrupted"));
+		fireEvent.click(screen.getByText("0:05"));
+		expect(audio.currentTime).toBe(5);
+		await Promise.resolve();
+	});
+
 	it("does not re-report identical text when only the callback identity changes", () => {
 		const first = vi.fn();
 		const second = vi.fn();
@@ -606,6 +626,74 @@ describe("ConsultationAudioPlayer", () => {
 		cleanup();
 		const second = renderPlayer();
 		expect(second.audio.playbackRate).toBe(1.25);
+	});
+
+	it("falls back to in-session defaults when storage access throws", () => {
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new DOMException("denied");
+		});
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new DOMException("denied");
+		});
+		const { audio } = renderPlayer();
+		expect(audio.playbackRate).toBe(1);
+		// writePref swallows too — the rate still cycles for this mount.
+		fireEvent.click(screen.getByRole("button", { name: "Playback speed" }));
+		expect(audio.playbackRate).toBe(1.25);
+		vi.restoreAllMocks();
+	});
+
+	it("restores persisted rate and skip prefs on mount", () => {
+		localStorage.setItem("ktb.audio.playbackRate", "1.5");
+		localStorage.setItem("ktb.audio.skipSilence", "1");
+		const { audio } = renderPlayer(GAPS);
+		expect(audio.playbackRate).toBe(1.5);
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap → jumps
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("mounts with skipSilence persisted off", () => {
+		localStorage.setItem("ktb.audio.skipSilence", "0");
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("toggles skip back on and persists the pref", () => {
+		const { audio } = renderPlayer(GAPS);
+		const btn = screen.getByRole("button", { name: "Skip silence" });
+		fireEvent.click(btn); // off
+		fireEvent.click(btn); // on again
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("1");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("does not jump when the playhead is before the first gap", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 1; // inside segment 0–2, before the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(1);
+	});
+
+	it("tolerates a missing or function audioRef", () => {
+		render(<ConsultationAudioPlayer src="/a.wav" rateLabel="r" skipSilenceLabel="s" />);
+		render(
+			<ConsultationAudioPlayer
+				src="/a.wav"
+				audioRef={() => {}}
+				rateLabel="r"
+				skipSilenceLabel="s"
+			/>,
+		);
+		expect(document.querySelectorAll("audio").length).toBe(2);
 	});
 
 	it("skips silence gaps while playing", () => {
