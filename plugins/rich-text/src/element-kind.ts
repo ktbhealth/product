@@ -1,13 +1,13 @@
 import * as Effect from "effect/Effect";
 
 import { RichTextDeleteHooks } from "./delete-hooks.ts";
-import { richTextElement } from "./kind.ts";
+import { richTextElement } from "./kind.tsx";
 import { RichTexts } from "./service.ts";
 
 /**
  * Server-side half of the `"rich-text"` element kind (P-102): the
  * registration layer that resolves the kind's services and derives the
- * `ElementKindDescriptor` from the shared declaration in ./kind.ts —
+ * `ElementKindDescriptor` from the shared declaration in ./kind.tsx —
  * `kind`/`label` come from `richTextElement.manifest`, so they cannot
  * drift from the client `elementKinds` manifest (./index.ts and
  * ./client.ts both carry `richTextElement.manifest`).

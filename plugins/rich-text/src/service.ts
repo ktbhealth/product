@@ -67,7 +67,7 @@ const toDoc = (row: RichText): RichTextDoc => ({
 });
 
 /** The service shape — exported so the element-kind declaration
- * (./kind.ts) can type its services record via `import type` without
+ * (./kind.tsx) can type its services record via `import type` without
  * pulling this server module into the client bundle. */
 export interface RichTextsShape {
 	/** Every document, most recently updated first — meta only. */

@@ -50,7 +50,7 @@ export interface RichTextDeleteHook {
 }
 
 /** The registry shape — exported so the element-kind declaration
- * (./kind.ts) can type its services record via `import type`. */
+ * (./kind.tsx) can type its services record via `import type`. */
 export interface RichTextDeleteHooksShape {
 	/** Register a hook; re-registering the same `id` replaces the
 	 * previous entry (layer rebuilds stay idempotent). */

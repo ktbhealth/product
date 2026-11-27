@@ -3,7 +3,7 @@ import { PenLineIcon } from "lucide-react";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { RichTextAdminConsolePage } from "./platform-page.tsx";
-import { richTextElement } from "./kind.ts";
+import { richTextElement } from "./kind.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -55,7 +55,7 @@ export const richTextPanelPlugin = definePlugin({
 
 /** Element-kind manifest (P-102): `richTextElement.manifest` is the
  * SAME object richTextElementsPlugin carries in ./index.ts — the kind
- * is declared once in ./kind.ts via `defineElementKind`, so client and
+ * is declared once in ./kind.tsx via `defineElementKind`, so client and
  * server manifests cannot drift (RichTextView is platejs-free;
  * RichTextElementEditor pulls the editor stack, which the client
  * bundle already carries via the admin console page). The server

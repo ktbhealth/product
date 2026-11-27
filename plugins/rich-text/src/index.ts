@@ -9,7 +9,7 @@ import { RichTextAdminConsolePage } from "./platform-page.tsx";
 import { richText } from "./schema.ts";
 import { RichTextDeleteHooksLive } from "./delete-hooks.ts";
 import { RichTextElementKindLive } from "./element-kind.ts";
-import { richTextElement } from "./kind.ts";
+import { richTextElement } from "./kind.tsx";
 import { RichTexts, RichTextsLive } from "./service.ts";
 
 /**
@@ -110,7 +110,7 @@ export const richTextPanelPlugin = definePlugin({
  * citizen of the managed-content registry — `RichTextView` renders
  * resolved payloads platejs-free, `RichTextElementEditor` adapts the
  * Plate editor to the kind's `{ value, onChange }` contract. The kind
- * is declared once in ./kind.ts via `defineElementKind`: this manifest
+ * is declared once in ./kind.tsx via `defineElementKind`: this manifest
  * entry IS `richTextElement.manifest` — the same object ./client.ts
  * carries — and the server half (resolve/hooks) registers via
  * `RichTextElementKindLive` in rich-text.services. Consumers never
