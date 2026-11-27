@@ -138,6 +138,14 @@ export default Alchemy.Stack(
 				...(process.env.PLATFORM_ADMIN_EMAILS
 					? { PLATFORM_ADMIN_EMAILS: process.env.PLATFORM_ADMIN_EMAILS }
 					: {}),
+				// Product literals the generic infra packages consume via
+				// config: the recall bot's display name, the env-var prefix
+				// the observability config reads its KTB_* vars under, and
+				// the binding name the SchedulerDo resolves its jobs queue
+				// through (packages stay domain-blind; apps own the names).
+				RECALL_BOT_NAME: "KTB Health",
+				OBSERVABILITY_ENV_PREFIX: "KTB_",
+				SCHEDULER_QUEUE_BINDING: "AUDIO_QUEUE",
 				// Server-side transcription model override (plain config).
 				...(process.env.AUDIO_TRANSCRIBE_MODEL
 					? { AUDIO_TRANSCRIBE_MODEL: process.env.AUDIO_TRANSCRIBE_MODEL }

@@ -70,7 +70,7 @@ describe("ingestClientEvents", () => {
 	});
 
 	it("counts dropped batches when client telemetry is disabled", async () => {
-		const disabled = telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "0" });
+		const disabled = telemetryConfigFromEnv({ TELEMETRY_CLIENT: "0" });
 		const registry = new Map();
 		const program = Effect.gen(function* () {
 			yield* ingestClientEvents(disabled)(batch([{ type: "event", name: "x" }]));
@@ -83,7 +83,7 @@ describe("ingestClientEvents", () => {
 	});
 
 	it("enforces clientTelemetry.sampleRate per event", async () => {
-		const sampled = telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT_SAMPLE_RATE: "0.5" });
+		const sampled = telemetryConfigFromEnv({ TELEMETRY_CLIENT_SAMPLE_RATE: "0.5" });
 		const registry = new Map();
 		// random() >= 0.5 drops, < 0.5 keeps — drive it deterministically.
 		const rolls = [0.9, 0.1, 0.9, 0.2];
@@ -111,7 +111,7 @@ describe("ingestClientEvents", () => {
 	});
 
 	it("drops every event when the sample rate is 0", async () => {
-		const zero = telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT_SAMPLE_RATE: "0" });
+		const zero = telemetryConfigFromEnv({ TELEMETRY_CLIENT_SAMPLE_RATE: "0" });
 		const registry = new Map();
 		const program = Effect.gen(function* () {
 			yield* ingestClientEvents(zero)(batch([{ type: "event", name: "x" }]));
@@ -232,7 +232,7 @@ describe("ingestClientEvents log records", () => {
 	});
 
 	it("drops the event when the roll lands exactly on the sample rate", async () => {
-		const sampled = telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT_SAMPLE_RATE: "0.5" });
+		const sampled = telemetryConfigFromEnv({ TELEMETRY_CLIENT_SAMPLE_RATE: "0.5" });
 		const registry = new Map();
 		const program = Effect.gen(function* () {
 			yield* ingestClientEvents(sampled, () => 0.5)(batch([{ type: "event", name: "x" }]));

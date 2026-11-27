@@ -1,5 +1,5 @@
 import { defineCipher } from "@ktb/crypto/cipher";
-import { CONSULTATION_ENTITY_TYPE } from "@ktb/crypto/entities";
+import { CONSULTATION_ENTITY_TYPE } from "@ktb/patient-access/entities";
 
 /**
  * Consultation cipher spec (PL-007 F3, T-145): every clinical-content
@@ -23,7 +23,7 @@ export const CONSULTATION_CIPHERED_FIELDS = [
 ] as const;
 
 export const consultationCipher = defineCipher({
-	// Canonical name lives in @ktb/crypto/entities — patient-access
+	// Canonical name lives in @ktb/patient-access/entities — patient-access
 	// cannot import this spec (consultations already depends on it),
 	// and the string is ZK key material that must never drift.
 	entity: CONSULTATION_ENTITY_TYPE,

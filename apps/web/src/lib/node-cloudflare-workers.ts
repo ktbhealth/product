@@ -5,7 +5,7 @@ import process from "node:process";
 import { makeSqliteDatabase } from "@ktb/db-sqlite";
 import { loadDevVars, makeLocalAudioBucket, makeLocalQueue } from "@ktb/dev-node";
 import { connect as nodeSocketConnect } from "@ktb/email-smtp/node-connect";
-import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
+import { observabilityEnvKeys } from "@ktb/observability";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 import { createRedisPubSubTransport } from "@ktb/pubsub-transport-redis";
 
@@ -64,6 +64,7 @@ const ENV_KEYS = [
 	"LLM_MODEL",
 	"WORKERS_AI_MODEL",
 	"RECALL_API_KEY",
+	"RECALL_BOT_NAME",
 	"PLATFORM_ADMIN_EMAILS",
 	"AUDIO_TRANSCRIBE_MODEL",
 	"AI_STUB",
@@ -92,10 +93,14 @@ const ENV_KEYS = [
 	// into the queue-registry entry behind /platform/queue.
 	"REDIS_URL",
 	"JOBS_QUEUE",
-	// Every ObservabilityEnv key — telemetryConfigFromEnv reads them off
-	// the worker env, so dev:node must forward the full canonical list
-	// (single source in @ktb/observability, pinned by its tests).
-	...OBSERVABILITY_ENV_KEYS,
+	// SchedulerDo resolves its dispatch queue through this var (the DO
+	// itself never runs under dev:node, but keep the contract identical).
+	"SCHEDULER_QUEUE_BINDING",
+	// Every observability env key for this deployment's prefix —
+	// telemetryConfigFromEnv reads them off the worker env, so dev:node
+	// must forward the full canonical list (single source in
+	// @ktb/observability, pinned by its tests).
+	...observabilityEnvKeys("KTB_"),
 	"METRICS_SCRAPE_TOKEN",
 ] as const;
 
@@ -113,6 +118,12 @@ for (const key of ENV_KEYS) {
 // EMAIL_STUB via driver precedence.
 env.CAPTCHA_STUB ??= "1";
 env.EMAIL_STUB ??= "1";
+// Product literals the generic infra packages read via config — same
+// values alchemy.run.ts binds in prod and wrangler*.jsonc vars set for
+// workerd dev. Explicit env always wins.
+env.RECALL_BOT_NAME ??= "KTB Health";
+env.OBSERVABILITY_ENV_PREFIX ??= "KTB_";
+env.SCHEDULER_QUEUE_BINDING ??= "AUDIO_QUEUE";
 if (env.AI_STUB === undefined && env.AI_BASE_URL === undefined) env.AI_STUB = "1";
 
 // DATABASE_URL selects the SQLite file (default ./data/app.db relative
