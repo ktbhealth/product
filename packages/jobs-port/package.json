@@ -10,7 +10,11 @@
 	},
 	"dependencies": {
 		"@ktb/db": "workspace:*",
+		"@ktb/tenant": "workspace:*",
 		"drizzle-orm": "^0.45.1",
 		"effect": "4.1.2"
+	},
+	"devDependencies": {
+		"@ktb/db-testing": "workspace:*"
 	}
 }

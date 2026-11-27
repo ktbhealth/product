@@ -18,11 +18,17 @@ vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestUrl: () => new URL("https://app.ktb.test/consultations/new"),
 }));
-vi.mock("@ktb/server-fns", () => mocks);
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return Object.assign({}, actual, mocks, actual.serverFnHandlerMocks(), {
+		forbiddenTo: actual.forbiddenTo,
+	});
+});
 
 import { Forbidden } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Email, type EmailSender } from "@ktb/email";
 import { Invites } from "@ktb/invites";
 
@@ -38,35 +44,26 @@ import {
 } from "./fns.ts";
 
 const DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO groups (id, name, slug, kind, zk) VALUES (8, 'ZK Clinic', 'clinic-8', 'clinic', 1);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, tenant_id INTEGER);
-INSERT INTO patients (id, owner_id, name, email) VALUES
-  (1, 'doc', 'Ana', 'ana@ktb.test'), (2, 'doc', 'Leo', NULL), (3, 'other', 'Rui', 'rui@ktb.test');
-CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (8, 'ZK Clinic', 'clinic-8', 'clinic', 1, 0, 0);
+INSERT INTO patients (id, owner_id, name, email, created_at) VALUES
+  (1, 'doc', 'Ana', 'ana@ktb.test', 0), (2, 'doc', 'Leo', NULL, 0), (3, 'other', 'Rui', 'rui@ktb.test', 0);
 INSERT INTO patient_access (patient_id, user_id, relation, status, source, created_at, updated_at) VALUES
   (1, 'ana', 'self', 'active', 'invite', 0, 0),
   (1, 'eva', 'guardian', 'invited', 'invite', 0, 0);
 INSERT INTO patient_access (patient_id, user_id, email, relation, status, source, created_at, updated_at) VALUES
   (1, NULL, 'nobody@ktb.test', 'self', 'invited', 'invite', 0, 0),
   (2, NULL, 'leo@ktb.test', 'self', 'invited', 'invite', 0, 0);
-CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES
-  ('ana', 'anaDev1', 's1'), ('ana', 'anaDev2', 's2');
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
-		transcript_edits TEXT,
-		transcript_edits_base TEXT,
-		transcript_reviewed_edits INTEGER,
-		deferred_until INTEGER);
-INSERT INTO consultations (id, patient_id, transcript, anamnesis) VALUES
-  (10, 1, 'v1.ct', NULL), (11, 1, 'plain', '{}'), (12, 1, 'plain', 'v1.ct');
+INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key, created_at) VALUES
+  ('ana', 'anaDev1', 's1', 0), ('ana', 'anaDev2', 's2', 0);
+INSERT INTO consultations (id, patient_id, transcript, anamnesis, created_at) VALUES
+  (10, 1, 'v1.ct', NULL, 0), (11, 1, 'plain', '{}', 0), (12, 1, 'plain', 'v1.ct', 0);
 -- ZK tenant (group 8) and an unresolvable tenantId (999, fail-closed):
 -- both store ciphertext names the server cannot read (T-149).
-INSERT INTO patients (id, owner_id, name, email, tenant_id) VALUES
-  (4, 'doc', 'v1.aXYz.cipheredAna', 'zk@ktb.test', 8),
-  (5, 'doc', 'v1.bYZa.cipheredGhost', 'ghost@ktb.test', 999);
+INSERT INTO patients (id, owner_id, name, email, tenant_id, created_at) VALUES
+  (4, 'doc', 'v1.aXYz.cipheredAna', 'zk@ktb.test', 8, 0),
+  (5, 'doc', 'v1.bYZa.cipheredGhost', 'ghost@ktb.test', 999, 0);
 `;
-const db = makeDb(makeD1(DDL));
+const db = makeDb(makeTestD1(DDL));
 
 // A secretary acting for the doctor: data scope is the doctor's, the
 // email is issued under the doctor's name.

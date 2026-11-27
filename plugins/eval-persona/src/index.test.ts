@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-provider";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { consultations, doctors, patients, user as userTable } from "@ktb/db/schema";
 import {
 	LlmFactory,
@@ -18,7 +19,6 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
-	EVAL_PERSONA_TEST_DDL,
 	EvalInstances,
 	EvalInstancesLive,
 	EvalPersonas,
@@ -178,7 +178,7 @@ const make = (
 		captured,
 		presets,
 	} = opts;
-	const d1 = makeD1(EVAL_PERSONA_TEST_DDL);
+	const d1 = makeTestD1(undefined, { foreignKeys: true });
 	const db = makeDb(d1);
 	const layers = Layer.mergeAll(
 		Layer.succeed(Db, db as never),

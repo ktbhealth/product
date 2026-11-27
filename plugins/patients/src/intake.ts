@@ -196,7 +196,7 @@ export const intakeWizard: WizardDefinition = {
 	description:
 		"Conte um pouco sobre você e o motivo da consulta antes do atendimento. Suas respostas ficam registradas no seu prontuário.",
 	// Same catalog grant as creating a patient record — the intake is
-	// the front door to the patient chart (see packages/rbac vocabulary).
+	// the front door to the patient chart (see plugins/rbac catalog).
 	permission: "patient.create",
 	submitLabel: "Continuar",
 	steps: [

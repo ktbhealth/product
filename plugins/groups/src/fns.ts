@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { forbiddenTo, runAs, sessionHandler } from "@ktb/server-fns";
 
 import { Groups, type Group, type GroupMember } from "./index.ts";
 
@@ -45,80 +45,82 @@ type Result<T> = { readonly ok: true; readonly data: T } | { readonly ok: false 
 
 export const createGroupFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreateGroup(input))
-	.handler(async ({ data }): Promise<Result<Group | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const groups = yield* Groups;
-					const group = yield* groups.create(data);
-					return { ok: true as const, data: group };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<Group | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const groups = yield* Groups;
+						const group = yield* groups.create(data);
+						return { ok: true as const, data: group };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const deleteGroupFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeGroupId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const groups = yield* Groups;
-					const deleted = yield* groups.delete(data.id);
-					return deleted ? ({ ok: true as const, data: null } as const) : ({ ok: false } as const);
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const groups = yield* Groups;
+						const deleted = yield* groups.delete(data.id);
+						return deleted
+							? ({ ok: true as const, data: null } as const)
+							: ({ ok: false } as const);
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const listGroupMembersFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeListMembers(input))
-	.handler(async ({ data }): Promise<Result<GroupMember[]>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const groups = yield* Groups;
-					const members = yield* groups.members(data.groupId);
-					return { ok: true as const, data: members };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<GroupMember[]>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const groups = yield* Groups;
+						const members = yield* groups.members(data.groupId);
+						return { ok: true as const, data: members };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const addGroupMemberFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAddMember(input))
-	.handler(async ({ data }): Promise<Result<GroupMember | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const groups = yield* Groups;
-					const member = yield* groups.addMember(data);
-					return { ok: true as const, data: member };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<GroupMember | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const groups = yield* Groups;
+						const member = yield* groups.addMember(data);
+						return { ok: true as const, data: member };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const removeGroupMemberFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRemoveMember(input))
-	.handler(async ({ data }): Promise<Result<GroupMember | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const groups = yield* Groups;
-					const member = yield* groups.removeMember(data);
-					return member === null ? ({ ok: false } as const) : { ok: true as const, data: member };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<GroupMember | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const groups = yield* Groups;
+						const member = yield* groups.removeMember(data);
+						return member === null ? ({ ok: false } as const) : { ok: true as const, data: member };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);

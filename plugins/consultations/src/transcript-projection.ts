@@ -44,6 +44,60 @@ export function genesisUpdate(base: string): Uint8Array {
 	return doc.export({ mode: "update" });
 }
 
+/** Which stored column the edit log projects over — the pin written on
+ * the first save wins so late pipeline stages never rebase old ops. */
+export function editsBaseText(c: {
+	readonly correctedTranscript?: string | null;
+	readonly serverTranscript?: string | null;
+	readonly transcript?: string | null;
+	readonly transcriptEditsBase?: string | null;
+}): string {
+	const pick = (b: "corrected" | "server" | "transcript") =>
+		b === "corrected"
+			? (c.correctedTranscript ?? c.serverTranscript ?? c.transcript)
+			: b === "server"
+				? (c.serverTranscript ?? c.transcript)
+				: c.transcript;
+	if (c.transcriptEditsBase === "corrected") return pick("corrected") ?? "";
+	if (c.transcriptEditsBase === "server") return pick("server") ?? "";
+	if (c.transcriptEditsBase === "transcript") return pick("transcript") ?? "";
+	return c.correctedTranscript ?? c.serverTranscript ?? c.transcript ?? "";
+}
+
+/** Char offset of each segment in the BASE text — sequential
+ * `indexOf`, tolerant to drift (falls back to the previous end). */
+export function segBaseOffsets(
+	segments: readonly { readonly text: string }[],
+	base: string,
+): readonly number[] {
+	const out: number[] = [];
+	let from = 0;
+	for (const s of segments) {
+		const at = base.indexOf(s.text, from);
+		out.push(at === -1 ? from : at);
+		from = (at === -1 ? from : at) + s.text.length;
+	}
+	return out;
+}
+
+/** Offset of segment `i` inside the *projected* doc — base offset plus
+ * the length deltas of earlier segment rewrites. */
+export function segProjOffset(
+	segments: readonly { readonly text: string }[],
+	baseOffsets: readonly number[],
+	entries: readonly TranscriptEditEntry[],
+	i: number,
+): number {
+	let off = baseOffsets[i] ?? 0;
+	for (const e of entries) {
+		if (e.seg != null && e.text != null && e.seg < i) {
+			const orig = segments[e.seg]?.text;
+			if (orig != null) off += e.text.length - orig.length;
+		}
+	}
+	return off;
+}
+
 /**
  * Editing session over a projected doc: wrap local mutations in
  * `edit()`, which returns the update blob the caller appends to the

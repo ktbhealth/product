@@ -413,7 +413,7 @@ describe("WhisperTranscriber", () => {
 		await vi.waitFor(() => expect(MockAudioContext.instances).toHaveLength(1));
 		const rec = MockMediaRecorder.instances[0]!;
 		expect(rec.state).toBe("recording");
-		// live session: no blob yet
+		// live session: no blob yet — callers hit during capture get null
 		await expect(t.recording()).resolves.toBeNull();
 		rec.ondataavailable!({ data: new Blob([]) });
 		rec.ondataavailable!({ data: new Blob(["audio"]) });
@@ -465,6 +465,22 @@ describe("WhisperTranscriber", () => {
 		await vi.waitFor(() => expect(MockMediaRecorder.instances).toHaveLength(1));
 		expect(MockMediaRecorder.instances[0]!.stop).toHaveBeenCalled();
 		await expect(t.recording()).resolves.toBeNull();
+	});
+
+	it("mic transcriber requests the picked device with an exact constraint", async () => {
+		const { mod, nav } = await setup();
+		const mic = mod.createWhisperMicTranscriber("mic-1");
+		mic.start(() => {});
+		await vi.waitFor(() =>
+			expect(nav.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+				audio: {
+					echoCancellation: true,
+					noiseSuppression: true,
+					deviceId: { exact: "mic-1" },
+				},
+			}),
+		);
+		mic.stop();
 	});
 
 	it("factories create mic and tab transcribers", async () => {

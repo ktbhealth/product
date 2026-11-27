@@ -18,6 +18,9 @@ const portalPageDataFn = vi.fn(
 		data: null,
 	}),
 );
+const boundTenantFn = vi.fn(
+	async () => null as { id: number; role: string; roleRank: number } | null,
+);
 const signOut = vi.fn(async () => {});
 
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: () => signOut() } }));
@@ -27,6 +30,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
+	boundTenantFn: () => boundTenantFn(),
 	appPageDataFn: vi.fn(),
 	platformAdminFn: vi.fn(async () => true),
 	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
@@ -149,6 +153,7 @@ const baseLoaderData = {
 	audiences: [] as string[],
 	pluginStates: ALL_ENABLED,
 	theme: null,
+	tenant: null,
 };
 
 const shell = (overrides: Record<string, unknown> = {}) =>
@@ -166,6 +171,7 @@ afterEach(() => {
 	pluginStatesFn.mockReset().mockResolvedValue(ALL_ENABLED);
 	portalAudiencesFn.mockReset().mockResolvedValue([]);
 	portalPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
+	boundTenantFn.mockReset().mockResolvedValue(null);
 	rootData = {
 		user: { id: "u1", email: "doc@x.com", name: "Dra" },
 		pluginStates: ALL_ENABLED,
@@ -228,6 +234,9 @@ describe("portalLoader", () => {
 			await expect(
 				portalLoader({ params: { _splat: "portal/doctor/test" }, instanceId: "doctor" }),
 			).rejects.toMatchObject({ isNotFound: true });
+			// The enablement gate runs before the page-data server fn —
+			// a disabled package's loader work never starts.
+			expect(portalPageDataFn).not.toHaveBeenCalled();
 		} finally {
 			unregister();
 		}
@@ -316,6 +325,7 @@ describe("portalLoader", () => {
 				audiences: ["doctor"],
 				pluginStates: { enabled: ["clinician.portal", "clinician.pages"] },
 				theme: null,
+				tenant: null,
 				pendingReviewCount: 0,
 			});
 			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/doctor/test");
@@ -405,6 +415,38 @@ describe("PortalInstanceShell", () => {
 			expect(screen.getAllByText("Test Page").length).toBeGreaterThan(0);
 			expect(screen.getAllByText("Care").length).toBeGreaterThan(0);
 			expect(screen.getByText("HDR-ACTION")).toBeTruthy();
+		} finally {
+			unregister();
+		}
+	});
+
+	it("shows tenant-admin sidebar entries only for admin+ bound tenants", () => {
+		const unregister = registerPage();
+		try {
+			// The real vault.chrome contribution carries
+			// `when.minUserCounts: { tenantRoleRank: 2 }` (admin) —
+			// personal scope hides it.
+			const { unmount } = render(shell({ tenant: null }));
+			expect(screen.queryByText("Vault")).toBeNull();
+			unmount();
+			const member = render(shell({ tenant: { id: 1, role: "member", roleRank: 1 } }));
+			expect(member.queryByText("Vault")).toBeNull();
+			member.unmount();
+			// No session user → clinical/tenant gates fail closed too.
+			rootData = { user: null, pluginStates: ALL_ENABLED };
+			const anon = render(shell({ tenant: { id: 1, role: "admin", roleRank: 2 } }));
+			expect(anon.queryByText("Vault")).toBeNull();
+			anon.unmount();
+			rootData = { pluginStates: ALL_ENABLED } as never;
+			const noUser = render(shell({ tenant: { id: 1, role: "admin", roleRank: 2 } }));
+			expect(noUser.queryByText("Vault")).toBeNull();
+			noUser.unmount();
+			rootData = {
+				user: { id: "u1", email: "doc@x.com", name: "Dra" },
+				pluginStates: ALL_ENABLED,
+			};
+			render(shell({ tenant: { id: 1, role: "admin", roleRank: 2 } }));
+			expect(screen.getAllByText("Vault").length).toBeGreaterThan(0);
 		} finally {
 			unregister();
 		}

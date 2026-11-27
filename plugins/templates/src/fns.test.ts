@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
@@ -41,16 +42,7 @@ import {
 } from "./fns.ts";
 import { TemplateKinds, TemplateKindsLive, type TemplateKind } from "./kinds.ts";
 import { plugins } from "./index.ts";
-import { Templates, TemplatesLive, TEMPLATES_TEST_DDL } from "./service.ts";
-
-const PLUGIN_STATE_DDL = `
-CREATE TABLE plugin_state (
-	plugin_id TEXT PRIMARY KEY NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	config TEXT,
-	updated_at INTEGER NOT NULL
-);
-`;
+import { Templates, TemplatesLive } from "./service.ts";
 
 const testKind: TemplateKind = {
 	kind: "test-kind",
@@ -83,7 +75,7 @@ describe("templates fns", () => {
 		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(TEMPLATES_TEST_DDL + PLUGIN_STATE_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

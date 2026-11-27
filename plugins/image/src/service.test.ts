@@ -1,20 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import {
-	ImageNotFound,
-	Images,
-	ImagesLive,
-	IMAGES_TEST_DDL,
-	InvalidImageInput,
-} from "./service.ts";
+import { ImageNotFound, Images, ImagesLive, InvalidImageInput } from "./service.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,7 +24,7 @@ describe("ImagesLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Images, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(IMAGES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

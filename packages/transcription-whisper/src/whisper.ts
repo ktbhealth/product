@@ -174,7 +174,10 @@ export class WhisperTranscriber implements Transcriber {
 		return { voicedSec: this.voicedSec, chars: this.sessionChars };
 	}
 
-	/** Last session's audio blob; null while still recording or if unsupported. */
+	/** Last session's audio blob; null while still recording or if
+	 * unsupported. `stop()` transitions the recorder to "inactive" BEFORE
+	 * the "end" event fires, so post-end callers land on `recorderDone`
+	 * and simply await the already-stopped blob. */
 	recording(): Promise<Blob | null> {
 		if (this.recorder && this.recorder.state === "recording") return Promise.resolve(null);
 		return this.recorderDone ?? Promise.resolve(null);
@@ -228,9 +231,13 @@ function rmsOf(data: Float32Array): number {
 	return Math.sqrt(sum / data.length);
 }
 
-const micStream = () =>
+const micStream = (deviceId?: string) =>
 	navigator.mediaDevices.getUserMedia({
-		audio: { echoCancellation: true, noiseSuppression: true },
+		audio: {
+			echoCancellation: true,
+			noiseSuppression: true,
+			...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+		},
 	});
 
 const tabStream = async () => {
@@ -242,8 +249,8 @@ const tabStream = async () => {
 	return s;
 };
 
-export function createWhisperMicTranscriber(): Transcriber {
-	return new WhisperTranscriber(micStream);
+export function createWhisperMicTranscriber(deviceId?: string): Transcriber {
+	return new WhisperTranscriber(() => micStream(deviceId));
 }
 
 export function createWhisperTabTranscriber(): Transcriber {

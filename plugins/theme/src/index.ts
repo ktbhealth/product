@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { fontsServicesPlugin } from "@ktb/fonts";
 import { platformHeaderPlugin } from "@ktb/platform-header";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { ThemePlatformPage } from "./platform-page.tsx";
 import { Theme, ThemeLive } from "./theme.ts";
@@ -48,18 +48,6 @@ export const themeServicesPlugin = definePlugin({
 	services: ThemeLive,
 });
 
-// Hard 404 for non-admins — same contract as the /platform layout
-// guard; every service/fn call re-checks anyway. Shared by the list
-// page and the editor page.
-const themePanelGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
-
 // Admin-gated inside the service; a Forbidden here means the guard
 // raced a revoked session — degrade to an empty list rather than
 // failing the page.
@@ -75,20 +63,18 @@ export const themePanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, themeServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "theme.admin",
 				path: "/platform/theme",
 				component: ThemePlatformPage,
-				guard: themePanelGuard,
 				loader: themePanelLoader,
-			},
-			{
+			}),
+			adminConsolePage({
 				id: "theme.editor",
 				path: "/platform/theme/editor",
 				component: ThemeEditorPage,
-				guard: themePanelGuard,
 				loader: themePanelLoader,
-			},
+			}),
 		],
 	},
 });

@@ -9,7 +9,14 @@ import { Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { requireTenantRole, Tenant, TenantForbidden, tenantScopeId } from "@ktb/tenant";
+import {
+	TENANT_ROLE_RANK,
+	requireTenantRole,
+	Tenant,
+	TenantForbidden,
+	tenantRoleAtLeast,
+	tenantScopeId,
+} from "@ktb/tenant";
 
 import { VaultClinicPage } from "./vault-page.tsx";
 
@@ -563,28 +570,6 @@ export const VaultLive = Layer.effect(
 	}),
 );
 
-// Re-exported for tests: DDL that creates clinic_keys + entity_deks +
-// portal_keys in the in-memory better-sqlite3 test databases of
-// instrumented plugins. `portal_keys` REFERENCES user(id) — consumers
-// create their own `user` stub, so none is declared here.
-export const VAULT_TEST_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE clinic_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE cascade, user_id TEXT NOT NULL, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, wrapped_master_key TEXT, status TEXT NOT NULL DEFAULT 'pending', approved_by_user_id TEXT, approved_at INTEGER, created_at INTEGER NOT NULL DEFAULT 0);
-CREATE UNIQUE INDEX clinic_keys_tenant_wrap_idx ON clinic_keys (tenant_id, wrap_public_key);
-CREATE INDEX clinic_keys_tenant_user_idx ON clinic_keys (tenant_id, user_id);
-CREATE INDEX clinic_keys_tenant_status_idx ON clinic_keys (tenant_id, status);
-CREATE TABLE entity_deks (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE cascade, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reader_kind TEXT NOT NULL, reader_pubkey TEXT NOT NULL, reader_id TEXT, wrapped_dek TEXT NOT NULL, granted_by_user_id TEXT, created_at INTEGER NOT NULL DEFAULT 0);
-CREATE UNIQUE INDEX entity_deks_record_reader_idx ON entity_deks (entity_type, entity_id, reader_pubkey);
-CREATE INDEX entity_deks_tenant_record_idx ON entity_deks (tenant_id, entity_type, entity_id);
-CREATE INDEX entity_deks_reader_idx ON entity_deks (reader_pubkey);
-CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE cascade, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
-CREATE UNIQUE INDEX portal_keys_user_wrap_idx ON portal_keys (user_id, wrap_public_key);
-CREATE INDEX portal_keys_wrap_idx ON portal_keys (wrap_public_key);
-CREATE TABLE vault_secret (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, name TEXT NOT NULL, provider TEXT, kind TEXT NOT NULL DEFAULT 'generic', hint TEXT, wrapped_dek TEXT NOT NULL, ciphertext TEXT NOT NULL, kek_version TEXT, version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', created_by TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER, rotated_at INTEGER);
-CREATE UNIQUE INDEX vault_secret_scope_name_idx ON vault_secret (scope, name);
-CREATE INDEX vault_secret_tenant_idx ON vault_secret (tenant_id);
-`;
-
 export const vaultTablesPlugin = definePlugin({
 	id: "vault.tables",
 	meta: { keywords: ["vault", "tables"] },
@@ -613,10 +598,20 @@ export const vaultSecretsPlugin = definePlugin({
 /**
  * The clinical instances the vault page mounts under, coupled by URL
  * only — the same ids the clinician plugin registers its portals with.
- * Both run loaders under the acting doctor (`subject: "doctor"`), so a
- * secretary manages the clinic vault of the doctor they act for.
+ * Both run loaders under the acting doctor (`subject: "doctor"`); the
+ * page and its sidebar entry are gated to tenant admins
+ * (`when.minUserCounts` + `guard`), so secretaries and members never
+ * reach the clinic vault.
  */
 const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
+
+/** Tenant-admin gate for the vault page — the sidebar's
+ * `when.minUserCounts: { tenantRoleRank }` hides the entry from
+ * members/secretaries, and
+ * this guard is the hard server-side check: personal scope (no bound
+ * tenant) and member-or-below roles get a 404, not a degraded page. */
+const vaultAdminGuard = () =>
+	Effect.map(Tenant, (tenant) => tenant !== null && tenantRoleAtLeast(tenant.role, "admin"));
 
 /**
  * Clinic vault page (T-143): /portal/<doctor|secretary>/vault — key
@@ -633,6 +628,7 @@ export const vaultPagesPlugin = definePlugin({
 		id: `vault.${instance}`,
 		path: `/portal/${instance}/vault`,
 		component: VaultClinicPage,
+		guard: vaultAdminGuard,
 		loader: () =>
 			Effect.gen(function* () {
 				const tenant = yield* Tenant;
@@ -680,6 +676,11 @@ export const vaultChromePlugin = definePlugin({
 		id: `vault.${instance}.nav`,
 		region: "portal.sidebar" as const,
 		portal: instance,
+		// Tenant admins only — secretaries, members and patient accounts
+		// never see the entry (the page guard 404s them regardless).
+		// `tenantRoleRank` is the ChromeUser facet portal shells fill
+		// from the bound tenant's TENANT_ROLE_RANK ordinal.
+		when: { minUserCounts: { tenantRoleRank: TENANT_ROLE_RANK.admin } },
 		content: {
 			kind: "sidebarItem" as const,
 			item: {

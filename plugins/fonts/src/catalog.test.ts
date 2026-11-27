@@ -5,35 +5,13 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import { FontCatalog, FontCatalogLive, listCatalogRows } from "./catalog.ts";
 import { insertFamilyRow, insertProviderRow, setProviderEnabledRow } from "./service.ts";
 
-const DDL = `
-CREATE TABLE font_providers (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	kind text NOT NULL,
-	name text NOT NULL,
-	config text,
-	enabled integer DEFAULT true NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-CREATE TABLE font_families (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	provider_id integer NOT NULL REFERENCES font_providers(id) ON DELETE CASCADE,
-	family text NOT NULL,
-	weights text,
-	status text DEFAULT 'pending' NOT NULL,
-	meta text,
-	created_at integer NOT NULL
-);
-CREATE UNIQUE INDEX font_families_provider_family_idx ON font_families(provider_id, family);
-`;
-
 const makeTestDb = () => {
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1();
 	return { db: makeDb(d1), d1 };
 };
 

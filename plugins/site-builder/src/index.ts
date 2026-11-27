@@ -6,7 +6,7 @@ import { layoutsServicesPlugin } from "@ktb/layouts";
 import { Layouts } from "@ktb/layouts/service";
 import { pagesServicesPlugin } from "@ktb/pages";
 import { Pages } from "@ktb/pages/service";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminGuard, platformPanelPlugin } from "@ktb/platform";
 import { routeContribution } from "@ktb/platform/routes";
 
 import { SiteBuilderEditorPage } from "./editor-lazy.tsx";
@@ -48,16 +48,6 @@ const parseEditPath = (path: string): EditTarget | null => {
 	return null;
 };
 
-/** Platform-admin gate — same contract as every /platform page. */
-const adminGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
-
 /** Resolve the wildcard path to the entity's builder document. Both
  * services are optional edges: a host without pages/layouts (or with
  * them disabled) resolves null → guard 404s / loader yields null. */
@@ -95,7 +85,7 @@ const fetchDocument = (path: string): Effect.Effect<BuilderDocumentWire | null, 
 const editorGuard = (path: string) =>
 	Effect.gen(function* () {
 		if (parseEditPath(path) === null) return false;
-		if (!(yield* adminGuard())) return false;
+		if (!(yield* platformAdminGuard())) return false;
 		const doc = yield* fetchDocument(path);
 		return doc !== null;
 	});

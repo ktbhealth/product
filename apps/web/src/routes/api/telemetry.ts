@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as Effect from "effect/Effect";
 
+import { env } from "cloudflare:workers";
+
 import {
 	clientEventsDropped,
 	decodeClientTelemetryBatch,
@@ -9,9 +11,10 @@ import {
 	recordUnsafe,
 	tagged,
 	Telemetry,
+	type ObservabilityEnv,
 } from "@ktb/observability";
+import { checkTelemetryIngestRateLimit } from "@ktb/observability-edge";
 import { run } from "#/lib/platform.ts";
-import { checkTelemetryIngestRateLimit } from "#/lib/telemetry-rate-limit.ts";
 
 /**
  * POST /api/telemetry — browser telemetry ingest. The client batches
@@ -22,13 +25,13 @@ import { checkTelemetryIngestRateLimit } from "#/lib/telemetry-rate-limit.ts";
  * bounded by the payload size cap, batch size caps, the disabled flag,
  * client-event sampling, and the fixed-window
  * ingest rate limit (per client IP + global ceiling — see
- * lib/telemetry-rate-limit.ts).
+ * @ktb/observability-edge).
  */
 async function handle({ request }: { request: Request }) {
 	// Shed over-limit traffic before touching the body — invalid-payload
 	// floods are rate-limited too. Limiter failures fail open (telemetry
 	// is best-effort); a denied hit counts as a dropped batch.
-	const rateLimit = checkTelemetryIngestRateLimit(request);
+	const rateLimit = checkTelemetryIngestRateLimit(request, env as unknown as ObservabilityEnv);
 	if (!rateLimit.allowed) {
 		recordUnsafe(tagged(clientEventsDropped, { reason: "rate_limited" }), 1);
 		return Response.json(

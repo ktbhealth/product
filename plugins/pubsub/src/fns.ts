@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { sessionHandler } from "@ktb/server-fns";
 
 import { PubSubAdmin, type PubSubPublishResult } from "./admin.ts";
 
@@ -21,17 +21,17 @@ const decodePublishInput = Schema.decodeUnknownSync(PublishInput);
 
 export const publishPubSubMessageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePublishInput(input))
-	.handler(async ({ data }): Promise<PubSubPublishResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* PubSubAdmin;
-				return yield* admin.publish(data.topicId, data.payload);
-			}).pipe(
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed<PubSubPublishResult>({ ok: false, reason: "forbidden" }),
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<PubSubPublishResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* PubSubAdmin;
+					return yield* admin.publish(data.topicId, data.payload);
+				}).pipe(
+					Effect.catchTag("Forbidden", () =>
+						Effect.succeed<PubSubPublishResult>({ ok: false, reason: "forbidden" }),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);

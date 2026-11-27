@@ -18,9 +18,9 @@ const cookie = (value: string) => new Headers({ cookie: value });
 
 describe("profile ports", () => {
 	it("declare stable service keys", () => {
-		expect(DoctorProfiles.key).toBe("@ktb/auth/DoctorProfiles");
-		expect(DoctorDelegations.key).toBe("@ktb/auth/DoctorDelegations");
-		expect(PatientProfiles.key).toBe("@ktb/auth/PatientProfiles");
+		expect(DoctorProfiles.key).toBe("@ktb/server-fns/DoctorProfiles");
+		expect(DoctorDelegations.key).toBe("@ktb/server-fns/DoctorDelegations");
+		expect(PatientProfiles.key).toBe("@ktb/server-fns/PatientProfiles");
 	});
 
 	it("declare stable cookie names", () => {

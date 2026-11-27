@@ -17,6 +17,7 @@ export {
 	resetServerRuntime,
 	run,
 	runAs,
+	runtimeProbe,
 	setServerRuntime,
 	type CronJobInfo,
 	type CronRunInfo,
@@ -42,6 +43,17 @@ export {
 	type ScheduledJobUpdateInput,
 	type ServerRuntime,
 } from "./runtime.ts";
+export {
+	actingAs,
+	DOCTOR_PROFILE_COOKIE,
+	DoctorDelegations,
+	DoctorProfiles,
+	PATIENT_PROFILE_COOKIE,
+	PatientProfiles,
+	profileIdFromHeaders,
+	resolveDoctorProfile,
+	resolvePatientProfile,
+} from "./profiles.ts";
 export {
 	NotADoctorError,
 	UnauthenticatedError,
@@ -72,4 +84,15 @@ export {
 	pluginEnabledFn,
 	requirePluginEnabled,
 } from "./plugin-route.ts";
+export {
+	type BoundRun,
+	doctorHandler,
+	forbiddenTo,
+	optionalDoctorHandler,
+	optionalSessionHandler,
+	pluginHandler,
+	type ServerFnHandlerContext,
+	serverFnHandlerMocks,
+	sessionHandler,
+} from "./handlers.ts";
 export { peekServerRuntime } from "./runtime.ts";

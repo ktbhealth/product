@@ -4,9 +4,10 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import { eq } from "drizzle-orm";
 
-import { Accounts, DoctorProfiles, PatientProfiles, type CreateAccountResult } from "@ktb/auth";
+import { Accounts, type CreateAccountResult } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles } from "@ktb/server-fns";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	accountExists,
@@ -32,14 +33,10 @@ import { inviteTokens } from "./schema.ts";
 
 // taken@ktb.test already has an account; every other address is new.
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, email TEXT NOT NULL);
-INSERT INTO "user" VALUES ('u-taken', 'taken@ktb.test');
-CREATE TABLE invite_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL, email TEXT NOT NULL, kind TEXT NOT NULL, inviter_name TEXT NOT NULL, expires_at INTEGER NOT NULL, consumed_at INTEGER, created_at INTEGER DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL);
-CREATE UNIQUE INDEX invite_tokens_token_hash_unique ON invite_tokens (token_hash);
-CREATE INDEX invite_tokens_email_idx ON invite_tokens (email);
+INSERT INTO "user" (id, email, name, created_at, updated_at) VALUES ('u-taken', 'taken@ktb.test', 'u-taken', 0, 0);
 `;
 
-const freshDb = () => makeDb(makeD1(DDL));
+const freshDb = () => makeDb(makeTestD1(DDL));
 
 const NOW = new Date("2026-03-01T12:00:00.000Z");
 const secretaryInvite = {

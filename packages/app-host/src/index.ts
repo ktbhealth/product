@@ -178,6 +178,9 @@ const commandGroups = apiEntries.flatMap(({ pkg, value }) =>
 export interface AppEnv extends ObservabilityEnv {
 	readonly DB: SqlDatabase;
 	readonly RECALL_API_KEY?: string;
+	/** Recall bot display name (bot-recall driver) — product branding
+	 * supplied by the app composition. */
+	readonly RECALL_BOT_NAME?: string;
 	readonly BETTER_AUTH_SECRET?: string;
 	readonly BETTER_AUTH_URL?: string;
 	readonly CAPTCHA_STUB?: unknown;
@@ -549,7 +552,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	).pipe(Layer.provide(envAnamnesisEngineLive));
 	// Telemetry port: driver-selected exporter set (OTLP when configured,
 	// console JSON otherwise) — provides Logger/Tracer references, the
-	// Telemetry service, metric instrumentation and KTB_LOG_LEVEL.
+	// Telemetry service, metric instrumentation and the LOG_LEVEL var.
 	const TelemetryLive = layerFor<Telemetry>(Telemetry.key, env);
 	// Eval validator runner — absent unless the local pipeline env is
 	// wired; the plugin then leaves run rows `queued` (P-081).

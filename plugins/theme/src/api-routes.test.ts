@@ -18,7 +18,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { themeAssets } from "@ktb/db/schema";
 import { Fonts } from "@ktb/fonts";
 import type { FontFamilySummary, FontProviderSummary } from "@ktb/fonts/types";
@@ -39,31 +40,6 @@ const handlersOf = (r: unknown) =>
 	).options.server.handlers;
 
 const DDL = `
-CREATE TABLE theme_assets (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	theme_id integer,
-	kind text NOT NULL,
-	r2_key text,
-	status text DEFAULT 'pending' NOT NULL,
-	variants text,
-	created_at integer NOT NULL,
-	FOREIGN KEY (theme_id) REFERENCES theme_definitions(id) ON UPDATE no action ON DELETE set null
-);
-CREATE TABLE theme_definitions (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	scope text NOT NULL,
-	scope_id text DEFAULT '' NOT NULL,
-	app_name text,
-	seeds text NOT NULL,
-	tokens text NOT NULL,
-	fonts text,
-	brand text,
-	enabled integer DEFAULT true NOT NULL,
-	is_main integer DEFAULT false NOT NULL,
-	version integer DEFAULT 1 NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
 INSERT INTO theme_definitions (scope, scope_id, seeds, tokens, created_at)
 	VALUES ('platform', '', '{}', '{}', 0);
 `;
@@ -90,7 +66,7 @@ const authStub = Auth.of({
 	},
 } as never);
 
-const db = makeDb(makeD1(DDL));
+const db = makeDb(makeTestD1(DDL));
 
 const infra = Layer.mergeAll(
 	Layer.succeed(Db, db),

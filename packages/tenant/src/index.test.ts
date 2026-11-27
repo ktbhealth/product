@@ -15,6 +15,7 @@ import {
 	TenantResolverLive,
 	tenantScopeId,
 	tenantSelectorFromHeaders,
+	tenantStorageId,
 	withTenantAccess,
 	type TenantDirectoryShape,
 	type TenantMembership,
@@ -139,6 +140,21 @@ describe("tenantScopeId", () => {
 		expect(tenantScopeId(tenantA)).toBe(1);
 		expect(tenantScopeId({ ...tenantA, id: "42" })).toBe(42);
 		expect(tenantScopeId({ ...tenantA, id: "clinic-x" })).toBeNull();
+	});
+});
+
+describe("tenantStorageId", () => {
+	it("normalizes TenantId to the integer tenant_id storage form", () => {
+		expect(tenantStorageId(null)).toBeNull();
+		expect(tenantStorageId(undefined)).toBeNull();
+		expect(tenantStorageId(7)).toBe(7);
+		expect(tenantStorageId("42")).toBe(42);
+		expect(tenantStorageId("-3")).toBe(-3);
+		// Non-numeric strings and non-finite numbers cannot be stamped.
+		expect(tenantStorageId("clinic-x")).toBeNull();
+		expect(tenantStorageId("4.5")).toBeNull();
+		expect(tenantStorageId(Number.NaN)).toBeNull();
+		expect(tenantStorageId(Number.POSITIVE_INFINITY)).toBeNull();
 	});
 });
 

@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -20,13 +21,7 @@ import { Permissions } from "@ktb/rbac";
 
 import { syncBaseline } from "./baseline.ts";
 import { I18nAdmin, type I18nAdminShape } from "./contract.ts";
-import {
-	I18N_TEST_DDL,
-	i18nLocales,
-	i18nMessages,
-	i18nNamespaces,
-	i18nPanelPlugin,
-} from "./index.ts";
+import { i18nLocales, i18nMessages, i18nNamespaces, i18nPanelPlugin } from "./index.ts";
 import {
 	I18nRuntime,
 	I18nRuntimeLive,
@@ -46,7 +41,7 @@ import {
 let db: DbClient;
 
 beforeAll(() => {
-	db = makeDb(makeD1(I18N_TEST_DDL));
+	db = makeDb(makeTestD1());
 });
 
 describe("syncBaseline", () => {
@@ -70,7 +65,7 @@ describe("syncBaseline", () => {
 		// cost ~2 queries per row; the batched sync costs 1 select +
 		// ceil(n/9) inserts (D1's 100 bound-param cap ÷ 10 cols/row)
 		// + 1 namespaces insert.
-		const inner = makeD1(I18N_TEST_DDL);
+		const inner = makeTestD1();
 		let prepares = 0;
 		const counting = {
 			...inner,
@@ -374,7 +369,7 @@ describe("store", () => {
 	});
 
 	it("catalogStamp reads r0 before the first revision bump", async () => {
-		const fresh = makeDb(makeD1(I18N_TEST_DDL));
+		const fresh = makeDb(makeTestD1());
 		expect(await catalogStamp(fresh)).toBe("r0");
 	});
 });
@@ -660,7 +655,7 @@ describe("I18nRuntime cache", () => {
 
 describe("runtime auto-seed", () => {
 	it("seeds the qps locale and baseline namespaces on an empty database", async () => {
-		const fresh = makeDb(makeD1(I18N_TEST_DDL));
+		const fresh = makeDb(makeTestD1());
 		const runtime = ManagedRuntime.make(
 			I18nRuntimeLive.pipe(Layer.provide(Layer.succeed(Db, fresh))),
 		);
@@ -705,7 +700,7 @@ describe("runtime auto-seed", () => {
 	});
 
 	it("retries the layer-build seed through transient failures", async () => {
-		const inner = makeDb(makeD1(I18N_TEST_DDL));
+		const inner = makeDb(makeTestD1());
 		// Fail the first two seed attempts (locales insert rejects), then
 		// delegate — the exponential-backoff retry must still seed.
 		let failures = 2;
@@ -736,7 +731,7 @@ describe("runtime auto-seed", () => {
 	});
 
 	it("re-seeds lazily via catalogFor after the build seed exhausts retries", async () => {
-		const inner = makeDb(makeD1(I18N_TEST_DDL));
+		const inner = makeDb(makeTestD1());
 		// 1 initial attempt + SEED_RETRY_TIMES retries, one insert call
 		// each — exhaust them all at layer build.
 		let failures = 4;

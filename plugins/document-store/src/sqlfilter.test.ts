@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { documentCollections, documentRecords } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -13,22 +14,7 @@ import { DocumentCollections } from "./collection.ts";
 import { f } from "./fields.ts";
 import { matchFilter, type DocumentFilter } from "./query.ts";
 import { compileFilterPrefilter } from "./sqlfilter.ts";
-import { DocumentStore, DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
-
-/**
- * SQL pushdown tests (T-149): compileFilterPrefilter unit coverage
- * plus an end-to-end equivalence matrix — `find` results must equal
- * `matchFilter` applied to the same stored documents, since the SQL
- * fragment is only a superset prefilter and the JS matcher remains
- * the semantic source of truth.
- */
-
-const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-`;
+import { DocumentStore, DocumentStoreLive } from "./service.ts";
 
 const sqldocs = defineCollection({
 	name: "test.sqldocs",
@@ -166,7 +152,7 @@ describe("find() SQL pushdown equivalence", () => {
 	const insertedIds: number[] = [];
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: [sqldocs, migrated] }),

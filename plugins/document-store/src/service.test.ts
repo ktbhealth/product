@@ -2,8 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { documentCollections, documentRecords } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { Tenant, TenantAccess, type Tenant as TenantValue } from "@ktb/tenant";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
@@ -30,7 +31,6 @@ import {
 	DocumentStoreLive,
 	DocumentValidationError,
 	DuplicateFieldValue,
-	DOCUMENT_STORE_TEST_DDL,
 	InvalidDocumentQuery,
 	type DocumentBatchResult,
 	RecordNotFound,
@@ -40,11 +40,7 @@ import {
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a'), (2, 'clinic-b');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0), (2, 'clinic-b', 'clinic-b', 'clinic', 0, 0);
 `;
 
 const targets = defineCollection({
@@ -169,7 +165,7 @@ describe("DocumentStoreLive", () => {
 	const checkerCalls = new Map<string, number>();
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),
@@ -964,7 +960,7 @@ describe("DocumentStoreLive permissions + guards (T-128)", () => {
 	};
 
 	beforeAll(() => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: PERM_DEFS }),
@@ -1463,7 +1459,7 @@ describe("DocumentStoreLive batch (T-126)", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: BATCH_DEFS }),
@@ -2378,7 +2374,7 @@ describe("DocumentStoreLive migrations (T-130)", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: MIG_DEFS }),
@@ -2687,7 +2683,7 @@ describe("DocumentStoreLive telemetry (T-131)", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),
@@ -2893,7 +2889,7 @@ describe("DocumentStoreLive entity refs (T-149)", () => {
 				});
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, {

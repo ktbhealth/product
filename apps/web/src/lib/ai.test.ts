@@ -82,6 +82,46 @@ describe("createLocalAi", () => {
 		expect(form.get("file")).toBeInstanceOf(Blob);
 	});
 
+	it("routes diarize:true inputs to /v1/audio/diarization", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () =>
+			jsonResponse({
+				duration: 6,
+				segments: [{ start: 0, end: 3, speaker: "SPEAKER_00" }],
+			}),
+		);
+		const ai = createLocalAi("http://localhost:8080/v1/", fetchImpl);
+		const out = await ai.run("diarization", { audio: "aGk=", diarize: true });
+		expect((out as { segments: { speaker: string }[] }).segments[0]!.speaker).toBe("SPEAKER_00");
+		const [url, init] = fetchImpl.mock.calls[0]!;
+		expect(url).toBe("http://localhost:8080/v1/audio/diarization");
+		const form = init?.body as FormData;
+		expect(form.get("file")).toBeInstanceOf(Blob);
+		expect(form.get("model")).toBeNull(); // rc.3 schema has no model field
+	});
+
+	it("sends Authorization when an apiKey is provided", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
+		const ai = createLocalAi("http://localhost:8080", fetchImpl, "secret-key");
+		await ai.run("whisper", { audio: "aGk=" });
+		const headers = fetchImpl.mock.calls[0]![1]?.headers as Record<string, string>;
+		expect(headers.authorization).toBe("Bearer secret-key");
+	});
+
+	it("omits Authorization without an apiKey", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
+		const ai = createLocalAi("http://localhost:8080", fetchImpl);
+		await ai.run("whisper", { audio: "aGk=" });
+		expect(fetchImpl.mock.calls[0]![1]?.headers).toEqual({});
+	});
+
+	it("throws on a failed diarization request", async () => {
+		const failing = vi.fn<typeof fetch>(async () => new Response("nope", { status: 502 }));
+		const ai = createLocalAi("http://localhost:8080", failing);
+		await expect(ai.run("diarization", { audio: [1], diarize: true })).rejects.toThrow(
+			"local AI diarization failed: HTTP 502",
+		);
+	});
+
 	it("accepts number[] audio payloads", async () => {
 		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
 		const ai = createLocalAi("http://localhost:8080", fetchImpl);

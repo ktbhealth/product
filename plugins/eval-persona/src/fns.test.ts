@@ -14,14 +14,15 @@ vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-provider";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { LlmFactory, LlmPort } from "@ktb/eval-consultation";
 import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { EVAL_PERSONA_TEST_DDL, EvalInstancesLive, EvalPersonasLive } from "./index.ts";
+import { EvalInstancesLive, EvalPersonasLive } from "./index.ts";
 import {
 	createInstanceFn,
 	deleteInstanceFn,
@@ -60,7 +61,7 @@ describe("eval-persona fns", () => {
 		runtime.runPromise(Effect.flatMap(AiEndpoints, (s) => s.create(input)));
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(EVAL_PERSONA_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(

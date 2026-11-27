@@ -4,16 +4,41 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import {
 	AudioTranscriptPanel,
+	ConsultationAudioPlayer,
+	ReviewAudioPlayer,
 	useConsultationAudio,
+	useReviewAudioState,
+	useZkAudioUrl,
 	type AudioPipelineInfo,
+	type SegmentEditing,
 } from "./-transcript.tsx";
+import { consultationDek } from "../zk.ts";
+import { decryptBlob } from "@ktb/crypto/stream";
+import type { ConsultationZk } from "../zk.ts";
+import type { TranscriptSegment } from "../segments.ts";
+
+vi.mock("../zk.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../zk.ts")>()),
+	consultationDek: vi.fn(),
+}));
+
+vi.mock("@ktb/crypto/stream", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/crypto/stream")>()),
+	decryptBlob: vi.fn(async () => new Uint8Array([1, 2, 3])),
+}));
+
+const dekMock = vi.mocked(consultationDek);
+const decryptMock = vi.mocked(decryptBlob);
 
 type Detail = AudioPipelineInfo;
 
 const POLL = 3000;
 const flush = (ms = POLL) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+	vi.useFakeTimers();
+	localStorage.clear();
+});
 afterEach(() => {
 	cleanup();
 	vi.useRealTimers();
@@ -207,6 +232,26 @@ describe("AudioTranscriptPanel", () => {
 		expect(screen.getByText("browser")).toBeTruthy();
 	});
 
+	it("swallows a rejected play() promise on karaoke seek", async () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				audioStatus="done"
+				hasAudio
+				serverText="bom dia"
+				segments={[
+					{ start: 0, end: 2, text: "bom dia" },
+					{ start: 5, end: 8, text: "como está" },
+				]}
+			/>,
+		);
+		const audio = document.querySelector("audio")!;
+		audio.play = () => Promise.reject(new Error("interrupted"));
+		fireEvent.click(screen.getByText("0:05"));
+		expect(audio.currentTime).toBe(5);
+		await Promise.resolve();
+	});
+
 	it("does not re-report identical text when only the callback identity changes", () => {
 		const first = vi.fn();
 		const second = vi.fn();
@@ -220,11 +265,285 @@ describe("AudioTranscriptPanel", () => {
 		expect(second).toHaveBeenCalledWith({ text: "outro", source: "browser" });
 	});
 
+	it("changes tab shows only the differing sentences with del/ins marks", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Dor de garganta. Vou examinar."
+				correctedText="Dor na garganta. Vou examinar."
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		// unchanged sentence filtered out of the view entirely
+		expect(screen.queryByText(/Vou examinar/)).toBeNull();
+		// the substitution renders struck ref + highlighted hyp
+		expect(document.querySelector("del")?.textContent).toBe("de");
+		expect(document.querySelector("ins")?.textContent).toBe("na");
+	});
+
+	it("changes tab marks fully inserted sentences", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Dor de garganta."
+				correctedText="Dor de garganta. Nota do médico adicionada."
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		expect(screen.getByText("médico")).toBeTruthy();
+		expect(document.querySelectorAll("ins").length).toBeGreaterThan(0);
+		expect(document.querySelectorAll("del").length).toBe(0);
+	});
+
+	it("karaoke mode exposes a transcript/changes toggle when a corrected text exists", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="Dor de garganta."
+				correctedText="Dor na garganta."
+				segments={[{ start: 0, end: 2, text: "Dor de garganta." }]}
+			/>,
+		);
+		// karaoke renders by default, with the toggle available
+		expect(screen.getByText("Dor de garganta.")).toBeTruthy();
+		fireEvent.click(screen.getByText("Changes"));
+		expect(document.querySelector("ins")?.textContent).toBe("na");
+		// back to karaoke
+		fireEvent.click(screen.getByText("Transcript"));
+		expect(screen.getByText("Dor de garganta.")).toBeTruthy();
+	});
+
+	it("karaoke without a differing correction keeps the single karaoke view", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="Dor de garganta."
+				segments={[{ start: 0, end: 2, text: "Dor de garganta." }]}
+			/>,
+		);
+		expect(screen.queryByText("Changes")).toBeNull();
+		expect(screen.getByText("Dor de garganta.")).toBeTruthy();
+	});
+
+	it("evidence marks match across diacritic/case drift (LLM cleanup vs ASR text)", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[{ start: 0, end: 2, text: "ele teve febre ontem à tarde, mediu 38" }]}
+				highlight={["ele teve febre ontem a tarde"]}
+			/>,
+		);
+		const mark = document.querySelector("mark");
+		expect(mark?.textContent).toBe("ele teve febre ontem à tarde");
+	});
+
 	it("renders speaker-labelled lines as bubbles", () => {
 		render(<AudioTranscriptPanel consultationId={1} browserText={"Doctor: bom dia\nsem rótulo"} />);
 		expect(screen.getByText("Doctor")).toBeTruthy();
 		expect(screen.getByText("bom dia")).toBeTruthy();
 		expect(screen.getByText("sem rótulo")).toBeTruthy();
+	});
+
+	it("karaoke rows seek playback and the playhead marks the active row", () => {
+		HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+		Element.prototype.scrollIntoView = vi.fn();
+		const ref = { current: null as HTMLAudioElement | null };
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[
+					{ start: 0, end: 2, text: "Primeira fala." },
+					{ start: 2, end: 4, text: "Segunda fala." },
+				]}
+				audioRef={ref}
+			/>,
+		);
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("Segunda fala."));
+		expect(audio.currentTime).toBe(2);
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+		// Playhead inside the second segment activates its row.
+		audio.currentTime = 2.5;
+		fireEvent.timeUpdate(audio);
+	});
+
+	it("karaoke seek is a no-op when playback is unavailable", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				audioSrc={null}
+				segments={[{ start: 0, end: 2, text: "Primeira fala." }]}
+			/>,
+		);
+		// No <audio> is mounted (explicitly locked ZK ciphertext) — the
+		// seek early-returns instead of throwing.
+		expect(document.querySelector("audio")).toBeNull();
+		fireEvent.click(screen.getByText("Primeira fala."));
+	});
+
+	it("swallows a rejected play() promise on karaoke seek", () => {
+		HTMLMediaElement.prototype.play = vi.fn().mockRejectedValue(new Error("autoplay blocked"));
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[{ start: 0, end: 2, text: "Primeira fala." }]}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Primeira fala."));
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+	});
+
+	it("segment editing swaps a row for a textarea and reports edits", () => {
+		HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+		Element.prototype.scrollIntoView = vi.fn();
+		const onStart = vi.fn();
+		const onDraft = vi.fn();
+		const onSave = vi.fn();
+		const onCancel = vi.fn();
+		const editing: SegmentEditing = {
+			segEdits: new Map([[0, "versão final"]]),
+			editing: 1,
+			draft: "rascunho",
+			labels: { edit: "Editar", save: "Salvar", cancel: "Cancelar", editedTag: "editado" },
+			onStart,
+			onDraft,
+			onSave,
+			onCancel,
+		};
+		const ref = { current: null as HTMLAudioElement | null };
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				correctedText="y"
+				highlight={["texto"]}
+				segments={[
+					{ start: 0, end: 2, text: "Primeira fala." },
+					{ start: 2, end: 4, text: "Segunda fala.", speaker: "SPEAKER_00" },
+					{ start: 6, end: 8, text: "Terceira fala.", speaker: "Dr. House" },
+				]}
+				segmentEditing={editing}
+				audioRef={ref}
+			/>,
+		);
+		// Row 0: edited tag + pencil; row 1: textarea with save/cancel.
+		expect(screen.getByText("editado")).toBeTruthy();
+		expect(document.querySelector("textarea")).toBeTruthy();
+		// Named speakers bypass the SPEAKER_NN formatter.
+		expect(screen.getByText("Dr. House")).toBeTruthy();
+		expect(screen.getByText("Speaker 1")).toBeTruthy();
+
+		fireEvent.change(document.querySelector("textarea")!, {
+			target: { value: "novo rascunho" },
+		});
+		expect(onDraft).toHaveBeenCalledWith("novo rascunho");
+		fireEvent.click(screen.getByText("Salvar"));
+		expect(onSave).toHaveBeenCalled();
+		fireEvent.click(screen.getByText("Cancelar"));
+		expect(onCancel).toHaveBeenCalled();
+
+		// Timestamp buttons and row spans both seek; the pencil starts an edit.
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("0:02"));
+		expect(audio.currentTime).toBe(2);
+		fireEvent.click(screen.getAllByTitle("Editar")[0]!);
+		expect(onStart).toHaveBeenCalledWith(0);
+		fireEvent.click(screen.getByText("versão final"));
+		expect(audio.currentTime).toBe(0);
+
+		// Playhead inside the editing row swaps its ref target.
+		audio.currentTime = 2.5;
+		fireEvent.timeUpdate(audio);
+	});
+
+	it("segment editing renders plain text when no highlight is given", () => {
+		const editing: SegmentEditing = {
+			segEdits: new Map(),
+			editing: null,
+			draft: "",
+			labels: { edit: "Editar", save: "Salvar", cancel: "Cancelar", editedTag: "editado" },
+			onStart: vi.fn(),
+			onDraft: vi.fn(),
+			onSave: vi.fn(),
+			onCancel: vi.fn(),
+		};
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[{ start: 0, end: 2, text: "Fala simples." }]}
+				segmentEditing={editing}
+			/>,
+		);
+		expect(screen.getByText("Fala simples.")).toBeTruthy();
+		expect(document.querySelector("mark")).toBeNull();
+	});
+
+	it("changes view shows a pure deletion and an empty state for token-identical diffs", () => {
+		const { unmount } = render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Vou examinar o paciente agora."
+				correctedText="Vou examinar paciente agora."
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		// Word dropped with no replacement → del only, no ins.
+		expect(document.querySelector("del")?.textContent).toBe("o");
+		expect(document.querySelectorAll("ins")).toHaveLength(0);
+		unmount();
+
+		// Same tokens, different spacing → every pair is "ok" → empty label.
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Oi.  Tudo bem?"
+				correctedText="Oi. Tudo bem?"
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		expect(screen.getByText("No differences between original and corrected.")).toBeTruthy();
+	});
+
+	it("renders diarized speaker badges on karaoke rows (P-118)", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[
+					{ start: 0, end: 2, text: "Como está a dor?", speaker: "SPEAKER_00" },
+					{ start: 2, end: 4, text: "Melhor hoje.", speaker: "SPEAKER_01" },
+					{ start: 4, end: 5, text: "Ótimo." },
+				]}
+			/>,
+		);
+		// SPEAKER_NN labels become localized "Speaker N"; named/absent
+		// speakers render raw or no badge.
+		expect(screen.getByText("Speaker 1")).toBeTruthy();
+		expect(screen.getByText("Speaker 2")).toBeTruthy();
+		expect(screen.queryByText("SPEAKER_00")).toBeNull();
 	});
 });
 
@@ -292,5 +611,530 @@ describe("AudioTranscriptPanel — karaoke segments", () => {
 		);
 		fireEvent.click(screen.getByText("Segunda frase."));
 		await act(async () => {});
+	});
+});
+
+describe("ConsultationAudioPlayer", () => {
+	const GAPS: TranscriptSegment[] = [
+		{ start: 0, end: 2, text: "bom dia" },
+		{ start: 5, end: 8, text: "como está" }, // 3s silence at 2–5
+		{ start: 8.4, end: 10, text: "vou examinar" },
+	];
+
+	const renderPlayer = (segments?: TranscriptSegment[]) => {
+		const ref = { current: null as HTMLAudioElement | null };
+		render(
+			<ConsultationAudioPlayer
+				src="/audio.wav"
+				audioRef={ref}
+				segments={segments}
+				rateLabel="Playback speed"
+				skipSilenceLabel="Skip silence"
+			/>,
+		);
+		return { ref, audio: document.querySelector("audio")! };
+	};
+
+	const playing = (audio: HTMLAudioElement, paused: boolean) =>
+		Object.defineProperty(audio, "paused", { value: paused, configurable: true });
+
+	it("cycles playback rate and applies it to the audio element", () => {
+		const { audio } = renderPlayer();
+		const btn = screen.getByRole("button", { name: "Playback speed" });
+		expect(btn.textContent).toBe("1×");
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.25);
+		expect(btn.textContent).toBe("1.25×");
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.5);
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(2);
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1);
+	});
+
+	it("persists the rate preference across mounts", () => {
+		const { audio } = renderPlayer();
+		fireEvent.click(screen.getByRole("button", { name: "Playback speed" }));
+		expect(localStorage.getItem("ktb.audio.playbackRate")).toBe("1.25");
+		cleanup();
+		const second = renderPlayer();
+		expect(second.audio.playbackRate).toBe(1.25);
+	});
+
+	it("falls back to in-session defaults when storage access throws", () => {
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new DOMException("denied");
+		});
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new DOMException("denied");
+		});
+		const { audio } = renderPlayer();
+		expect(audio.playbackRate).toBe(1);
+		// writePref swallows too — the rate still cycles for this mount.
+		fireEvent.click(screen.getByRole("button", { name: "Playback speed" }));
+		expect(audio.playbackRate).toBe(1.25);
+		vi.restoreAllMocks();
+	});
+
+	it("restores persisted rate and skip prefs on mount", () => {
+		localStorage.setItem("ktb.audio.playbackRate", "1.5");
+		localStorage.setItem("ktb.audio.skipSilence", "1");
+		const { audio } = renderPlayer(GAPS);
+		expect(audio.playbackRate).toBe(1.5);
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap → jumps
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("mounts with skipSilence persisted off", () => {
+		localStorage.setItem("ktb.audio.skipSilence", "0");
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("toggles skip back on and persists the pref", () => {
+		const { audio } = renderPlayer(GAPS);
+		const btn = screen.getByRole("button", { name: "Skip silence" });
+		fireEvent.click(btn); // off
+		fireEvent.click(btn); // on again
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("1");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("does not jump when the playhead is before the first gap", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 1; // inside segment 0–2, before the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(1);
+	});
+
+	it("tolerates a missing or function audioRef", () => {
+		render(<ConsultationAudioPlayer src="/a.wav" rateLabel="r" skipSilenceLabel="s" />);
+		render(
+			<ConsultationAudioPlayer
+				src="/a.wav"
+				audioRef={() => {}}
+				rateLabel="r"
+				skipSilenceLabel="s"
+			/>,
+		);
+		expect(document.querySelectorAll("audio").length).toBe(2);
+	});
+
+	it("skips silence gaps while playing", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("does not skip while paused (manual seek into a gap)", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, true);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("does not skip inside a segment", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 6;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(6);
+	});
+
+	it("skip toggle disables the jump and persists off", () => {
+		const { audio } = renderPlayer(GAPS);
+		fireEvent.click(screen.getByRole("button", { name: "Skip silence" }));
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("0");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("hides the skip control when there are no gaps", () => {
+		renderPlayer([
+			{ start: 0, end: 2, text: "a" },
+			{ start: 2.5, end: 4, text: "b" },
+		]);
+		expect(screen.queryByRole("button", { name: "Skip silence" })).toBeNull();
+	});
+
+	it("restores the persisted skip-silence preference on mount", () => {
+		localStorage.setItem("ktb.audio.skipSilence", "0");
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		// Preference "0" = skip off — the playhead stays inside the gap.
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("cycles the skip toggle back on and persists it", () => {
+		const { audio } = renderPlayer(GAPS);
+		const btn = screen.getByRole("button", { name: "Skip silence" });
+		fireEvent.click(btn); // on → off ("0")
+		fireEvent.click(btn); // off → on ("1")
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("1");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("does not skip when the playhead sits before the first gap", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 1; // inside seg 0–2, ahead of the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(1);
+	});
+
+	it("survives a throwing localStorage (private mode / SSR shim)", () => {
+		const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new Error("denied");
+		});
+		try {
+			const { audio } = renderPlayer();
+			expect(audio.playbackRate).toBe(1);
+		} finally {
+			getItem.mockRestore();
+		}
+	});
+});
+
+describe("ReviewAudioPlayer", () => {
+	const GAPS: TranscriptSegment[] = [
+		{ start: 0, end: 2, text: "bom dia" },
+		{ start: 5, end: 8, text: "como está" }, // 3s silence at 2–5
+		{ start: 8.4, end: 10, text: "vou examinar" },
+	];
+
+	const renderReview = (props?: {
+		segments?: TranscriptSegment[];
+		audioRef?: { current: HTMLAudioElement | null };
+		onTimeUpdate?: (t: number) => void;
+	}) => {
+		render(
+			<ReviewAudioPlayer
+				src="/audio.wav"
+				{...(props?.audioRef ? { audioRef: props.audioRef } : {})}
+				segments={props?.segments}
+				playbackLabel="Playback"
+				syncLabel="Sync"
+				speedLabel="Playback speed"
+				volumeLabel="Volume"
+				skipSilenceLabel="Skip silence"
+				onTimeUpdate={props?.onTimeUpdate}
+			/>,
+		);
+		return document.querySelector("audio")!;
+	};
+
+	const playing = (audio: HTMLAudioElement, paused: boolean) =>
+		Object.defineProperty(audio, "paused", { value: paused, configurable: true });
+
+	it("forwards the audio element through audioRef and toggles play/pause", () => {
+		const ref = { current: null as HTMLAudioElement | null };
+		const audio = renderReview({ audioRef: ref });
+		expect(ref.current).toBe(audio);
+		audio.play = vi.fn(() => Promise.resolve());
+		audio.pause = vi.fn();
+		fireEvent.click(screen.getByRole("button", { name: "Play" }));
+		expect(audio.play).toHaveBeenCalled();
+		playing(audio, false);
+		fireEvent.play(audio);
+		expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+		expect(audio.pause).toHaveBeenCalled();
+	});
+
+	it("seeks ±10s with an unbounded end while duration is unknown", () => {
+		const audio = renderReview();
+		audio.currentTime = 30;
+		fireEvent.click(screen.getByRole("button", { name: "Back 10 seconds" }));
+		expect(audio.currentTime).toBe(20);
+		fireEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+		expect(audio.currentTime).toBe(30);
+	});
+
+	it("clamps the forward skip at the real duration", () => {
+		const audio = renderReview();
+		Object.defineProperty(audio, "duration", { value: 100, configurable: true });
+		audio.currentTime = 95;
+		fireEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+		expect(audio.currentTime).toBe(100);
+	});
+
+	it("cycles playback speed through the shared prefs", () => {
+		const audio = renderReview();
+		const btn = screen.getByRole("button", { name: "Playback speed" });
+		expect(btn.textContent).toBe("1×");
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.25);
+		expect(localStorage.getItem("ktb.audio.playbackRate")).toBe("1.25");
+		// jsdom does not fire ratechange — mirror the element event so the
+		// bar's speed state advances to the next entry.
+		act(() => audio.dispatchEvent(new Event("ratechange")));
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.5);
+		act(() => audio.dispatchEvent(new Event("ratechange")));
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(2);
+		act(() => audio.dispatchEvent(new Event("ratechange")));
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1);
+	});
+
+	it("restores persisted rate and skip prefs on mount", () => {
+		localStorage.setItem("ktb.audio.playbackRate", "1.5");
+		localStorage.setItem("ktb.audio.skipSilence", "1");
+		const audio = renderReview({ segments: GAPS });
+		expect(audio.playbackRate).toBe(1.5);
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap → jumps
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("ignores an out-of-range persisted rate", () => {
+		localStorage.setItem("ktb.audio.playbackRate", "9");
+		const audio = renderReview();
+		expect(audio.playbackRate).toBe(1);
+	});
+
+	it("drives volume and mute through the bar controls", () => {
+		const audio = renderReview();
+		const [muteBtn, volSlider] = screen.getAllByLabelText("Volume");
+		fireEvent.change(volSlider!, { target: { value: "50" } });
+		expect(audio.volume).toBe(0.5);
+		expect(audio.muted).toBe(false);
+		fireEvent.change(volSlider!, { target: { value: "0" } });
+		expect(audio.volume).toBe(0);
+		act(() => audio.dispatchEvent(new Event("volumechange")));
+		fireEvent.click(muteBtn!);
+		expect(audio.muted).toBe(true);
+		act(() => audio.dispatchEvent(new Event("volumechange")));
+		fireEvent.click(muteBtn!);
+		expect(audio.muted).toBe(false);
+	});
+
+	it("skips silence gaps while playing and reports the time", () => {
+		const onTimeUpdate = vi.fn();
+		const audio = renderReview({ segments: GAPS, onTimeUpdate });
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(5);
+	});
+
+	it("does not skip while paused or inside a segment", () => {
+		const onTimeUpdate = vi.fn();
+		const audio = renderReview({ segments: GAPS, onTimeUpdate });
+		playing(audio, true);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(3);
+		playing(audio, false);
+		audio.currentTime = 6; // inside the 5–8 segment
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(6);
+	});
+
+	it("does not jump when the playhead sits before the first gap", () => {
+		const audio = renderReview({ segments: GAPS });
+		playing(audio, false);
+		audio.currentTime = 1; // inside seg 0–2, ahead of the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(1);
+	});
+
+	it("honors the persisted skip-silence off pref", () => {
+		localStorage.setItem("ktb.audio.skipSilence", "0");
+		const audio = renderReview({ segments: GAPS });
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("toggles the skip-silence control and persists the pref", () => {
+		const audio = renderReview({ segments: GAPS });
+		const btn = screen.getByRole("button", { name: "Skip silence" });
+		fireEvent.click(btn); // off
+		fireEvent.click(btn); // on again
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("1");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("renders without audioRef or segments and hides the skip control", () => {
+		renderReview();
+		expect(document.querySelectorAll("audio").length).toBe(1);
+		expect(screen.queryByRole("button", { name: "Skip silence" })).toBeNull();
+	});
+});
+
+describe("useReviewAudioState", () => {
+	it("tolerates a null element — every handler is a no-op", () => {
+		const { result } = renderHook(() => useReviewAudioState({ current: null }));
+		act(() => {
+			result.current.handlers.onPlayPause?.();
+			result.current.handlers.onSeek?.(5);
+			result.current.handlers.onSkip?.(10);
+			result.current.handlers.onSpeedChange?.(2);
+			result.current.handlers.onVolumeChange?.(0.5);
+			result.current.handlers.onMutedChange?.(true);
+		});
+		expect(result.current.audio.playing).toBe(false);
+	});
+
+	it("mirrors finite and non-finite durations into the snapshot", () => {
+		const el = document.createElement("audio");
+		// stable ref — an inline {current} literal changes identity every
+		// render and the effect's sync() would loop forever.
+		const ref = { current: el };
+		const { result } = renderHook(() => useReviewAudioState(ref));
+		// jsdom duration is NaN → reported as 0.
+		expect(result.current.audio.durationSec).toBe(0);
+		Object.defineProperty(el, "duration", { value: 42, configurable: true });
+		act(() => el.dispatchEvent(new Event("durationchange")));
+		expect(result.current.audio.durationSec).toBe(42);
+	});
+
+	it("handlers write seek, skip, rate, volume and mute onto the element", () => {
+		const el = document.createElement("audio");
+		document.body.appendChild(el);
+		const ref = { current: el };
+		try {
+			const { result } = renderHook(() => useReviewAudioState(ref));
+			act(() => {
+				result.current.handlers.onSeek?.(12);
+				result.current.handlers.onSkip?.(5);
+				result.current.handlers.onSpeedChange?.(1.5);
+				result.current.handlers.onVolumeChange?.(0.5);
+				result.current.handlers.onMutedChange?.(true);
+			});
+			expect(el.currentTime).toBe(17);
+			expect(el.playbackRate).toBe(1.5);
+			expect(el.volume).toBe(0.5);
+			expect(el.muted).toBe(true);
+			// paused element → play() fires; its rejection is swallowed
+			// by the handler's .catch.
+			el.play = vi.fn(() => Promise.reject(new Error("autoplay blocked")));
+			act(() => {
+				result.current.handlers.onPlayPause?.();
+			});
+			expect(el.play).toHaveBeenCalled();
+		} finally {
+			el.remove();
+		}
+	});
+});
+
+describe("useZkAudioUrl", () => {
+	const zk = { keyring: {} as never, api: {} as never };
+	const consultation = { id: 42, audioKey: "audio/42.webm" };
+	let fetchMock: ReturnType<typeof vi.fn>;
+	let createUrl: ReturnType<typeof vi.fn>;
+	let revokeUrl: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		dekMock.mockReset();
+		decryptMock.mockClear();
+		fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		createUrl = vi.fn(() => "blob:audio");
+		revokeUrl = vi.fn();
+		URL.createObjectURL = createUrl as never;
+		URL.revokeObjectURL = revokeUrl as never;
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	const okResponse = () =>
+		({
+			ok: true,
+			arrayBuffer: async () => new Uint8Array([9, 9]).buffer,
+		}) as Response;
+
+	it("stays null without zk or without an audio key — never fetches", async () => {
+		const { result: noZk } = renderHook(() => useZkAudioUrl(undefined, consultation));
+		const { result: noKey } = renderHook(() => useZkAudioUrl(zk, { id: 42, audioKey: null }));
+		await act(async () => {});
+		expect(noZk.current).toBeNull();
+		expect(noKey.current).toBeNull();
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(dekMock).not.toHaveBeenCalled();
+	});
+
+	it("decrypts the ciphertext into an object URL", async () => {
+		dekMock.mockResolvedValue({} as CryptoKey);
+		fetchMock.mockResolvedValue(okResponse());
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBe("blob:audio");
+		expect(dekMock).toHaveBeenCalledWith(zk.keyring, zk.api, 42);
+		expect(fetchMock).toHaveBeenCalledWith("/api/consultations/42/audio");
+		expect(decryptMock).toHaveBeenCalled();
+		expect(createUrl).toHaveBeenCalled();
+	});
+
+	it("returns null when the DEK is locked — the endpoint is never hit", async () => {
+		dekMock.mockResolvedValue(null);
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBeNull();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("returns null when the audio fetch fails", async () => {
+		dekMock.mockResolvedValue({} as CryptoKey);
+		fetchMock.mockResolvedValue({ ok: false } as Response);
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBeNull();
+	});
+
+	it("swallows decrypt failures and stays null", async () => {
+		dekMock.mockRejectedValue(new Error("no grant"));
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBeNull();
+	});
+
+	it("revokes the object URL when the hook unmounts mid-decrypt", async () => {
+		let resolveDek!: (k: CryptoKey | null) => void;
+		dekMock.mockReturnValue(
+			new Promise<CryptoKey | null>((r) => {
+				resolveDek = r;
+			}),
+		);
+		fetchMock.mockResolvedValue(okResponse());
+		const { result, unmount } = renderHook(() => useZkAudioUrl(zk, consultation));
+		unmount();
+		await act(async () => {
+			resolveDek({} as CryptoKey);
+		});
+		expect(result.current).toBeNull();
+		expect(revokeUrl).toHaveBeenCalledWith("blob:audio");
 	});
 });

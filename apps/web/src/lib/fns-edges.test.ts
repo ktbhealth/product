@@ -63,6 +63,7 @@ vi.mock("@ktb/server-fns", async (importOriginal) => {
 			return hoisted.user;
 		},
 		runAs: async (user: never, effect: any) => actual.runAs(user, await withOverrides(effect)),
+		...actual.serverFnHandlerMocks(),
 	};
 });
 vi.mock("#/lib/platform.ts", async (importOriginal) => {

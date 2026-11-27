@@ -8,19 +8,13 @@ import { Principal } from "@ktb/authz";
 import { Tenant, type TenantRole } from "@ktb/tenant";
 import { SecretKeyring } from "@ktb/crypto/secret-keyring";
 import { Db, makeDb, type DbClient } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { groups } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { secretKeyringLive } from "@ktb/vault-keyring";
 
-import {
-	Secrets,
-	SecretsLive,
-	SecretError,
-	VAULT_TEST_DDL,
-	vaultSecret,
-	secretRefFor,
-} from "./index.ts";
+import { Secrets, SecretsLive, SecretError, vaultSecret, secretRefFor } from "./index.ts";
 import { getSecretById } from "./secrets.ts";
 
 /**
@@ -29,8 +23,9 @@ import { getSecretById } from "./secrets.ts";
  * attacker with DB read/write or ref-guessing ability would try.
  */
 
-const DDL =
-	`CREATE TABLE user (id TEXT PRIMARY KEY); INSERT INTO user (id) VALUES ('u1');` + VAULT_TEST_DDL;
+const DDL = `
+INSERT INTO "user" (id, name, email, created_at, updated_at) VALUES ('u1', 'U', 'u@x.com', 0, 0);
+`;
 const TENANT_ID = 7;
 const OTHER_TENANT_ID = 9;
 const MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
@@ -81,7 +76,7 @@ const putSecret = (
 describe("vault pen-test-lite", () => {
 	let db: DbClient;
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		for (const id of [TENANT_ID, OTHER_TENANT_ID]) {
 			await db.insert(groups).values({
 				id,

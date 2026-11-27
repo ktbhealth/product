@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
@@ -22,7 +23,7 @@ import {
 	richTextTablesPlugin,
 } from "./index.ts";
 import { richText } from "./schema.ts";
-import { RichTextsLive, RICH_TEXT_TEST_DDL } from "./service.ts";
+import { RichTextsLive } from "./service.ts";
 
 describe("rich-text plugins", () => {
 	it("exposes the five single-concern plugins", () => {
@@ -86,7 +87,7 @@ describe("rich-text page effects", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(RICH_TEXT_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

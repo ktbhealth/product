@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -74,6 +74,7 @@ const backend: TranscriptionBackend = {
 	load: backendLoad,
 };
 
+const navigateMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -83,6 +84,7 @@ vi.mock("@tanstack/react-router", async () => {
 				{ href: typeof props.to === "string" ? props.to : "#", ...props },
 				props.children as never,
 			),
+		useNavigate: () => navigateMock,
 	};
 });
 const zkMocks = vi.hoisted(() => ({
@@ -111,6 +113,24 @@ const streamMocks = vi.hoisted(() => ({
 }));
 vi.mock("@ktb/crypto/stream", () => streamMocks);
 
+const draftMock = vi.hoisted(() => {
+	const state: { draft: Record<string, unknown> | null } = { draft: null };
+	const store = {
+		load: vi.fn(async () => state.draft),
+		save: vi.fn(async (d: Record<string, unknown>) => {
+			state.draft = d;
+		}),
+		clear: vi.fn(async () => {
+			state.draft = null;
+		}),
+	};
+	return { state, store };
+});
+vi.mock("../recording-draft.ts", async (importOriginal) => {
+	const orig = await importOriginal<typeof import("../recording-draft.ts")>();
+	return { ...orig, defaultDraftStore: () => draftMock.store };
+});
+
 // jsdom has no layout — every rect is 0,0 so the lib's document-level
 // pointerdown hit-test thinks every click lands on the separator
 // (preventDefault + steals focus). The split behavior is the lib's
@@ -128,6 +148,7 @@ vi.mock("@ktbhealth/ui/components/resizable", () => ({
 }));
 
 import { NewConsultationPage } from "./NewConsultationPage.tsx";
+import { liveConsultationTurns } from "./-live-turns.ts";
 
 const SECTION = { content: "", confidence: "baixa" as const, evidence: [] as string[] };
 const ANAMNESIS: Anamnesis = {
@@ -164,6 +185,9 @@ function renderPage(
 	initialPatientId?: number,
 	zk?: ConsultationZk,
 	portalBase?: string,
+	liveFlow = false,
+	physician?: string,
+	user?: { name?: string | null; email: string } | null,
 ) {
 	return render(
 		<NewConsultationPage
@@ -173,6 +197,9 @@ function renderPage(
 			backend={backend}
 			zk={zk}
 			portalBase={portalBase}
+			liveFlow={liveFlow}
+			physician={physician}
+			user={user}
 		/>,
 	);
 }
@@ -196,40 +223,58 @@ async function generateAnamnesis(user: ReturnType<typeof userEvent.setup>) {
 	await screen.findByText("high confidence");
 }
 
-describe("NewConsultationPage", () => {
-	beforeEach(() => {
-		micSupported = true;
-		micCb = null;
-		tabCb = null;
-		micStatsFn = null;
-		micRecFn = null;
-		tabStatsFn = null;
-		tabRecFn = null;
-		statusImpl = () => ({ state: "idle", device: null });
-		engineSubs.clear();
-		backendLoad.mockClear();
-		vi.stubGlobal("fetch", vi.fn());
-		// jsdom lacks dialog.showModal
-		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
-			this.setAttribute("open", "");
-		});
-		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-			this.removeAttribute("open");
-		});
+// Shared per-test reset — top-level describes outside "NewConsultationPage"
+// must opt into these hooks explicitly (RTL cleanup is not automatic here).
+function resetPageTestDoubles() {
+	micSupported = true;
+	micCb = null;
+	tabCb = null;
+	micStatsFn = null;
+	micRecFn = null;
+	tabStatsFn = null;
+	tabRecFn = null;
+	statusImpl = () => ({ state: "idle", device: null });
+	engineSubs.clear();
+	draftMock.state.draft = null;
+	draftMock.store.load.mockClear();
+	draftMock.store.save.mockClear();
+	draftMock.store.clear.mockClear();
+	backendLoad.mockClear();
+	navigateMock.mockClear();
+	vi.stubGlobal("fetch", vi.fn());
+	// jsdom lacks dialog.showModal
+	HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+		this.setAttribute("open", "");
 	});
-	afterEach(() => {
-		cleanup();
-		vi.unstubAllGlobals();
-		vi.restoreAllMocks();
+	HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+		this.removeAttribute("open");
 	});
+	// Base UI's scroll lock is a module-level singleton whose lock/unlock
+	// is deferred through setTimeout(0) — a modal unmounted at test end can
+	// leak `overflow: hidden`/`scrollbar-gutter` onto <body>/<html> and
+	// poison later tests. Reset the inline styles it manages.
+	document.body.removeAttribute("style");
+	document.documentElement.removeAttribute("style");
+	document.documentElement.removeAttribute("data-base-ui-scroll-locked");
+}
 
-	it("renders empty state and steps", () => {
+function teardownPageTest() {
+	cleanup();
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+}
+
+describe("NewConsultationPage", () => {
+	beforeEach(resetPageTestDoubles);
+	afterEach(teardownPageTest);
+
+	it("renders empty state", async () => {
+		const user = userEvent.setup();
 		renderPage();
 		expect(screen.getByText("New consultation")).toBeTruthy();
-		expect(screen.getByText(/structured anamnesis appears here/)).toBeTruthy();
-		expect(screen.getByText("Prepare")).toBeTruthy();
-		expect(screen.getByText("Transcribe")).toBeTruthy();
-		expect(screen.getByText("Review")).toBeTruthy();
+		// The anamnesis surface lives in the drawer now.
+		await user.click(screen.getByText("AI anamnesis"));
+		await screen.findByText(/structured anamnesis appears here/);
 	});
 
 	it("creates a new patient from name + age and offers to complete the record", async () => {
@@ -713,6 +758,7 @@ describe("NewConsultationPage", () => {
 				resumeConsultationId={42}
 				api={api}
 				backend={backend}
+				liveFlow={false}
 			/>,
 		);
 		await generateAnamnesis(user);
@@ -1063,6 +1109,167 @@ describe("NewConsultationPage", () => {
 		await screen.findByText("Anamnesis saved successfully");
 		const dialog = document.querySelector("dialog") as HTMLDialogElement;
 		expect(dialog.textContent).toContain("for Maria");
+	});
+
+	describe("draft persistence (T-222)", () => {
+		const DRAFT = {
+			audio: new Blob(["audio"], { type: "audio/webm" }),
+			transcript: "Doctor: rascunho recuperado",
+			patientId: 2,
+			savedAt: Date.now(),
+		};
+
+		beforeEach(() => {
+			// jsdom lacks blob URLs — the player just needs a src string.
+			URL.createObjectURL = vi.fn(() => "blob:draft-audio");
+			URL.revokeObjectURL = vi.fn();
+		});
+
+		it("recovered draft banner restores transcript + patient and hides", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered — recording finished at/);
+			// the blob previews right in the banner
+			await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledWith(DRAFT.audio));
+			expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull();
+			await user.click(screen.getByText("Restore draft"));
+			expect((screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value).toContain(
+				"rascunho recuperado",
+			);
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("discard drops the stored draft and revokes the preview", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			await waitFor(() =>
+				expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull(),
+			);
+			await user.click(screen.getByText("Discard"));
+			expect(draftMock.store.clear).toHaveBeenCalled();
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:draft-audio");
+		});
+
+		it("restored audio keeps a player by the transcript until save", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			await waitFor(() =>
+				expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull(),
+			);
+			await user.click(screen.getByText("Restore draft"));
+			// banner gone; the "Draft audio" player moved to the transcript card
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+			await screen.findByText("Draft audio");
+			expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull();
+		});
+
+		it("restored draft without a listed patient keeps the current pick", async () => {
+			draftMock.state.draft = { ...DRAFT, patientId: 999 };
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			await user.click(screen.getByText("Restore draft"));
+			expect((screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value).toContain(
+				"rascunho recuperado",
+			);
+		});
+
+		it("no banner when there is nothing stored", async () => {
+			renderPage();
+			await waitFor(() => expect(draftMock.store.load).toHaveBeenCalled());
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("finishing a mic recording persists the blob + transcript", async () => {
+			micRecFn = vi.fn(async (): Promise<Blob | null> => new Blob(["audio"]));
+			const user = userEvent.setup();
+			renderPage();
+			await consent(user);
+			await user.click(screen.getByText("Record microphone"));
+			act(() => micCb!({ type: "final", text: "tem febre" }));
+			await waitFor(() =>
+				expect((screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value).toContain(
+					"Doctor: tem febre",
+				),
+			);
+			act(() => micCb!({ type: "end" }));
+			await waitFor(() => expect(draftMock.store.save).toHaveBeenCalled());
+			const saved = draftMock.store.save.mock.calls[0]![0] as {
+				audio: Blob;
+				transcript: string;
+			};
+			expect(saved.audio.size).toBeGreaterThan(0);
+			expect(saved.transcript).toContain("tem febre");
+		});
+
+		it("tab-capture end also persists the draft", async () => {
+			tabRecFn = vi.fn(async (): Promise<Blob | null> => new Blob(["tab"]));
+			const user = userEvent.setup();
+			renderPage();
+			await consent(user);
+			await user.click(screen.getByText("Capture call tab"));
+			act(() => tabCb!({ type: "end" }));
+			await waitFor(() => expect(draftMock.store.save).toHaveBeenCalled());
+		});
+
+		it("a successful save clears the draft", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			const api = makeApi();
+			renderPage(api);
+			await consent(user);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			await waitFor(() => expect(draftMock.store.clear).toHaveBeenCalled());
+		});
+
+		it("saving after a draft restore revokes the restored audio url", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			const api = makeApi();
+			renderPage(api);
+			await screen.findByText(/Draft recovered/);
+			await user.click(screen.getByText("Restore draft"));
+			await consent(user);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:draft-audio"));
+		});
+
+		it("draft without blob URL support still restores and discards", async () => {
+			draftMock.state.draft = DRAFT;
+			// jsdom default: no URL.createObjectURL — the banner renders
+			// without the audio preview.
+			URL.createObjectURL = undefined as unknown as typeof URL.createObjectURL;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			expect(document.querySelector('audio[src="blob:draft-audio"]')).toBeNull();
+			await user.click(screen.getByText("Discard"));
+			expect(draftMock.store.clear).toHaveBeenCalled();
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("ignores a draft that resolves after unmount", async () => {
+			let resolve!: (d: unknown) => void;
+			draftMock.store.load.mockImplementationOnce(
+				() =>
+					new Promise((r) => {
+						resolve = r as (d: unknown) => void;
+					}),
+			);
+			const { unmount } = renderPage();
+			unmount();
+			resolve(DRAFT);
+		});
 	});
 
 	describe("patient portal access, decided up front (T-258)", () => {
@@ -1860,7 +2067,13 @@ describe("NewConsultationPage", () => {
 			});
 			const user = userEvent.setup();
 			render(
-				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={api}
+					backend={backend}
+					zk={zk}
+					liveFlow={false}
+				/>,
 			);
 			await generateAnamnesis(user);
 			await user.click(screen.getByText("Save consultation"));
@@ -1892,6 +2105,7 @@ describe("NewConsultationPage", () => {
 					api={api}
 					backend={backend}
 					zk={zk}
+					liveFlow={false}
 				/>,
 			);
 			await generateAnamnesis(user);
@@ -1909,7 +2123,13 @@ describe("NewConsultationPage", () => {
 			});
 			const user = userEvent.setup();
 			render(
-				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={api}
+					backend={backend}
+					zk={zk}
+					liveFlow={false}
+				/>,
 			);
 			await generateAnamnesis(user);
 			await user.click(screen.getByText("Save consultation"));
@@ -1936,7 +2156,13 @@ describe("NewConsultationPage", () => {
 			});
 			const user = userEvent.setup();
 			render(
-				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={api}
+					backend={backend}
+					zk={zk}
+					liveFlow={false}
+				/>,
 			);
 			await generateAnamnesis(user);
 			await user.click(screen.getByText("Save consultation"));
@@ -1955,6 +2181,7 @@ describe("NewConsultationPage", () => {
 					api={makeApi()}
 					backend={backend}
 					zk={zk}
+					liveFlow={false}
 				/>,
 			);
 			await fillTranscript();
@@ -1977,6 +2204,7 @@ describe("NewConsultationPage", () => {
 					api={makeApi()}
 					backend={backend}
 					zk={zk}
+					liveFlow={false}
 				/>,
 			);
 			await consent(user);
@@ -1989,7 +2217,535 @@ describe("NewConsultationPage", () => {
 			expect(fetchMock).not.toHaveBeenCalledWith("/api/transcribe", expect.anything());
 		});
 	});
+
+	describe("live flow — pre-consultation room and live screen", () => {
+		const ROOM_CONSENT = /duly informed and consented/;
+
+		async function roomConsent(user: ReturnType<typeof userEvent.setup>) {
+			await user.click(await screen.findByText(ROOM_CONSENT));
+		}
+
+		it("shows the room, gates start on consent and reflects the patient", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 1, undefined, undefined, true, "Dr. House");
+			expect(screen.getByText("Ready to start the consultation?")).toBeTruthy();
+			expect(screen.getAllByText(/Dr\. House/).length).toBeGreaterThan(0);
+			expect(screen.getAllByText("Maria").length).toBeGreaterThan(0);
+			expect(screen.getByText("Start Session").closest("button")!.disabled).toBe(true);
+			await roomConsent(user);
+			// the CTA unmounts its disabled Tooltip wrapper once enabled —
+			// re-query instead of holding the old node
+			expect(screen.getByText("Start Session").closest("button")!.disabled).toBe(false);
+		});
+
+		it("in-person start begins mic capture and swaps to the live screen", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true, "Dr. House");
+			await roomConsent(user);
+			await user.click(screen.getByText("Start Session"));
+			expect(micCb).not.toBeNull();
+			expect(screen.queryByText("Ready to start the consultation?")).toBeNull();
+			expect(screen.getByText("Live Consultation Transcript")).toBeTruthy();
+			expect(screen.getByText("End Consultation")).toBeTruthy();
+
+			// mic finals render as clinician turns named after the physician
+			act(() => micCb!({ type: "final", text: "bom dia" }));
+			await screen.findByText("Dr. House");
+			act(() => micCb!({ type: "partial", text: "como" }));
+			await screen.findByText(/como/);
+
+			// ending returns to the workspace — the room does not reappear
+			await user.click(screen.getByText("End Consultation"));
+			expect(micStop).toHaveBeenCalled();
+			expect(screen.getByLabelText("Consultation text")).toBeTruthy();
+			expect(screen.queryByText("Ready to start the consultation?")).toBeNull();
+		});
+
+		it("telemedicine modality starts tab capture", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 2, undefined, undefined, true);
+			await roomConsent(user);
+			await user.click(screen.getByRole("radio", { name: "Teleconsult" }));
+			await user.click(screen.getByText("Start Session"));
+			expect(tabCb).not.toBeNull();
+			expect(micCb).toBeNull();
+			expect(screen.getByText("Live Consultation Transcript")).toBeTruthy();
+		});
+
+		it("the secondary action switches to dictation mode", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getByText("Quick post-consultation dictation"));
+			expect(screen.getByText("Start dictation")).toBeTruthy();
+			expect(screen.queryByText("Ready to start the consultation?")).toBeNull();
+		});
+
+		it("change patient reveals the picker and updates the room card", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 1, undefined, undefined, true);
+			await user.click(screen.getAllByText("Change")[0]!);
+			await screen.findByText("Done");
+			// The picker's Select is a Base UI combobox; in jsdom its trigger
+			// does not reliably open under user-event's full pointer sequence
+			// (pointer capture + focus), so drive the open with fireEvent.
+			const trigger = screen.getByRole("combobox", { name: "Patient" });
+			fireEvent.pointerDown(trigger);
+			fireEvent.mouseDown(trigger);
+			fireEvent.mouseUp(trigger);
+			fireEvent.click(trigger);
+			await user.click(await screen.findByRole("option", { name: "João" }));
+			expect(screen.getAllByText("João").length).toBeGreaterThan(0);
+			await user.click(screen.getByText("Done"));
+			// Base UI's Presence keeps the popup mounted in jsdom until the
+			// exit animation ends (which never fires without CSS) — assert the
+			// closed state instead of unmount.
+			await vi.waitFor(() => {
+				const popup = document.querySelector('[data-slot="dialog-content"]');
+				expect(popup === null || popup.hasAttribute("data-closed")).toBe(true);
+			});
+		});
+
+		it("user menu opens and items navigate inside the portal", async () => {
+			renderPage(makeApi(), PATIENTS, undefined, undefined, "/portal/doctor", true, "Dr. House", {
+				name: "Admin",
+				email: "admin@ktb.health",
+			});
+			// fireEvent over user-event: Base UI menus are timing-sensitive
+			// in jsdom under full-suite load; the regression this guards is
+			// the MenuGroupLabel crash on open, not pointer fidelity.
+			fireEvent.click(screen.getByText("Admin"));
+			const menu = await screen.findByRole("menu", {}, { timeout: 3000 });
+			expect(within(menu).getByText("admin@ktb.health")).toBeTruthy();
+			fireEvent.click(within(menu).getByText("Patients"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/patients" });
+		});
+
+		it("audio settings gear opens the device dialog", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getByRole("button", { name: "Audio settings" }));
+			expect(await screen.findByText("Audio settings")).toBeTruthy();
+			expect(screen.getByText("Input device")).toBeTruthy();
+		});
+
+		it("audio test warms the transcription engine", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getAllByText("Test audio (3s)")[0]!);
+			expect(backendLoad).toHaveBeenCalled();
+		});
+
+		it("user menu navigates to every portal section", async () => {
+			renderPage(makeApi(), PATIENTS, undefined, undefined, "/portal/doctor", true, "Dr. House", {
+				name: "Admin",
+				email: "admin@ktb.health",
+			});
+			// the open menu also renders an "Admin" label — target the
+			// trigger button specifically.
+			const openMenu = async () => {
+				fireEvent.click(screen.getAllByRole("button", { name: /Admin/ })[0]!);
+				// scope item clicks to the popup — "Consultations" also
+				// matches the room header's back link.
+				return screen.findByRole("menu", {}, { timeout: 3000 });
+			};
+			let menu = await openMenu();
+			fireEvent.click(within(menu).getByText("Portal home"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor" });
+			menu = await openMenu();
+			fireEvent.click(within(menu).getByText("Consultations"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/consultations" });
+			menu = await openMenu();
+			fireEvent.click(within(menu).getByText("Review queue"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/review" });
+		});
+
+		it("change-patient dialog closes through its own dismiss control", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 1, undefined, undefined, true);
+			await user.click(screen.getAllByText("Change")[0]!);
+			const dlg = await screen.findByText("Done");
+			expect(dlg).toBeTruthy();
+			// Base UI's X button — exercises Dialog onOpenChange(false).
+			const popup = dlg.closest('[data-slot="dialog-content"]')!;
+			fireEvent.click(within(popup as HTMLElement).getByRole("button", { name: /close/i }));
+			await vi.waitFor(() => {
+				const el = document.querySelector('[data-slot="dialog-content"]');
+				expect(el === null || el.hasAttribute("data-closed")).toBe(true);
+			});
+		});
+
+		it("audio settings dialog closes through its dismiss control", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getByRole("button", { name: "Audio settings" }));
+			const title = await screen.findByText("Audio settings");
+			const popup = title.closest('[data-slot="dialog-content"]')!;
+			fireEvent.click(within(popup as HTMLElement).getByRole("button", { name: /close/i }));
+			await vi.waitFor(() => {
+				const el = document.querySelector('[data-slot="dialog-content"]');
+				expect(el === null || el.hasAttribute("data-closed")).toBe(true);
+			});
+		});
+
+		it("mic toggle and device chip drive the room preview controls", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await screen.findByText("Ready to start the consultation?");
+			// no mediaDevices in jsdom → the device chip is the fallback
+			// button that reports "" (back to system default)
+			await user.click(screen.getByRole("button", { name: "Toggle microphone" }));
+			await user.click(screen.getByRole("button", { name: "Room microphone" }));
+		});
+
+		it("live screen sample/clear/anamnesis controls drive capture state", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true, "Dr. House");
+			await roomConsent(user);
+			await user.click(screen.getByText("Start Session"));
+			expect(screen.getByText("Live Consultation Transcript")).toBeTruthy();
+			await user.click(screen.getByText("Use sample"));
+			const clear = screen.getByText("Clear");
+			expect((clear.closest("button") as HTMLButtonElement).disabled).toBe(false);
+			await user.click(clear);
+			// anamnesis toggles exist in both the header and the control bar
+			const anamnesisButtons = await screen.findAllByText("AI anamnesis");
+			expect(anamnesisButtons.length).toBeGreaterThanOrEqual(2);
+			for (const b of anamnesisButtons) {
+				fireEvent.click(b.closest("button") ?? b);
+			}
+		});
+
+		it("enumerates inputs, applies the picked device and runs the real mic test", async () => {
+			const user = userEvent.setup();
+			const trackStop = vi.fn();
+			const gum = vi.fn(async () => ({
+				getTracks: () => [{ stop: trackStop, kind: "audio" }],
+			}));
+			const enumerateDevices = vi
+				.fn<() => Promise<MediaDeviceInfo[]>>()
+				.mockRejectedValueOnce(new Error("denied"))
+				.mockResolvedValue([
+					{ kind: "audioinput", deviceId: "mic-1", label: "Mic One", groupId: "" },
+					{ kind: "audioinput", deviceId: "mic-2", label: "", groupId: "" },
+					{ kind: "audioinput", deviceId: "default", label: "Default", groupId: "" },
+					{ kind: "videoinput", deviceId: "cam-1", label: "Cam", groupId: "" },
+				] as MediaDeviceInfo[]);
+			const listeners = new Set<() => void>();
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: {
+					enumerateDevices,
+					getUserMedia: gum,
+					addEventListener: (_t: string, fn: () => void) => listeners.add(fn),
+					removeEventListener: (_t: string, fn: () => void) => listeners.delete(fn),
+				},
+			});
+			class FakeAudioContext {
+				destination = {};
+				createMediaStreamSource() {
+					return { connect: vi.fn() };
+				}
+				createAnalyser() {
+					return {
+						fftSize: 0,
+						frequencyBinCount: 512,
+						getByteTimeDomainData: (buf: Uint8Array) => buf.fill(200),
+					};
+				}
+				close = vi.fn(async () => {});
+			}
+			vi.stubGlobal("AudioContext", FakeAudioContext);
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				// first enumerate rejects (covers the .catch) — devicechange
+				// re-runs it successfully.
+				await vi.waitFor(() => expect(enumerateDevices).toHaveBeenCalled());
+				for (const fn of [...listeners]) fn();
+				await vi.waitFor(() =>
+					expect(enumerateDevices.mock.calls.length).toBeGreaterThanOrEqual(2),
+				);
+				// the preview device picker now lists the real inputs —
+				// wait for the audioDevices state to flush into the room.
+				await vi.waitFor(() => expect(screen.getAllByRole("combobox").length).toBeGreaterThan(0));
+				const previewSelect = screen.getAllByRole("combobox")[0]!;
+				fireEvent.pointerDown(previewSelect);
+				fireEvent.mouseDown(previewSelect);
+				fireEvent.mouseUp(previewSelect);
+				fireEvent.click(previewSelect);
+				await user.click(await screen.findByRole("option", { name: "Mic One" }));
+				// gear → settings dialog → same device → run the real test
+				await user.click(screen.getByRole("button", { name: "Audio settings" }));
+				const combo = await screen.findByRole("combobox", { name: "Input device" });
+				fireEvent.pointerDown(combo);
+				fireEvent.mouseDown(combo);
+				fireEvent.mouseUp(combo);
+				fireEvent.click(combo);
+				await user.click(await screen.findByRole("option", { name: "Mic One" }));
+				const dlg = document.querySelector('[data-slot="dialog-content"]')!;
+				fireEvent.click(
+					within(dlg as HTMLElement).getByRole("button", { name: "Test audio (3s)" }),
+				);
+				await vi.waitFor(
+					() =>
+						expect(gum).toHaveBeenCalledWith({
+							audio: {
+								echoCancellation: true,
+								noiseSuppression: true,
+								deviceId: { exact: "mic-1" },
+							},
+						}),
+					{ timeout: 4000 },
+				);
+				await vi.waitFor(() => expect(trackStop).toHaveBeenCalled(), { timeout: 4000 });
+				// reopen → System default covers the "default" arm; the dialog's
+				// X exercises onOpenChange(false).
+				await user.click(screen.getByRole("button", { name: "Audio settings" }));
+				const combo2 = await screen.findByRole("combobox", { name: "Input device" });
+				fireEvent.pointerDown(combo2);
+				fireEvent.mouseDown(combo2);
+				fireEvent.mouseUp(combo2);
+				fireEvent.click(combo2);
+				await user.click(await screen.findByRole("option", { name: "System default" }));
+				const dlg2 = document.querySelector('[data-slot="dialog-content"]')!;
+				fireEvent.click(within(dlg2 as HTMLElement).getByRole("button", { name: /close/i }));
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		}, 20000);
+
+		it("mic test reports silence and swallows a second concurrent run", async () => {
+			const user = userEvent.setup();
+			const trackStop = vi.fn();
+			const gum = vi.fn(async () => ({
+				getTracks: () => [{ stop: trackStop, kind: "audio" }],
+			}));
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: { getUserMedia: gum },
+			});
+			class SilentAudioContext {
+				destination = {};
+				createMediaStreamSource() {
+					return { connect: vi.fn() };
+				}
+				createAnalyser() {
+					return {
+						fftSize: 0,
+						frequencyBinCount: 512,
+						getByteTimeDomainData: (buf: Uint8Array) => buf.fill(128),
+					};
+				}
+				close = vi.fn(async () => {});
+			}
+			vi.stubGlobal("AudioContext", SilentAudioContext);
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				const buttons = screen.getAllByText("Test audio (3s)");
+				// two rapid clicks — the second hits the in-flight guard
+				fireEvent.click(buttons[0]!);
+				fireEvent.click(buttons[0]!);
+				await screen.findByText(
+					"Audio test failed — no sound detected. Check your microphone.",
+					{},
+					{ timeout: 6000 },
+				);
+				expect(gum).toHaveBeenCalledTimes(1);
+				expect(trackStop).toHaveBeenCalled();
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		}, 20000);
+
+		it("mic test reports a denied microphone", async () => {
+			const user = userEvent.setup();
+			const gum = vi.fn(async () => {
+				throw new Error("denied");
+			});
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: { getUserMedia: gum },
+			});
+			class FakeAudioContext {
+				destination = {};
+				createMediaStreamSource() {
+					return { connect: vi.fn() };
+				}
+				createAnalyser() {
+					return {
+						fftSize: 0,
+						frequencyBinCount: 512,
+						getByteTimeDomainData: (buf: Uint8Array) => buf.fill(200),
+					};
+				}
+				close = vi.fn(async () => {});
+			}
+			vi.stubGlobal("AudioContext", FakeAudioContext);
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				await user.click(screen.getAllByText("Test audio (3s)")[0]!);
+				await screen.findByText(
+					"Audio test failed — microphone unavailable or permission denied.",
+					{},
+					{ timeout: 3000 },
+				);
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		}, 15000);
+
+		it("mic test is a no-op when the browser is unsupported", async () => {
+			micSupported = false;
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await screen.findByText("Ready to start the consultation?");
+			await user.click(screen.getAllByText("Test audio (3s)")[0]!);
+			expect(backendLoad).toHaveBeenCalled();
+		});
+
+		it("device enumeration resolving after unmount is ignored", async () => {
+			let resolveDevices!: (v: MediaDeviceInfo[]) => void;
+			const pending = new Promise<MediaDeviceInfo[]>((r) => {
+				resolveDevices = r;
+			});
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: {
+					enumerateDevices: () => pending,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+				},
+			});
+			try {
+				const { unmount } = renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				unmount();
+				await act(async () => {
+					resolveDevices([
+						{ kind: "audioinput", deviceId: "mic-9", label: "Late Mic", groupId: "" },
+					] as MediaDeviceInfo[]);
+				});
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		});
+
+		it("picker unlinks the patient then quick-creates one with an age", async () => {
+			const user = userEvent.setup();
+			const api = makeApi();
+			renderPage(api, PATIENTS, 1, undefined, undefined, true);
+			await user.click(screen.getAllByText("Change")[0]!);
+			const trigger = screen.getByRole("combobox", { name: "Patient" });
+			fireEvent.pointerDown(trigger);
+			fireEvent.mouseDown(trigger);
+			fireEvent.mouseUp(trigger);
+			fireEvent.click(trigger);
+			await user.click(await screen.findByRole("option", { name: "unlinked" }));
+			await user.type(screen.getByLabelText("New patient name"), "Ana");
+			await user.type(screen.getByLabelText("New patient age"), "42");
+			await user.click(screen.getByText("+ patient"));
+			expect(api["createPatient"]).toHaveBeenCalled();
+			// quick-create closes the dialog; the room card shows the new patient
+			expect((await screen.findAllByText("Ana")).length).toBeGreaterThan(0);
+			expect(screen.getAllByText(/42/).length).toBeGreaterThan(0);
+		});
+
+		it("user menu falls back to placeholders when the account has no name", async () => {
+			renderPage(makeApi(), PATIENTS, undefined, undefined, "/portal/doctor", true, "Dr. House", {
+				email: "",
+			});
+			// avatar shows "?"; the trigger + menu labels fall back to email
+			fireEvent.click(screen.getByText("?"));
+			const menu = await screen.findByRole("menu", {}, { timeout: 3000 });
+			expect(within(menu).getAllByRole("menuitem")).toHaveLength(4);
+		});
+
+		it("live screen shows the engine badge and surfaces generate errors", async () => {
+			statusImpl = () => ({ state: "ready", device: "webgpu" });
+			const user = userEvent.setup();
+			const api = makeApi({
+				extractAnamnesis: vi.fn(async () => {
+					throw new Error("llm down");
+				}),
+			});
+			renderPage(api, PATIENTS, undefined, undefined, undefined, true);
+			await roomConsent(user);
+			await user.click(screen.getByText("Start Session"));
+			expect(await screen.findByText(/model ready \(webgpu\)/)).toBeTruthy();
+			// a transcript final keeps the capture live; a failed generate
+			// then surfaces its error inside the live strip itself.
+			await vi.waitFor(() => expect(micCb).not.toBeNull());
+			act(() => micCb!({ type: "final", text: "paciente relata dor" }));
+			// both anamnesis toggles flip the same Sheet — one click opens it
+			fireEvent.click((await screen.findAllByText("AI anamnesis"))[0]!.closest("button")!);
+			await user.click(await screen.findByText("Generate anamnesis →"));
+			expect(await screen.findByText("llm down")).toBeTruthy();
+		});
+
+		it("room stage floats the recovered-draft notices", async () => {
+			const origCreate = URL.createObjectURL;
+			URL.createObjectURL = vi.fn(() => "blob:draft-room");
+			draftMock.state.draft = {
+				audio: new Blob(["audio"], { type: "audio/webm" }),
+				transcript: "Doctor: rascunho",
+				patientId: 1,
+				savedAt: Date.now(),
+			};
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				expect(await screen.findByText(/Draft recovered/)).toBeTruthy();
+			} finally {
+				URL.createObjectURL = origCreate;
+			}
+		});
+	});
+
+	describe("liveConsultationTurns", () => {
+		const opts = { doctor: "Doctor", patient: "Patient", doctorName: "Dr. House" };
+
+		it("groups consecutive rows into speaker turns", () => {
+			const turns = liveConsultationTurns(
+				[
+					{ speaker: "Doctor", name: "Doctor", text: "hi", time: "0:01" },
+					{ speaker: "Doctor", name: "Doctor", text: "there", time: "0:05" },
+					{ speaker: "Patient", name: "Maria", text: "hello", time: "0:09" },
+					{ speaker: "Patient", name: "Maria", text: "again" },
+					{ name: "Browser voice", text: "note" },
+				],
+				opts,
+			);
+			expect(turns).toHaveLength(3);
+			expect(turns[0]).toMatchObject({ speaker: 0, name: "Dr. House", role: "Doctor" });
+			expect(turns[0]!.paragraphs).toHaveLength(2);
+			expect(turns[1]).toMatchObject({ speaker: 1, name: "Maria", role: "Patient" });
+			expect(turns[2]).toMatchObject({ speaker: 2, name: "Browser voice" });
+			expect(turns[2]!.role).toBeUndefined();
+		});
+
+		it("does not merge non-consecutive rows from the same channel", () => {
+			const turns = liveConsultationTurns(
+				[
+					{ speaker: "Doctor", name: "Doctor", text: "a" },
+					{ speaker: "Patient", name: "P", text: "b" },
+					{ speaker: "Doctor", name: "Doctor", text: "c" },
+				],
+				opts,
+			);
+			expect(turns).toHaveLength(3);
+		});
+
+		it("falls back to the channel prefix without a physician name", () => {
+			const turns = liveConsultationTurns([{ speaker: "Doctor", name: "Doctor", text: "x" }], {
+				doctor: "Doctor",
+				patient: "Patient",
+			});
+			expect(turns[0]!.name).toBe("Doctor");
+		});
+	});
 });
+
 describe("ZK encrypted audio upload (T-147)", () => {
 	const zk = { keyring: { tag: "k" }, api: { tag: "a" } } as never;
 	const audioBlob = new Blob(["audio"], { type: "audio/webm" });
@@ -2030,7 +2786,15 @@ describe("ZK encrypted audio upload (T-147)", () => {
 			json: async () => ({ ok: true, audioStatus: "zk" }),
 		}));
 		vi.stubGlobal("fetch", fetchMock);
-		render(<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />);
+		render(
+			<NewConsultationPage
+				initialPatients={PATIENTS}
+				api={api}
+				backend={backend}
+				zk={zk}
+				liveFlow={false}
+			/>,
+		);
 		await consent(user);
 		await generateAnamnesis(user);
 		await user.click(screen.getByText("Save consultation"));
@@ -2052,7 +2816,15 @@ describe("ZK encrypted audio upload (T-147)", () => {
 		const api = makeApi();
 		const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
 		vi.stubGlobal("fetch", fetchMock);
-		render(<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />);
+		render(
+			<NewConsultationPage
+				initialPatients={PATIENTS}
+				api={api}
+				backend={backend}
+				zk={zk}
+				liveFlow={false}
+			/>,
+		);
 		await consent(user);
 		await generateAnamnesis(user);
 		zkMocks.consultationDek.mockResolvedValueOnce(null);
@@ -2329,5 +3101,133 @@ describe("lazy ASR engine load", () => {
 		await user.click(screen.getByText("Post-consultation dictation"));
 		await user.click(screen.getByText("Start dictation"));
 		expect(loadMock()).toHaveBeenCalled();
+	});
+});
+
+describe("NewConsultationPage — chat workspace actions", () => {
+	const transcriptBox = () => screen.getByLabelText("Consultation text") as HTMLTextAreaElement;
+
+	beforeEach(() => {
+		micSupported = true;
+		micCb = null;
+		tabCb = null;
+		micStatsFn = null;
+		micRecFn = null;
+		tabStatsFn = null;
+		tabRecFn = null;
+		statusImpl = () => ({ state: "idle", device: null });
+		engineSubs.clear();
+		draftMock.state.draft = null;
+		draftMock.store.load.mockClear();
+		draftMock.store.save.mockClear();
+		draftMock.store.clear.mockClear();
+		vi.stubGlobal("fetch", vi.fn());
+		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+			this.setAttribute("open", "");
+		});
+		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+			this.removeAttribute("open");
+		});
+	});
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
+
+	it("stop capture ends every running channel at once", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Record microphone"));
+		await user.click(screen.getByText("Capture call tab"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(micStop).toHaveBeenCalled();
+		expect(tabStop).toHaveBeenCalled();
+	});
+
+	it("a second channel joining keeps the capture clock running", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Capture call tab"));
+		await user.click(screen.getByText("Record microphone"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(micStop).toHaveBeenCalled();
+		expect(tabStop).toHaveBeenCalled();
+	});
+
+	it("stop capture with only the tab channel leaves the mic alone", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Capture call tab"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(tabStop).toHaveBeenCalled();
+		expect(micStop).not.toHaveBeenCalled();
+	});
+
+	it("stop capture ends dictation too", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getByText("Post-consultation dictation"));
+		await consent(user);
+		await user.click(screen.getByText("Start dictation"));
+		await user.click(screen.getByRole("button", { name: "Stop capture" }));
+		expect(micStop).toHaveBeenCalled();
+	});
+
+	it("copies the transcript to the clipboard", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn(async () => {});
+		Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+		renderPage();
+		fillTranscript("linha um\nlinha dois");
+		await user.click(screen.getByText("Copy transcript"));
+		await waitFor(() => expect(writeText).toHaveBeenCalledWith("linha um\nlinha dois"));
+		await screen.findByText(/Transcript copied/);
+	});
+
+	it("a failed transcript copy surfaces the error", async () => {
+		const user = userEvent.setup();
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: vi.fn(async () => Promise.reject(new Error("denied"))) },
+			configurable: true,
+		});
+		renderPage();
+		fillTranscript("texto");
+		await user.click(screen.getByText("Copy transcript"));
+		await screen.findByText(/Could not copy/);
+	});
+
+	it("downloads the transcript as a text file", async () => {
+		const user = userEvent.setup();
+		const create = vi.fn(() => "blob:export");
+		const revoke = vi.fn();
+		Object.defineProperty(URL, "createObjectURL", { value: create, configurable: true });
+		Object.defineProperty(URL, "revokeObjectURL", { value: revoke, configurable: true });
+		renderPage();
+		fillTranscript("export me");
+		await user.click(screen.getByText(/Download transcript/));
+		expect(create).toHaveBeenCalled();
+		expect(revoke).toHaveBeenCalledWith("blob:export");
+	});
+
+	it("trims captured row timestamps when the transcript shrinks", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Record microphone"));
+		act(() => micCb!({ type: "final", text: "primeira" }));
+		act(() => micCb!({ type: "final", text: "segunda" }));
+		await waitFor(() => expect(transcriptBox().value).toContain("segunda"));
+		fireEvent.change(transcriptBox(), { target: { value: "só uma linha" } });
+		expect(transcriptBox().value).toBe("só uma linha");
+	});
+
+	it("attributes Patient lines to the selected patient name", () => {
+		renderPage(makeApi(), PATIENTS, 1);
+		fillTranscript("Patient: oi doutor\nlinha solta");
+		expect(screen.getAllByText("Maria").length).toBeGreaterThan(0);
 	});
 });

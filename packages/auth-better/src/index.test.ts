@@ -1,16 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
-import { makeAuth, toSession, toSessionUser } from "./index.ts";
+import { makeTestD1 } from "@ktb/db-testing";
 
-const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE session (id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ip_address TEXT, user_agent TEXT, user_id TEXT NOT NULL REFERENCES "user"(id));
-CREATE TABLE account (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, provider_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES "user"(id), access_token TEXT, refresh_token TEXT, id_token TEXT, access_token_expires_at INTEGER, refresh_token_expires_at INTEGER, scope TEXT, password TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE verification (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, value TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER, updated_at INTEGER);
-CREATE TABLE apikey (id TEXT PRIMARY KEY, config_id TEXT NOT NULL DEFAULT 'default', name TEXT, start TEXT, reference_id TEXT NOT NULL, prefix TEXT, key TEXT NOT NULL, refill_interval INTEGER, refill_amount INTEGER, last_refill_at INTEGER, enabled INTEGER DEFAULT 1, rate_limit_enabled INTEGER DEFAULT 0, rate_limit_time_window INTEGER, rate_limit_max INTEGER, request_count INTEGER DEFAULT 0, remaining INTEGER, last_request INTEGER, expires_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, permissions TEXT, metadata TEXT);
-`;
+import { makeAuth, toSession, toSessionUser } from "./index.ts";
 
 describe("toSessionUser", () => {
 	it("converts user record to SessionUser shape", () => {
@@ -41,7 +34,7 @@ describe("toSession", () => {
 
 describe("makeAuth", () => {
 	it("constructs a betterAuth instance with drizzle adapter and options", () => {
-		const db = makeDb(makeD1());
+		const db = makeDb(makeTestD1());
 		const auth = makeAuth(db, {
 			secret: "test-secret-at-least-32-characters-long",
 			baseURL: "http://localhost:3000",
@@ -52,7 +45,7 @@ describe("makeAuth", () => {
 	});
 
 	it("sends no verification email when the host supplies no sender", async () => {
-		const auth = makeAuth(makeDb(makeD1()));
+		const auth = makeAuth(makeDb(makeTestD1()));
 		const { emailVerification } = auth.options;
 		expect(emailVerification.sendOnSignUp).toBe(false);
 		await expect(
@@ -66,7 +59,7 @@ describe("makeAuth", () => {
 
 	it("delegates verification emails to the host sender on sign-up", async () => {
 		const sent: unknown[] = [];
-		const auth = makeAuth(makeDb(makeD1()), {
+		const auth = makeAuth(makeDb(makeTestD1()), {
 			sendVerificationEmail: async (input) => {
 				sent.push(input);
 			},
@@ -92,7 +85,7 @@ describe("makeAuth", () => {
 
 	it("signs the user in when the verification link is opened", async () => {
 		const sent: { url: string }[] = [];
-		const auth = makeAuth(makeDb(makeD1(DDL)), {
+		const auth = makeAuth(makeDb(makeTestD1()), {
 			secret: "test-secret-at-least-32-characters-long",
 			baseURL: "http://localhost:3000",
 			sendVerificationEmail: async (input) => {
@@ -111,13 +104,13 @@ describe("makeAuth", () => {
 	});
 
 	it("leaves password reset disabled when the host supplies no sender", () => {
-		const auth = makeAuth(makeDb(makeD1()));
+		const auth = makeAuth(makeDb(makeTestD1()));
 		expect(auth.options.emailAndPassword?.sendResetPassword).toBeUndefined();
 	});
 
 	it("delegates reset emails to the host sender and revokes sessions on reset", async () => {
 		const sent: unknown[] = [];
-		const auth = makeAuth(makeDb(makeD1()), {
+		const auth = makeAuth(makeDb(makeTestD1()), {
 			sendPasswordResetEmail: async (input) => {
 				sent.push(input);
 			},

@@ -7,7 +7,7 @@ import { Schema } from "effect";
 import { Layouts } from "@ktb/layouts/service";
 import { Pages } from "@ktb/pages/service";
 import { PlatformAdmin } from "@ktb/platform";
-import { ensureSessionUser, requirePluginEnabled, runAs } from "@ktb/server-fns";
+import { pluginHandler, runAs, sessionHandler } from "@ktb/server-fns";
 import { migrateBuilderDoc, parseBuilderDoc, serializeBuilderDoc } from "@ktb/builder";
 
 // Site-builder server functions (PL-014 / P-109): admin-gated load +
@@ -72,42 +72,45 @@ const asAdmin = <A, E>(
  * non-admins and missing rows. */
 export const builderDocumentFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeDocInput(input))
-	.handler(async ({ data }): Promise<BuilderDocumentWire | null> => {
-		await requirePluginEnabled("site-builder.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				if (data.kind === "page") {
-					const pages = yield* Effect.serviceOption(Pages);
-					if (Option.isNone(pages)) return null;
-					const row = yield* pages.value.adminGet(data.id);
-					if (row === null) return null;
-					return {
-						kind: "page" as const,
-						id: row.id,
-						title: row.title,
-						subtitle: row.path,
-						builderJson: row.builderJson,
-					};
-				}
-				const layouts = yield* Effect.serviceOption(Layouts);
-				if (Option.isNone(layouts)) return null;
-				const doc = yield* layouts.value.adminGet(data.id);
-				if (doc === null) return null;
-				return {
-					kind: "layout" as const,
-					id: doc.id,
-					title: doc.name,
-					subtitle: doc.description,
-					builderJson: doc.builderJson,
-				};
+	.handler(
+		pluginHandler(
+			"site-builder.panel",
+			sessionHandler(async ({ data, user }): Promise<BuilderDocumentWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						if (data.kind === "page") {
+							const pages = yield* Effect.serviceOption(Pages);
+							if (Option.isNone(pages)) return null;
+							const row = yield* pages.value.adminGet(data.id);
+							if (row === null) return null;
+							return {
+								kind: "page" as const,
+								id: row.id,
+								title: row.title,
+								subtitle: row.path,
+								builderJson: row.builderJson,
+							};
+						}
+						const layouts = yield* Effect.serviceOption(Layouts);
+						if (Option.isNone(layouts)) return null;
+						const doc = yield* layouts.value.adminGet(data.id);
+						if (doc === null) return null;
+						return {
+							kind: "layout" as const,
+							id: doc.id,
+							title: doc.name,
+							subtitle: doc.description,
+							builderJson: doc.builderJson,
+						};
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Persist the editor's Puck `Data` as the entity's versioned
  * `builderJson`. The client sends the serialized {@link BuilderDoc}
@@ -116,31 +119,34 @@ export const builderDocumentFn = createServerFn({ method: "GET" })
  * `null` for non-admins, missing rows and malformed docs. */
 export const saveBuilderDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSaveInput(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("site-builder.panel");
-		const user = await ensureSessionUser();
-		const doc = parseBuilderDoc(data.builderJson);
-		if (doc === null) return false;
-		// Serialize the migrated doc itself — not builderDocFromData —
-		// so a future-version doc keeps its claimed version instead of
-		// being mislabeled as the current one.
-		const canonical = serializeBuilderDoc(migrateBuilderDoc(doc));
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				if (data.kind === "page") {
-					const pages = yield* Effect.serviceOption(Pages);
-					if (Option.isNone(pages)) return false;
-					yield* pages.value.adminSetBuilderJson(data.id, canonical);
-				} else {
-					const layouts = yield* Effect.serviceOption(Layouts);
-					if (Option.isNone(layouts)) return false;
-					yield* layouts.value.adminSetBuilderJson(data.id, canonical);
-				}
-				return true;
+	.handler(
+		pluginHandler(
+			"site-builder.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				const doc = parseBuilderDoc(data.builderJson);
+				if (doc === null) return false;
+				// Serialize the migrated doc itself — not builderDocFromData —
+				// so a future-version doc keeps its claimed version instead of
+				// being mislabeled as the current one.
+				const canonical = serializeBuilderDoc(migrateBuilderDoc(doc));
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						if (data.kind === "page") {
+							const pages = yield* Effect.serviceOption(Pages);
+							if (Option.isNone(pages)) return false;
+							yield* pages.value.adminSetBuilderJson(data.id, canonical);
+						} else {
+							const layouts = yield* Effect.serviceOption(Layouts);
+							if (Option.isNone(layouts)) return false;
+							yield* layouts.value.adminSetBuilderJson(data.id, canonical);
+						}
+						return true;
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return false;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return false;
-			throw error;
-		});
-	});
+		),
+	);

@@ -10,7 +10,7 @@
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
-		"@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
+		"@ktbhealth/ui": "github:ktbhealth/ui#feat/review-ux",
 		"effect": "4.1.2",
 		"lucide-react": "0.544.0"
 	},

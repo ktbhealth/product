@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { getSessionUser, getTenantSelector, runAs } from "@ktb/server-fns";
+import { forbiddenTo, getTenantSelector, optionalSessionHandler, runAs } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Schema } from "effect";
@@ -26,20 +26,18 @@ import {
  * service is absent from the runtime.
  */
 export const auditVerifyFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<AuditVerifyResult | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return null;
-				return yield* audit.value
-					.adminVerify()
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => null,
+		async ({ run }): Promise<AuditVerifyResult | null> => {
+			return run(
+				Effect.gen(function* () {
+					const audit = yield* Effect.serviceOption(Audit);
+					if (Option.isNone(audit)) return null;
+					return yield* audit.value.adminVerify().pipe(forbiddenTo(null));
+				}),
+			);
+		},
+	),
 );
 
 // ---------- filtered/paginated listings (audit logs UI) ----------
@@ -90,21 +88,21 @@ const EMPTY_PAGE = (query: AuditListQuery): AuditListResult => ({
  */
 export const auditAdminListFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeListQuery(input ?? {}))
-	.handler(async ({ data }): Promise<AuditListResult> => {
-		const user = await getSessionUser();
-		if (!user) return EMPTY_PAGE(toQuery(data));
-		const query = toQuery(data);
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return EMPTY_PAGE(query);
-				return yield* audit.value
-					.adminList(query)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(EMPTY_PAGE(query))));
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => EMPTY_PAGE(toQuery(data)),
+			async ({ data, run }): Promise<AuditListResult> => {
+				const query = toQuery(data);
+				return run(
+					Effect.gen(function* () {
+						const audit = yield* Effect.serviceOption(Audit);
+						if (Option.isNone(audit)) return EMPTY_PAGE(query);
+						return yield* audit.value.adminList(query).pipe(forbiddenTo(EMPTY_PAGE(query)));
+					}),
+				);
+			},
+		),
+	);
 
 /**
  * Re-query the actor-scoped staff activity feed — the
@@ -115,23 +113,24 @@ export const auditAdminListFn = createServerFn({ method: "POST" })
  */
 export const auditActivityListFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeListQuery(input ?? {}))
-	.handler(async ({ data }): Promise<AuditListResult> => {
-		const user = await getSessionUser();
-		if (!user) return EMPTY_PAGE(toQuery(data));
-		const query = toQuery(data);
-		const tenantSelector = await getTenantSelector();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return EMPTY_PAGE(query);
-				return yield* audit.value
-					.activityList(query)
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(EMPTY_PAGE(query))));
-			}),
-			tenantSelector,
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => EMPTY_PAGE(toQuery(data)),
+			async ({ data, user }): Promise<AuditListResult> => {
+				const query = toQuery(data);
+				const tenantSelector = await getTenantSelector();
+				return runAs(
+					user,
+					Effect.gen(function* () {
+						const audit = yield* Effect.serviceOption(Audit);
+						if (Option.isNone(audit)) return EMPTY_PAGE(query);
+						return yield* audit.value.activityList(query).pipe(forbiddenTo(EMPTY_PAGE(query)));
+					}),
+					tenantSelector,
+				);
+			},
+		),
+	);
 
 const EMPTY_FACETS: AuditFacets = { actionGroups: [], actors: [], targetTypes: [] };
 
@@ -140,20 +139,18 @@ const EMPTY_FACETS: AuditFacets = { actionGroups: [], actors: [], targetTypes: [
  * fail-closed contract as {@link auditAdminListFn}.
  */
 export const auditAdminFacetsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<AuditFacets> => {
-		const user = await getSessionUser();
-		if (!user) return EMPTY_FACETS;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return EMPTY_FACETS;
-				return yield* audit.value
-					.adminFacets()
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(EMPTY_FACETS)));
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => EMPTY_FACETS,
+		async ({ run }): Promise<AuditFacets> => {
+			return run(
+				Effect.gen(function* () {
+					const audit = yield* Effect.serviceOption(Audit);
+					if (Option.isNone(audit)) return EMPTY_FACETS;
+					return yield* audit.value.adminFacets().pipe(forbiddenTo(EMPTY_FACETS));
+				}),
+			);
+		},
+	),
 );
 
 /**
@@ -161,20 +158,19 @@ export const auditAdminFacetsFn = createServerFn({ method: "GET" }).handler(
  * feed — same tenant-selector forwarding as {@link auditActivityListFn}.
  */
 export const auditActivityFacetsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<AuditFacets> => {
-		const user = await getSessionUser();
-		if (!user) return EMPTY_FACETS;
-		const tenantSelector = await getTenantSelector();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audit = yield* Effect.serviceOption(Audit);
-				if (Option.isNone(audit)) return EMPTY_FACETS;
-				return yield* audit.value
-					.activityFacets()
-					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(EMPTY_FACETS)));
-			}),
-			tenantSelector,
-		);
-	},
+	optionalSessionHandler(
+		() => EMPTY_FACETS,
+		async ({ user }): Promise<AuditFacets> => {
+			const tenantSelector = await getTenantSelector();
+			return runAs(
+				user,
+				Effect.gen(function* () {
+					const audit = yield* Effect.serviceOption(Audit);
+					if (Option.isNone(audit)) return EMPTY_FACETS;
+					return yield* audit.value.activityFacets().pipe(forbiddenTo(EMPTY_FACETS));
+				}),
+				tenantSelector,
+			);
+		},
+	),
 );

@@ -1,37 +1,10 @@
 import type { SqlDatabase } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+
 import { insertScheduledJob } from "@ktb/scheduler-port";
 import { describe, expect, it } from "vitest";
 import { notifySchedulerDo, SchedulerDo } from "./index.ts";
-
-const SCHEDULER_DDL = `
-CREATE TABLE scheduled_jobs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	params TEXT,
-	cron_expr TEXT,
-	run_at INTEGER,
-	next_run_at INTEGER NOT NULL,
-	claimed_until INTEGER,
-	last_run_at INTEGER,
-	status TEXT NOT NULL DEFAULT 'active',
-	tenant_id INTEGER,
-	created_by TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE job_runs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	status TEXT NOT NULL DEFAULT 'queued',
-	payload_ref TEXT,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-`;
 
 /** In-memory DO storage fake. */
 function makeState() {
@@ -61,6 +34,7 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
 	const sent: unknown[] = [];
 	return {
 		env: {
+			SCHEDULER_QUEUE_BINDING: "AUDIO_QUEUE",
 			AUDIO_QUEUE: {
 				send: async (body: unknown) => {
 					sent.push(body);
@@ -171,7 +145,7 @@ describe("SchedulerDo scheduling", () => {
 	});
 
 	it("alarm() sweeps due rows and enqueues through the queue binding", async () => {
-		const sql = makeD1(SCHEDULER_DDL);
+		const sql = makeTestD1();
 		const db = makeDb(sql);
 		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
 		const { state } = makeState();
@@ -183,13 +157,42 @@ describe("SchedulerDo scheduling", () => {
 	});
 
 	it("alarm() skips the sweep when the queue binding is absent", async () => {
-		const sql = makeD1(SCHEDULER_DDL);
+		const sql = makeTestD1();
 		const db = makeDb(sql);
 		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
 		const { state } = makeState();
 		const { env } = makeEnv({ DB: sql, AUDIO_QUEUE: undefined });
 		const do_ = new SchedulerDo(state as never, env as never);
 		await expect(do_.alarm()).resolves.toBeUndefined();
+	});
+
+	it.each([
+		["unset", undefined],
+		["blank", "   "],
+		["non-string", 42],
+	])("alarm() skips the sweep when SCHEDULER_QUEUE_BINDING is %s", async (_label, binding) => {
+		const sql = makeTestD1();
+		const db = makeDb(sql);
+		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
+		const { state } = makeState();
+		const { env, sent } = makeEnv({ DB: sql, SCHEDULER_QUEUE_BINDING: binding });
+		const do_ = new SchedulerDo(state as never, env as never);
+		await expect(do_.alarm()).resolves.toBeUndefined();
+		expect(sent).toHaveLength(0);
+	});
+
+	it("alarm() skips the sweep when the named binding is absent", async () => {
+		const sql = makeTestD1();
+		const db = makeDb(sql);
+		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
+		const { state } = makeState();
+		const { env, sent } = makeEnv({
+			DB: sql,
+			SCHEDULER_QUEUE_BINDING: "MISSING_QUEUE",
+		});
+		const do_ = new SchedulerDo(state as never, env as never);
+		await expect(do_.alarm()).resolves.toBeUndefined();
+		expect(sent).toHaveLength(0);
 	});
 
 	it("/state reports pending entries and next alarm", async () => {

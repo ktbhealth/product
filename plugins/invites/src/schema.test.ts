@@ -2,16 +2,11 @@ import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { eq } from "drizzle-orm";
 
 import { INVITE_KINDS, inviteTokens } from "./schema.ts";
-
-const DDL = `
-CREATE TABLE invite_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL, email TEXT NOT NULL, kind TEXT NOT NULL, inviter_name TEXT NOT NULL, expires_at INTEGER NOT NULL, consumed_at INTEGER, created_at INTEGER DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL);
-CREATE UNIQUE INDEX invite_tokens_token_hash_unique ON invite_tokens (token_hash);
-CREATE INDEX invite_tokens_email_idx ON invite_tokens (email);
-`;
 
 const invite = {
 	tokenHash: "a".repeat(64),
@@ -51,7 +46,7 @@ describe("invites schema", () => {
 	});
 
 	it("starts a link unconsumed, stamped with its creation time", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const before = Date.now();
 		const [created] = await db
 			.insert(inviteTokens)
@@ -69,7 +64,7 @@ describe("invites schema", () => {
 	});
 
 	it("rejects a second row with the same token hash", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		await db.insert(inviteTokens).values({ ...invite, createdAt: new Date() });
 		await expect(
 			db

@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	defineCollection,
-	DOCUMENT_STORE_TEST_DDL,
 	DocumentCollections,
 	DocumentStore,
 	DocumentStoreLive,
@@ -25,11 +25,7 @@ import { Api, ApiLive, type ApiRequest } from "./service.ts";
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0);
 `;
 
 const notes = defineCollection({
@@ -133,7 +129,7 @@ const permissionsStub = Permissions.of({
 } as never);
 
 const buildRuntime = (withPermissions: boolean, states?: PluginStates["Service"]) => {
-	const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+	const db = makeDb(makeTestD1(GROUPS_DDL));
 	const storeDeps = Layer.mergeAll(
 		Layer.succeed(Db, db),
 		Layer.succeed(DocumentCollections, { collections: DEFS }),

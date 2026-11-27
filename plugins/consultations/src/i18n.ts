@@ -149,6 +149,9 @@ export interface ConsultationMessages {
 		readonly deferredUntil: (date: string) => string;
 		readonly approvedToast: string;
 		readonly queueDoneToast: string;
+		/** Patient-bar chip when the audio pipeline failed (the transcript
+		 * panel explains the fallback separately). */
+		readonly audioFailed: string;
 	};
 	/** Guided review mode (PL-023): queue rail + transcript/anamnesis steps. */
 	readonly review: {
@@ -172,6 +175,7 @@ export interface ConsultationMessages {
 		readonly highConfTitle: string;
 		readonly highConfHint: string;
 		readonly editSegment: string;
+		readonly editSection: string;
 		readonly editFullText: string;
 		readonly saveEdit: string;
 		readonly cancelEdit: string;
@@ -183,6 +187,7 @@ export interface ConsultationMessages {
 		readonly shortcutSeekBack: string;
 		readonly shortcutKeySpace: string;
 		readonly shortcutConfirm: string;
+		readonly chapters: string;
 		readonly staleAnamnesis: string;
 		readonly regenerateAnamnesis: string;
 		readonly deferredTag: string;
@@ -199,8 +204,18 @@ export interface ConsultationMessages {
 		readonly enhancing: string;
 		readonly enhanced: string;
 		readonly audioLabel: string;
+		readonly playbackRate: string;
+		readonly skipSilence: string;
 		readonly tabCorrected: string;
+		readonly tabChanges: string;
+		readonly tabTranscript: string;
+		readonly noChanges: string;
 		readonly tabOriginal: string;
+		readonly speakerN: (n: number) => string;
+		/** Chat-row header name for segments with no diarized speaker. */
+		readonly speakerUnknown: string;
+		/** Centered pill above the transcript stream. */
+		readonly encryptionNote: string;
 	};
 	readonly newConsultation: {
 		readonly title: string;
@@ -255,6 +270,10 @@ export interface ConsultationMessages {
 		readonly recordingSpeak: string;
 		readonly consultationText: string;
 		readonly useSample: string;
+		readonly draftRecovered: (time: string) => string;
+		readonly restoreDraft: string;
+		readonly discardDraft: string;
+		readonly draftAudio: string;
 		readonly clear: string;
 		readonly transcriptPlaceholder: string;
 		readonly serverTranscript: string;
@@ -314,6 +333,17 @@ export interface ConsultationMessages {
 		readonly transcriptionFailed: string;
 		readonly botFailed: (status: number) => string;
 		readonly patientFallback: string;
+		/** Chat-workspace additions: context-bar meta, transcript-header
+		 * controls, and the anamnesis drawer. */
+		readonly anamnesisDrawer: string;
+		readonly anamnesisDrawerDescription: string;
+		readonly stopCapture: string;
+		readonly copyTranscript: string;
+		readonly transcriptCopied: string;
+		readonly exportTranscript: string;
+		readonly yearsOld: (age: number) => string;
+		/** Bottom status inside the live transcript stream. */
+		readonly listening: string;
 	};
 	readonly admin: {
 		readonly title: string;
@@ -379,6 +409,77 @@ export interface ConsultationMessages {
 		readonly failed: (message: string) => string;
 		readonly retry: string;
 		readonly dismiss: string;
+	};
+	/** Live-consultation flow: the pre-consultation "green room"
+	 * (PreconsultationRoom labels) and the live transcription screen
+	 * (LiveConsultation labels). `diarization*` copy is honest about
+	 * channel attribution — the transcriber has no live diarization. */
+	readonly liveFlow: {
+		readonly brandName: string;
+		readonly roomTitle: string;
+		readonly readyTitle: string;
+		readonly consentTitle: string;
+		readonly consentDescription: string;
+		readonly changePatient: string;
+		readonly testAudio: string;
+		readonly testingAudio: string;
+		readonly calibratedAudio: string;
+		readonly startSession: string;
+		readonly startingSession: string;
+		readonly secondaryAction: string;
+		readonly modalityInPerson: string;
+		readonly modalityTelemedicine: string;
+		readonly captureInPerson: string;
+		readonly captureTelemedicine: string;
+		readonly deviceInPerson: string;
+		readonly deviceTelemedicine: string;
+		readonly engineInPerson: string;
+		readonly engineTelemedicine: string;
+		readonly audioStatus: {
+			readonly ready: string;
+			readonly muted: string;
+			readonly testing: string;
+			readonly calibrated: string;
+		};
+		readonly networkStatus: string;
+		readonly encryption: string;
+		readonly connectionStable: string;
+		/** Close button on the patient picker shown from the room. */
+		readonly pickerDone: string;
+		/** Gear button dialog in the room's preview strip. */
+		readonly audioSettingsTitle: string;
+		readonly inputDevice: string;
+		readonly systemDefaultDevice: string;
+		readonly live: string;
+		readonly paused: string;
+		readonly ended: string;
+		readonly anamnesis: string;
+		readonly endConsultation: string;
+		readonly transcriptTitle: string;
+		readonly diarizationActive: string;
+		readonly diarizationPaused: string;
+		readonly diarizationEnded: string;
+		readonly copy: string;
+		readonly export: string;
+		readonly listening: string;
+		readonly pausedListening: string;
+		readonly endedListening: string;
+		readonly audioSourceInPerson: string;
+		readonly audioSourceTelemedicine: string;
+		readonly yearsOld: string;
+		readonly recordPrefix: string;
+	};
+	/** Review-cockpit chrome copy for the @ktbhealth/ui review blocks
+	 * (player bar, confidence banner, pending strip, homologation bar). */
+	readonly reviewUi: {
+		readonly playback: string;
+		readonly syncBadge: string;
+		readonly volume: string;
+		readonly confirming: string;
+		readonly flaggedTitle: (n: number) => string;
+		readonly flaggedHint: string;
+		readonly pendingTitle: string;
+		readonly approveHint: string;
 	};
 }
 
@@ -512,6 +613,7 @@ const en: ConsultationMessages = {
 		deferredUntil: paramMessage("en", "Deferred until {date}", ["date"]),
 		approvedToast: "Anamnesis approved",
 		queueDoneToast: "Review queue complete",
+		audioFailed: "audio failed",
 	},
 	review: {
 		title: "Review mode",
@@ -534,6 +636,7 @@ const en: ConsultationMessages = {
 		highConfTitle: "High-confidence transcript",
 		highConfHint: "no uncertain passages — spot-check optional",
 		editSegment: "Edit line",
+		editSection: "Edit section",
 		editFullText: "Edit transcript",
 		saveEdit: "Save",
 		cancelEdit: "Cancel",
@@ -545,6 +648,7 @@ const en: ConsultationMessages = {
 		shortcutSeekBack: "seek -10s",
 		shortcutKeySpace: "Space",
 		shortcutConfirm: "confirm transcript",
+		chapters: "Chapters",
 		staleAnamnesis: "Transcript has edits — regenerate if the anamnesis should reflect them.",
 		regenerateAnamnesis: "Regenerate anamnesis",
 		deferredTag: "deferred",
@@ -561,8 +665,16 @@ const en: ConsultationMessages = {
 		enhancing: "enhancing transcript…",
 		enhanced: "enhanced ✓",
 		audioLabel: "Consultation audio",
+		playbackRate: "Playback speed",
+		skipSilence: "Skip silence",
 		tabCorrected: "Corrected",
+		tabChanges: "Changes",
+		tabTranscript: "Transcript",
+		noChanges: "No differences between original and corrected.",
 		tabOriginal: "Original",
+		speakerN: paramMessage("en", "Speaker {n}", ["n"]),
+		speakerUnknown: "Speaker",
+		encryptionNote: "End-to-end encrypted and secure consultation (LGPD compliant)",
 	},
 	newConsultation: {
 		title: "New consultation",
@@ -622,6 +734,10 @@ const en: ConsultationMessages = {
 		recordingSpeak: "recording… speak normally",
 		consultationText: "Consultation text",
 		useSample: "Use sample",
+		draftRecovered: paramMessage("en", "Draft recovered — recording finished at {time}", ["time"]),
+		restoreDraft: "Restore draft",
+		discardDraft: "Discard",
+		draftAudio: "Draft audio",
 		clear: "Clear",
 		transcriptPlaceholder: "The transcript appears here (or paste the consultation text)",
 		serverTranscript: "Server transcript",
@@ -693,6 +809,15 @@ const en: ConsultationMessages = {
 		transcriptionFailed: "transcription failed",
 		botFailed: paramMessage("en", "bot failed: HTTP {status}", ["status"]),
 		patientFallback: "patient",
+		anamnesisDrawer: "AI anamnesis",
+		anamnesisDrawerDescription:
+			"Structured draft generated from the transcript — review each section, then save.",
+		stopCapture: "Stop capture",
+		copyTranscript: "Copy transcript",
+		transcriptCopied: "Transcript copied to clipboard",
+		exportTranscript: "Download transcript (.txt)",
+		yearsOld: paramMessage("en", "{age} years", ["age"]),
+		listening: "Listening to the dialogue — transcribing with Whisper AI in real time…",
 	},
 	admin: {
 		title: "Consultations",
@@ -757,6 +882,70 @@ const en: ConsultationMessages = {
 		failed: paramMessage("en", "Speech model unavailable: {message}", ["message"]),
 		retry: "Retry",
 		dismiss: "Dismiss",
+	},
+	liveFlow: {
+		brandName: "KTB Health",
+		roomTitle: "Consultation Room",
+		readyTitle: "Ready to start the consultation?",
+		consentTitle: "Informed patient consent",
+		consentDescription:
+			"I declare that the patient was duly informed and consented to automated medical recording and transcription (in compliance with LGPD and CFM regulations).",
+		changePatient: "Change",
+		testAudio: "Test audio (3s)",
+		testingAudio: "Testing audio…",
+		calibratedAudio: "Audio calibrated",
+		startSession: "Start Session",
+		startingSession: "Starting recording & transcription…",
+		secondaryAction: "Quick post-consultation dictation",
+		modalityInPerson: "In-person consult",
+		modalityTelemedicine: "Teleconsult",
+		captureInPerson: "Room microphone active",
+		captureTelemedicine: "Meeting tab audio capture",
+		deviceInPerson: "Room microphone",
+		deviceTelemedicine: "Meeting tab — audio only",
+		engineInPerson: "Local Whisper",
+		engineTelemedicine: "Tab capture · patient channel",
+		audioStatus: {
+			ready: "Audio ready",
+			muted: "Microphone muted",
+			testing: "Testing audio…",
+			calibrated: "Audio calibrated",
+		},
+		networkStatus: "Network status",
+		encryption: "End-to-end encrypted",
+		connectionStable: "Stable connection",
+		pickerDone: "Done",
+		audioSettingsTitle: "Audio settings",
+		inputDevice: "Input device",
+		systemDefaultDevice: "System default",
+		live: "LIVE",
+		paused: "PAUSED",
+		ended: "ENDED",
+		anamnesis: "AI anamnesis",
+		endConsultation: "End Consultation",
+		transcriptTitle: "Live Consultation Transcript",
+		diarizationActive: "Channel attribution active",
+		diarizationPaused: "Channel attribution paused",
+		diarizationEnded: "Channel attribution ended",
+		copy: "Copy",
+		export: "Export",
+		listening: "Listening to the dialogue and transcribing in real time...",
+		pausedListening: "Transcription paused — audio keeps being captured.",
+		endedListening: "Consultation ended — transcription finalized.",
+		audioSourceInPerson: "Microphone — clinician channel",
+		audioSourceTelemedicine: "Meeting tab — patient channel",
+		yearsOld: "years old",
+		recordPrefix: "Record #",
+	},
+	reviewUi: {
+		playback: "Playback",
+		syncBadge: "Audio master sync",
+		volume: "Volume",
+		confirming: "Confirming…",
+		flaggedTitle: paramMessage("en", "{n} passages flagged", ["n"]),
+		flaggedHint: "Low-confidence passages — check each against the audio before confirming.",
+		pendingTitle: "Pending data",
+		approveHint: "Approve to stamp this anamnesis as reviewed.",
 	},
 };
 
@@ -891,6 +1080,7 @@ const ptBR: ConsultationMessages = {
 		deferredUntil: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
 		approvedToast: "Anamnese aprovada",
 		queueDoneToast: "Fila de revisão concluída",
+		audioFailed: "falha no áudio",
 	},
 	review: {
 		title: "Modo de revisão",
@@ -913,6 +1103,7 @@ const ptBR: ConsultationMessages = {
 		highConfTitle: "Transcrição de alta confiança",
 		highConfHint: "sem trechos duvidosos — conferência opcional",
 		editSegment: "Editar trecho",
+		editSection: "Editar seção",
 		editFullText: "Editar transcrição",
 		saveEdit: "Salvar",
 		cancelEdit: "Cancelar",
@@ -924,6 +1115,7 @@ const ptBR: ConsultationMessages = {
 		shortcutSeekBack: "voltar 10s",
 		shortcutKeySpace: "Espaço",
 		shortcutConfirm: "confirmar transcrição",
+		chapters: "Capítulos",
 		staleAnamnesis: "A transcrição tem edições — regenere se a anamnese deve refleti-las.",
 		regenerateAnamnesis: "Regenerar anamnese",
 		deferredTag: "adiada",
@@ -940,8 +1132,16 @@ const ptBR: ConsultationMessages = {
 		enhancing: "melhorando transcrição…",
 		enhanced: "melhorada ✓",
 		audioLabel: "Áudio da consulta",
+		playbackRate: "Velocidade de reprodução",
+		skipSilence: "Pular silêncios",
+		tabChanges: "Mudanças",
+		tabTranscript: "Transcrição",
+		noChanges: "Sem diferenças entre original e corrigida.",
 		tabCorrected: "Corrigida",
 		tabOriginal: "Original",
+		speakerN: paramMessage("pt-BR", "Locutor {n}", ["n"]),
+		speakerUnknown: "Locutor",
+		encryptionNote: "Consulta criptografada de ponta a ponta e segura (LGPD)",
 	},
 	newConsultation: {
 		title: "Nova consulta",
@@ -1000,6 +1200,12 @@ const ptBR: ConsultationMessages = {
 		recordingSpeak: "gravando… fale normalmente",
 		consultationText: "Texto da consulta",
 		useSample: "Usar exemplo",
+		draftRecovered: paramMessage("pt-BR", "Rascunho recuperado — gravação finalizada às {time}", [
+			"time",
+		]),
+		restoreDraft: "Restaurar rascunho",
+		discardDraft: "Descartar",
+		draftAudio: "Áudio do rascunho",
 		clear: "Limpar",
 		transcriptPlaceholder: "A transcrição aparece aqui (ou cole o texto da consulta)",
 		serverTranscript: "Transcrição do servidor",
@@ -1073,6 +1279,15 @@ const ptBR: ConsultationMessages = {
 		transcriptionFailed: "falha na transcrição",
 		botFailed: paramMessage("pt-BR", "bot falhou: HTTP {status}", ["status"]),
 		patientFallback: "paciente",
+		anamnesisDrawer: "Anamnese IA",
+		anamnesisDrawerDescription:
+			"Rascunho estruturado gerado a partir da transcrição — revise cada seção e salve.",
+		stopCapture: "Parar captura",
+		copyTranscript: "Copiar transcrição",
+		transcriptCopied: "Transcrição copiada para a área de transferência",
+		exportTranscript: "Baixar transcrição (.txt)",
+		yearsOld: paramMessage("pt-BR", "{age} anos", ["age"]),
+		listening: "Ouvindo o diálogo — transcrevendo com IA Whisper em tempo real…",
 	},
 	admin: {
 		title: "Consultas",
@@ -1139,6 +1354,70 @@ const ptBR: ConsultationMessages = {
 		failed: paramMessage("pt-BR", "Modelo de fala indisponível: {message}", ["message"]),
 		retry: "Tentar novamente",
 		dismiss: "Dispensar",
+	},
+	liveFlow: {
+		brandName: "KTB Health",
+		roomTitle: "Sala de Consulta",
+		readyTitle: "Pronto para iniciar a consulta?",
+		consentTitle: "Consentimento Informado do Paciente",
+		consentDescription:
+			"Declaro que o paciente foi devidamente informado e consentiu com a gravação e transcrição médica automatizada (em conformidade com a LGPD e o CFM).",
+		changePatient: "Trocar",
+		testAudio: "Testar áudio (3s)",
+		testingAudio: "Testando áudio…",
+		calibratedAudio: "Áudio calibrado",
+		startSession: "Iniciar Sessão",
+		startingSession: "Iniciando gravação e transcrição…",
+		secondaryAction: "Ditado rápido pós-consulta",
+		modalityInPerson: "Consulta presencial",
+		modalityTelemedicine: "Teleconsulta",
+		captureInPerson: "Microfone do consultório ativo",
+		captureTelemedicine: "Captura do áudio da aba da chamada",
+		deviceInPerson: "Microfone do consultório",
+		deviceTelemedicine: "Aba da chamada — somente áudio",
+		engineInPerson: "Whisper local",
+		engineTelemedicine: "Captura da aba · canal do paciente",
+		audioStatus: {
+			ready: "Áudio pronto",
+			muted: "Microfone mudo",
+			testing: "Testando áudio…",
+			calibrated: "Áudio calibrado",
+		},
+		networkStatus: "Status da rede",
+		encryption: "Criptografado de ponta a ponta",
+		connectionStable: "Conexão estável",
+		pickerDone: "Concluir",
+		audioSettingsTitle: "Configurações de áudio",
+		inputDevice: "Dispositivo de entrada",
+		systemDefaultDevice: "Padrão do sistema",
+		live: "AO VIVO",
+		paused: "PAUSADA",
+		ended: "ENCERRADA",
+		anamnesis: "Anamnese IA",
+		endConsultation: "Encerrar Consulta",
+		transcriptTitle: "Transcrição da Consulta em Tempo Real",
+		diarizationActive: "Atribuição por canal ativa",
+		diarizationPaused: "Atribuição por canal pausada",
+		diarizationEnded: "Atribuição por canal encerrada",
+		copy: "Copiar",
+		export: "Exportar",
+		listening: "Ouvindo o diálogo e transcrevendo em tempo real...",
+		pausedListening: "Transcrição pausada — o áudio continua sendo capturado.",
+		endedListening: "Consulta encerrada — transcrição finalizada.",
+		audioSourceInPerson: "Microfone — canal do médico",
+		audioSourceTelemedicine: "Aba da chamada — canal do paciente",
+		yearsOld: "anos",
+		recordPrefix: "Prontuário #",
+	},
+	reviewUi: {
+		playback: "Reprodução",
+		syncBadge: "Sincronia mestre de áudio",
+		volume: "Volume",
+		confirming: "Confirmando…",
+		flaggedTitle: paramMessage("pt-BR", "{n} trechos sinalizados", ["n"]),
+		flaggedHint: "Trechos de baixa confiança — confira cada um no áudio antes de confirmar.",
+		pendingTitle: "Dados pendentes",
+		approveHint: "Aprove para carimbar esta anamnese como revisada.",
 	},
 };
 
@@ -1273,6 +1552,7 @@ const es: ConsultationMessages = {
 		deferredUntil: paramMessage("es", "Aplazada hasta {date}", ["date"]),
 		approvedToast: "Anamnesis aprobada",
 		queueDoneToast: "Cola de revisión completada",
+		audioFailed: "falló el audio",
 	},
 	review: {
 		title: "Modo de revisión",
@@ -1296,6 +1576,7 @@ const es: ConsultationMessages = {
 		highConfTitle: "Transcripción de alta confianza",
 		highConfHint: "sin pasajes dudosos — cotejo opcional",
 		editSegment: "Editar fragmento",
+		editSection: "Editar sección",
 		editFullText: "Editar transcripción",
 		saveEdit: "Guardar",
 		cancelEdit: "Cancelar",
@@ -1307,6 +1588,7 @@ const es: ConsultationMessages = {
 		shortcutSeekBack: "retroceder 10s",
 		shortcutKeySpace: "Espacio",
 		shortcutConfirm: "confirmar transcripción",
+		chapters: "Capítulos",
 		staleAnamnesis: "La transcripción tiene ediciones — regenera si la anamnesis debe reflejarlas.",
 		regenerateAnamnesis: "Regenerar anamnesis",
 		deferredTag: "aplazada",
@@ -1323,8 +1605,16 @@ const es: ConsultationMessages = {
 		enhancing: "mejorando transcripción…",
 		enhanced: "mejorada ✓",
 		audioLabel: "Audio de la consulta",
+		playbackRate: "Velocidad de reproducción",
+		skipSilence: "Saltar silencios",
+		tabChanges: "Cambios",
+		tabTranscript: "Transcripción",
+		noChanges: "Sin diferencias entre original y corregida.",
 		tabCorrected: "Corregida",
 		tabOriginal: "Original",
+		speakerN: paramMessage("es", "Hablante {n}", ["n"]),
+		speakerUnknown: "Hablante",
+		encryptionNote: "Consulta cifrada de extremo a extremo y segura (LGPD)",
 	},
 	newConsultation: {
 		title: "Nueva consulta",
@@ -1385,6 +1675,12 @@ const es: ConsultationMessages = {
 		recordingSpeak: "grabando… hable con normalidad",
 		consultationText: "Texto de la consulta",
 		useSample: "Usar ejemplo",
+		draftRecovered: paramMessage("es", "Borrador recuperado — grabación terminada a las {time}", [
+			"time",
+		]),
+		restoreDraft: "Restaurar borrador",
+		discardDraft: "Descartar",
+		draftAudio: "Audio del borrador",
 		clear: "Limpiar",
 		transcriptPlaceholder: "La transcripción aparece aquí (o pegue el texto de la consulta)",
 		serverTranscript: "Transcripción del servidor",
@@ -1458,6 +1754,15 @@ const es: ConsultationMessages = {
 		transcriptionFailed: "falló la transcripción",
 		botFailed: paramMessage("es", "el bot falló: HTTP {status}", ["status"]),
 		patientFallback: "paciente",
+		anamnesisDrawer: "Anamnesis IA",
+		anamnesisDrawerDescription:
+			"Borrador estructurado generado a partir de la transcripción — revise cada sección y guarde.",
+		stopCapture: "Detener captura",
+		copyTranscript: "Copiar transcripción",
+		transcriptCopied: "Transcripción copiada al portapapeles",
+		exportTranscript: "Descargar transcripción (.txt)",
+		yearsOld: paramMessage("es", "{age} años", ["age"]),
+		listening: "Escuchando el diálogo — transcribiendo con IA Whisper en tiempo real…",
 	},
 	admin: {
 		title: "Consultas",
@@ -1522,6 +1827,70 @@ const es: ConsultationMessages = {
 		failed: paramMessage("es", "Modelo de voz no disponible: {message}", ["message"]),
 		retry: "Reintentar",
 		dismiss: "Descartar",
+	},
+	liveFlow: {
+		brandName: "KTB Health",
+		roomTitle: "Sala de Consulta",
+		readyTitle: "¿Listo para iniciar la consulta?",
+		consentTitle: "Consentimiento informado del paciente",
+		consentDescription:
+			"Declaro que el paciente fue debidamente informado y consintió la grabación y transcripción médica automatizada (en conformidad con la LGPD y el CFM).",
+		changePatient: "Cambiar",
+		testAudio: "Probar audio (3s)",
+		testingAudio: "Probando audio…",
+		calibratedAudio: "Audio calibrado",
+		startSession: "Iniciar sesión",
+		startingSession: "Iniciando grabación y transcripción…",
+		secondaryAction: "Dictado rápido posconsulta",
+		modalityInPerson: "Consulta presencial",
+		modalityTelemedicine: "Teleconsulta",
+		captureInPerson: "Micrófono del consultorio activo",
+		captureTelemedicine: "Captura del audio de la pestaña de la llamada",
+		deviceInPerson: "Micrófono del consultorio",
+		deviceTelemedicine: "Pestaña de la llamada — solo audio",
+		engineInPerson: "Whisper local",
+		engineTelemedicine: "Captura de pestaña · canal del paciente",
+		audioStatus: {
+			ready: "Audio listo",
+			muted: "Micrófono silenciado",
+			testing: "Probando audio…",
+			calibrated: "Audio calibrado",
+		},
+		networkStatus: "Estado de la red",
+		encryption: "Cifrado de extremo a extremo",
+		connectionStable: "Conexión estable",
+		pickerDone: "Listo",
+		audioSettingsTitle: "Configuración de audio",
+		inputDevice: "Dispositivo de entrada",
+		systemDefaultDevice: "Predeterminado del sistema",
+		live: "EN VIVO",
+		paused: "PAUSADA",
+		ended: "FINALIZADA",
+		anamnesis: "Anamnesis IA",
+		endConsultation: "Finalizar consulta",
+		transcriptTitle: "Transcripción de la consulta en tiempo real",
+		diarizationActive: "Atribución por canal activa",
+		diarizationPaused: "Atribución por canal pausada",
+		diarizationEnded: "Atribución por canal finalizada",
+		copy: "Copiar",
+		export: "Exportar",
+		listening: "Escuchando el diálogo y transcribiendo en tiempo real...",
+		pausedListening: "Transcripción pausada — el audio sigue captándose.",
+		endedListening: "Consulta finalizada — transcripción completada.",
+		audioSourceInPerson: "Micrófono — canal del clínico",
+		audioSourceTelemedicine: "Pestaña de la llamada — canal del paciente",
+		yearsOld: "años",
+		recordPrefix: "Ficha #",
+	},
+	reviewUi: {
+		playback: "Reproducción",
+		syncBadge: "Sincronización maestra de audio",
+		volume: "Volumen",
+		confirming: "Confirmando…",
+		flaggedTitle: paramMessage("es", "{n} pasajes señalados", ["n"]),
+		flaggedHint: "Pasajes de baja confianza — verifica cada uno con el audio antes de confirmar.",
+		pendingTitle: "Datos pendientes",
+		approveHint: "Aprueba para validar esta anamnesis como revisada.",
 	},
 };
 

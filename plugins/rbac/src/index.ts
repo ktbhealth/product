@@ -14,7 +14,6 @@ import {
 	PermissionInvalidator,
 	permissionsService,
 	Permissions,
-	PERMISSION_CATALOG,
 	splitPermission,
 	roles,
 	permissionEpoch,
@@ -25,6 +24,7 @@ import {
 import { Command, Query } from "@effect-server-utils/cqrs";
 
 import { relationTuples, type RelationTuple } from "@ktb/db/schema";
+import { PERMISSION_CATALOG } from "./catalog.ts";
 import { RbacCommands, RbacQueries } from "./api.ts";
 import { RbacPlatformPage } from "./platform-page.tsx";
 import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";

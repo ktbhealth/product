@@ -4,7 +4,8 @@ import * as Layer from "effect/Layer";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import type { Page } from "@ktb/kernel";
 
 import { patientAccessPagesPlugin, PatientLinks } from "./index.ts";
@@ -19,11 +20,10 @@ const page = (id: string): Page => {
 };
 
 const DDL = `
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT);
-INSERT INTO patients (id, owner_id, name, email) VALUES
-  (1, 'doc', 'Ana', 'ana@ktb.test'), (2, 'doc', 'Leo', NULL), (3, 'other', 'Rui', 'rui@ktb.test');
+INSERT INTO patients (id, owner_id, name, email, created_at) VALUES
+  (1, 'doc', 'Ana', 'ana@ktb.test', 0), (2, 'doc', 'Leo', NULL, 0), (3, 'other', 'Rui', 'rui@ktb.test', 0);
 `;
-const db = makeDb(makeD1(DDL));
+const db = makeDb(makeTestD1(DDL));
 
 const links = [
 	{ id: 2, email: "ana@ktb.test", relation: "self", status: "active", source: "invite" },

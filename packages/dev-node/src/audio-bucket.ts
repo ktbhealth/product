@@ -3,15 +3,16 @@ import { dirname, resolve, sep } from "node:path";
 
 /**
  * Node/Bun stand-in for the Cloudflare bindings that have no workerd
- * equivalent under `KTB_DEV_NODE=1` (see node-cloudflare-workers.ts):
+ * equivalent under `KTB_DEV_NODE=1` (wired by apps/web's
+ * node-cloudflare-workers.ts shim):
  *
  * - {@link makeLocalAudioBucket}: filesystem-backed R2Bucket slice —
  *   objects land as plain files under a gitignored data dir, with a
  *   `.ktb-meta.json` sidecar carrying `httpMetadata.contentType`.
  *
- * The Queue producer stand-in lives in node-queue.ts (SQLite-backed,
- * restart-persistent). Both are plain deploy glue for apps/web — no
- * ports/adapters involved.
+ * The Queue producer stand-in lives in queue.ts (SQLite-backed,
+ * restart-persistent). Both are node-only dev runtime glue consumed by
+ * apps/web's dev:node shim — no ports/adapters involved.
  */
 
 /** Sidecar suffix storing `{ contentType }` next to each object file. */

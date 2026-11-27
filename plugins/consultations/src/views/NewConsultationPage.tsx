@@ -1,6 +1,14 @@
-import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowLeftIcon, BrainIcon, CheckIcon, ClipboardListIcon, DownloadIcon } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useMemo, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
+import {
+	ArrowLeftIcon,
+	BrainIcon,
+	ClipboardListIcon,
+	CopyIcon,
+	DownloadIcon,
+	SparklesIcon,
+} from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -10,17 +18,11 @@ import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Alert } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from "@ktbhealth/ui/components/card";
+import { Card, CardContent, CardHeader } from "@ktbhealth/ui/components/card";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import {
 	Empty,
+	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
@@ -28,13 +30,32 @@ import {
 } from "@ktbhealth/ui/components/empty";
 import { Field, FieldError, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
+import { Avatar, AvatarFallback } from "@ktbhealth/ui/components/avatar";
+import {
+	Dialog as PickerDialog,
+	DialogContent as PickerDialogContent,
+	DialogHeader as PickerDialogHeader,
+	DialogTitle as PickerDialogTitle,
+} from "@ktbhealth/ui/components/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@ktbhealth/ui/components/dropdown-menu";
 import { Label } from "@ktbhealth/ui/components/label";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import {
-	ResizableHandle,
-	ResizablePanel,
-	ResizablePanelGroup,
-} from "@ktbhealth/ui/components/resizable";
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetFooter,
+	SheetHeader,
+	SheetTitle,
+} from "@ktbhealth/ui/components/sheet";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 import {
@@ -44,12 +65,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Breadcrumb,
-	BreadcrumbItem,
-	BreadcrumbList,
-	BreadcrumbSeparator,
-} from "@ktbhealth/ui/components/breadcrumb";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
@@ -72,14 +87,38 @@ import {
 	type TranscriptionBackend,
 } from "@ktb/transcription";
 
-import { CONF_BAR, CONF_STYLE } from "./-ui.ts";
+import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
+import {
+	AnamnesisSection,
+	EncryptionPill,
+	ListeningIndicator,
+	PatientContextBar,
+	RecordingIndicator,
+	SpeakerChatRow,
+	TranscriptPanelHeader,
+} from "./-chat.tsx";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import {
+	ConsultationControlBar,
+	LiveConsultationHeader,
+	LiveStatusStrip,
+	LiveTranscriptPanel,
+	type LiveConsultationLabels,
+	type LiveConsultationPatient,
+} from "@ktbhealth/ui/components/live-consultation";
+import {
+	PreconsultationRoom,
+	type PreconsultationModality,
+	type PreconsultationRoomLabels,
+} from "@ktbhealth/ui/components/preconsultation-room";
+import {
 	AudioTranscriptPanel,
+	ConsultationAudioPlayer,
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 	type TranscriptView,
 } from "./-transcript.tsx";
+import { liveConsultationTurns } from "./-live-turns.ts";
 import { patientDek, PATIENT_ENTITY_TYPE } from "@ktb/patients/zk";
 import {
 	consultationDek,
@@ -91,6 +130,11 @@ import {
 	type ConsultationZk,
 	type GrantInput,
 } from "../zk.ts";
+import {
+	defaultDraftStore,
+	type RecordingDraft,
+	type RecordingDraftStore,
+} from "../recording-draft.ts";
 
 /** Portal-access state for the save dialog — "ask" renders the retry form. */
 type AccessOutcome = {
@@ -104,21 +148,6 @@ function fmtElapsed(totalSec: number) {
 	const m = Math.floor(totalSec / 60);
 	const s = totalSec % 60;
 	return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function Step({ n, label, done }: { n: number; label: string; done: boolean }) {
-	return (
-		<span className="flex items-center gap-2">
-			<span
-				className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${
-					done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-				}`}
-			>
-				{done ? <CheckIcon className="size-3.5" aria-hidden /> : n}
-			</span>
-			<span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-		</span>
-	);
 }
 
 export interface NewConsultationApi {
@@ -193,6 +222,9 @@ export function NewConsultationPage({
 	locale = "en",
 	portalBase,
 	zk,
+	physician,
+	user,
+	liveFlow = true,
 }: {
 	initialPatients: Array<{ id: number; name: string }>;
 	/** Preselect a patient (e.g. "New consultation" from the patient record). */
@@ -213,6 +245,18 @@ export function NewConsultationPage({
 	 * locally and the saved record is encrypted + client-signed before
 	 * it leaves the browser. */
 	zk?: ConsultationZk;
+	/** Clinician display name for the live-flow surfaces (pre-consultation
+	 * room avatar, transcript speaker turns). Falls back to the generic
+	 * speaker label when the host has no name. */
+	physician?: string;
+	/** Signed-in account for the room's user menu (name/email + portal
+	 * navigation). Absent on hosts that do not resolve a session. */
+	user?: { readonly name?: string | null; readonly email: string } | null;
+	/** New live-consultation flow: the pre-consultation room before the
+	 * first record capture and the LiveConsultation screen while a
+	 * record-source capture runs. `false` restores the legacy capture
+	 * rail for every source. */
+	liveFlow?: boolean;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
@@ -281,13 +325,53 @@ export function NewConsultationPage({
 	const [mode, setMode] = useState<"live" | "dictation">("live");
 	const [dictating, setDictating] = useState(false);
 	const [elapsedSec, setElapsedSec] = useState(0);
-	const dictationStartRef = useRef(0);
+	// One clock for every capture mode — feeds the transcript-header
+	// timer and the mm:ss stamps on the live chat rows.
+	const captureStartRef = useRef(0);
+	const live = recording || tabRecording || dictating;
+	const [anamnesisOpen, setAnamnesisOpen] = useState(false);
+	// Live-flow (liveFlow prop) stage state: the pre-consultation room
+	// modality pick, the patient-picker strip it can reveal, and the
+	// latch that keeps the room from reappearing once a session started.
+	const [modality, setModality] = useState<PreconsultationModality>("in-person");
+	const [roomDone, setRoomDone] = useState(false);
+	const [patientPickerOpen, setPatientPickerOpen] = useState(false);
+	// Room audio settings: the picked input device feeds both the audio
+	// test and the real mic capture (`null` = system default). The mic
+	// toggle is preview-only — nothing is captured before Start.
+	const [micDeviceId, setMicDeviceId] = useState<string | null>(null);
+	const [audioDevices, setAudioDevices] = useState<{ id: string; label: string }[]>([]);
+	const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
+	const [micMuted, setMicMuted] = useState(false);
+	// mm:ss stamps for transcript lines appended during capture —
+	// parallel to the non-empty lines, trimmed when the text shrinks.
+	const [rowTimes, setRowTimes] = useState<number[]>([]);
+	const chatEndRef = useRef<HTMLDivElement>(null);
+	// Ages of patients quick-created this session — the only age
+	// metadata this page ever sees for the context bar.
+	const [createdAges, setCreatedAges] = useState<Record<number, number>>({});
+	// Fixed-height workspace frame — measured like the review mode.
+	const frameRef = useRef<HTMLDivElement>(null);
 	// Audio pipeline (P-015/P-018): after save, the session recording is
 	// uploaded and the detail is polled for server/corrected transcripts.
 	const [audioConsultId, setAudioConsultId] = useState<number | null>(null);
 	const [viewedText, setViewedText] = useState<TranscriptView | null>(null);
 	const uploadedAudioFor = useRef(new Set<number>());
 	const pendingUploadBlob = useRef<Blob | null>(null);
+	// T-222 draft persistence: refs mirror the latest values so the
+	// recorder "end" handlers (closures captured at start) persist fresh
+	// state; the store is lazily picked once per mount.
+	const transcriptRef = useRef("");
+	transcriptRef.current = transcript;
+	const patientIdRef = useRef(patientId);
+	patientIdRef.current = patientId;
+	const draftStore = useMemo<RecordingDraftStore>(() => defaultDraftStore(), []);
+	const [draft, setDraft] = useState<RecordingDraft | null>(null);
+	// Object URLs for the draft blob — the banner previews it; after
+	// restore the player moves next to the transcript so the doctor can
+	// re-listen while reviewing (URL survives until save/discard/unmount).
+	const [draftUrl, setDraftUrl] = useState<string | null>(null);
+	const [restoredUrl, setRestoredUrl] = useState<string | null>(null);
 
 	// The ASR engine stays lazy: `backend.load()` only runs when the
 	// doctor actually starts a capture (mic / tab / dictation), so the
@@ -305,25 +389,61 @@ export function NewConsultationPage({
 	}, []);
 
 	useEffect(() => {
-		const tr = backend.mic();
+		const tr = backend.tab();
+		tabRef.current = tr;
+		return () => tr.stop();
+	}, []);
+
+	// The mic transcriber is rebuilt when the room's device picker
+	// changes — only reachable pre-capture, so no live session is lost.
+	useEffect(() => {
+		const tr = backend.mic({ deviceId: micDeviceId ?? undefined });
 		transcriberRef.current = tr;
-		tabRef.current = backend.tab();
 		setSupported(tr.supported);
 		return () => {
 			tr.stop();
-			tabRef.current?.stop();
+			transcriberRef.current = null;
 		};
-	}, []);
+	}, [micDeviceId]);
 
-	// elapsed clock while dictating
+	// elapsed clock while any capture is live — header timer + row stamps
 	useEffect(() => {
-		if (!dictating) return;
+		if (!live) return;
 		const i = setInterval(
-			() => setElapsedSec(Math.floor((Date.now() - dictationStartRef.current) / 1000)),
+			() => setElapsedSec(Math.floor((Date.now() - captureStartRef.current) / 1000)),
 			500,
 		);
 		return () => clearInterval(i);
-	}, [dictating]);
+	}, [live]);
+
+	// Chat-workspace frame: pin the page to the viewport (same measured
+	// pattern as the review mode) — inner regions carry their own scroll.
+	useEffect(() => {
+		const el = frameRef.current;
+		/* v8 ignore next -- the ref is attached to the always-rendered frame */
+		if (!el) return;
+		const fit = () => {
+			const footer = document.querySelector("footer");
+			const reserve = (footer?.getBoundingClientRect().height ?? 0) + 16;
+			el.style.height = `${Math.max(320, window.innerHeight - el.getBoundingClientRect().top - reserve)}px`;
+		};
+		fit();
+		window.addEventListener("resize", fit);
+		return () => window.removeEventListener("resize", fit);
+	}, []);
+
+	// Drop the row stamps the transcript no longer covers — clearing,
+	// the server-fallback splice and manual edits shorten the line list.
+	useEffect(() => {
+		const lines = transcript.split("\n").filter((l) => l.trim()).length;
+		setRowTimes((prev) => (prev.length > lines ? prev.slice(0, lines) : prev));
+	}, [transcript]);
+
+	// The live chat keeps the newest row in view.
+	useEffect(() => {
+		// jsdom has no scrollIntoView — the optional call keeps tests quiet.
+		chatEndRef.current?.scrollIntoView?.({ block: "nearest" });
+	}, [transcript, partial, live]);
 
 	// Look up the picked patient's portal standing once (T-258). Results
 	// are keyed by patient, so a late answer for a patient the doctor
@@ -444,6 +564,61 @@ export function NewConsultationPage({
 		setLiveStatus("live");
 	}
 
+	/** Persist the just-finished session as a draft: blob + transcript +
+	 * patient context. `recording()` awaits the recorder's stop, so the
+	 * "end" event ordering is safe. */
+	const persistDraft = (tr: Transcriber | null) => {
+		void tr?.recording?.().then((blob) => {
+			if (!blob?.size) return;
+			void draftStore.save({
+				audio: blob,
+				transcript: transcriptRef.current,
+				patientId: patientIdRef.current,
+				savedAt: Date.now(),
+			});
+		});
+	};
+
+	useEffect(() => {
+		let cancelled = false;
+		void draftStore.load().then((d: RecordingDraft | null) => {
+			if (!cancelled && d) {
+				setDraft(d);
+				if (typeof URL.createObjectURL === "function") setDraftUrl(URL.createObjectURL(d.audio));
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [draftStore]);
+
+	// Revoke object URLs on unmount — blobs can be tens of MB.
+	useEffect(
+		() => () => {
+			for (const u of [draftUrl, restoredUrl])
+				if (u && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(u);
+		},
+		[draftUrl, restoredUrl],
+	);
+
+	const restoreDraft = () => {
+		/* v8 ignore next -- the restore button only renders while a draft is loaded */
+		if (!draft) return;
+		pendingUploadBlob.current = draft.audio;
+		setTranscript(draft.transcript);
+		if (patients.some((p) => p.id === draft.patientId)) setPatientId(draft.patientId);
+		setRestoredUrl(draftUrl);
+		setDraftUrl(null);
+		setDraft(null);
+	};
+
+	const discardDraft = () => {
+		setDraft(null);
+		if (draftUrl && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(draftUrl);
+		setDraftUrl(null);
+		void draftStore.clear();
+	};
+
 	function toggleRecording() {
 		const tr = transcriberRef.current;
 		/* v8 ignore next -- refs are assigned in useEffect before any click */
@@ -458,9 +633,15 @@ export function NewConsultationPage({
 		// Kick the model download now — it overlaps the mic-permission
 		// prompt inside `start` instead of waiting for the stream.
 		backend.load();
+		// A second channel joining keeps the original clock going.
+		if (!live) {
+			captureStartRef.current = Date.now();
+			setElapsedSec(0);
+		}
 		tr.start((ev) => {
 			if (ev.type === "partial") setPartial(ev.text);
 			if (ev.type === "final") {
+				setRowTimes((prev) => [...prev, Math.floor((Date.now() - captureStartRef.current) / 1000)]);
 				setTranscript((prev) => `${prev}${prev ? "\n" : ""}${t.speakers.doctor}: ${ev.text}`);
 				setPartial("");
 			}
@@ -471,6 +652,7 @@ export function NewConsultationPage({
 			if (ev.type === "end") {
 				setRecording(false);
 				setPartial("");
+				persistDraft(tr);
 				void maybeServerFallback("mic");
 			}
 		});
@@ -489,9 +671,14 @@ export function NewConsultationPage({
 		setError(null);
 		sessionSnapshot.current.tab = transcript.length;
 		backend.load();
+		if (!live) {
+			captureStartRef.current = Date.now();
+			setElapsedSec(0);
+		}
 		tr.start((ev) => {
 			if (ev.type === "partial") setPartial(ev.text);
 			if (ev.type === "final") {
+				setRowTimes((prev) => [...prev, Math.floor((Date.now() - captureStartRef.current) / 1000)]);
 				setTranscript((prev) => `${prev}${prev ? "\n" : ""}${t.speakers.patient}: ${ev.text}`);
 				setPartial("");
 			}
@@ -502,6 +689,7 @@ export function NewConsultationPage({
 			if (ev.type === "end") {
 				setTabRecording(false);
 				setPartial("");
+				persistDraft(tr);
 				void maybeServerFallback("tab");
 			}
 		});
@@ -523,13 +711,14 @@ export function NewConsultationPage({
 			return;
 		}
 		setError(null);
-		dictationStartRef.current = Date.now();
+		captureStartRef.current = Date.now();
 		setElapsedSec(0);
 		sessionSnapshot.current.dict = transcript.length;
 		backend.load();
 		tr.start((ev) => {
 			if (ev.type === "partial") setPartial(ev.text);
 			if (ev.type === "final") {
+				setRowTimes((prev) => [...prev, Math.floor((Date.now() - captureStartRef.current) / 1000)]);
 				setTranscript((prev) => `${prev}${prev ? "\n" : ""}${ev.text}`);
 				setPartial("");
 			}
@@ -540,6 +729,7 @@ export function NewConsultationPage({
 			if (ev.type === "end") {
 				setDictating(false);
 				setPartial("");
+				persistDraft(tr);
 				void maybeServerFallback("dict");
 			}
 		});
@@ -614,6 +804,8 @@ export function NewConsultationPage({
 			}
 			setAnamnesis(res.anamnesis);
 			setEngine(res.engine);
+			// The draft lives in the drawer — open it for review.
+			setAnamnesisOpen(true);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -753,6 +945,10 @@ export function NewConsultationPage({
 			// The consultation is saved either way: access only adds to it.
 			setAccess(await accessAfterSave());
 			setSaveDialog({ kind: "ok", id, updated: Boolean(existing) });
+			void draftStore.clear();
+			if (restoredUrl && typeof URL.revokeObjectURL === "function")
+				URL.revokeObjectURL(restoredUrl);
+			setRestoredUrl(null);
 		} catch (e) {
 			setSaveDialog({
 				kind: "error",
@@ -841,10 +1037,31 @@ export function NewConsultationPage({
 		);
 	}
 
-	const step1 = consented && (patientId !== null || patients.length === 0);
-	const step2 = transcript.trim().length > 0;
-	const step3 = anamnesis !== null;
-	const live = recording || tabRecording || dictating;
+	/** Header stop control — ends every running capture channel. */
+	function stopCapture() {
+		if (recording) toggleRecording();
+		if (tabRecording) toggleTabCapture();
+		if (dictating) toggleDictation();
+	}
+
+	function copyTranscript() {
+		void navigator.clipboard.writeText(transcript).then(
+			() => showToast({ text: t.newConsultation.transcriptCopied }),
+			() => setError(t.newConsultation.copyFailed),
+		);
+	}
+
+	function exportTranscript() {
+		/* v8 ignore next -- jsdom lacks createObjectURL; browsers always have it */
+		if (typeof URL.createObjectURL !== "function") return;
+		const url = URL.createObjectURL(new Blob([transcript], { type: "text/plain;charset=utf-8" }));
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `consultation-transcript-${new Date().toISOString().slice(0, 10)}.txt`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
 	// Anamnesis is generated from the transcript version on screen —
 	// the corrected/server text once the audio pipeline panel is up.
 	const extractText = viewedText?.text ?? transcript;
@@ -855,9 +1072,551 @@ export function NewConsultationPage({
 	/* v8 ignore next -- the access question only exists for a linked patient, who has a name */
 	const accessPatientName = dialogPatientName ?? nc.patientFallback;
 
+	const selectedPatient = patientId !== null ? patients.find((p) => p.id === patientId) : null;
+	const selectedPatientAge = patientId !== null ? createdAges[patientId] : undefined;
+
+	// Live chat rows: lines carry the capture-mode speaker hint as a
+	// "Doctor:"/"Patient:" prefix (mic → doctor, tab → patient) —
+	// diarized labels only exist after server-side diarization. Lines
+	// without a prefix (dictation, pasted text, uploads) render
+	// unattributed, with a provenance name and no role chip.
+	const chatRows = transcript
+		.split("\n")
+		.filter((l) => l.trim())
+		.map((line, i) => {
+			const m = /^([\p{L} ]{2,20}):\s*(.*)$/u.exec(line);
+			const speaker = m?.[1]?.trim();
+			const stamp = rowTimes[i];
+			return {
+				speaker,
+				name: !speaker
+					? mode === "dictation"
+						? t.sources.dictation
+						: t.sources.browser
+					: speaker === t.speakers.patient && selectedPatient
+						? selectedPatient.name
+						: speaker,
+				text: m ? m[2]! : line,
+				time: stamp === undefined ? undefined : fmtElapsed(stamp),
+			};
+		});
+	// The in-flight partial is attributed by whichever channel is on.
+	const partialSpeaker = recording
+		? t.speakers.doctor
+		: tabRecording
+			? t.speakers.patient
+			: undefined;
+	const partialName = recording
+		? t.speakers.doctor
+		: tabRecording
+			? (selectedPatient?.name ?? t.speakers.patient)
+			: mode === "dictation"
+				? t.sources.dictation
+				: t.sources.browser;
+
+	// ---- live-flow stages (liveFlow prop) ----
+	// The green room gates the first record-source capture; once a
+	// session starts (`roomDone`) the workspace stays mounted so the
+	// finished transcript remains reviewable. While a record capture
+	// runs, the LiveConsultation screen replaces the legacy chat card.
+	// Dictation/upload/bot sources always keep the legacy workspace.
+	const lf = t.liveFlow;
+	const liveFlowEnabled = liveFlow !== false;
+	const recordSource = mode === "live" && source === "record";
+	const showRoom = liveFlowEnabled && recordSource && !live && !roomDone;
+	const liveScreen = liveFlowEnabled && recordSource && live;
+
+	// The room stage portals to document.body: any ancestor transform or
+	// containing-block quirk would otherwise clip the fixed overlay and
+	// leak the page chrome (sidebar/footer) underneath it.
+	const [stageReady, setStageReady] = useState(false);
+	useEffect(() => setStageReady(true), []);
+
+	const roomLabels: Partial<PreconsultationRoomLabels> = {
+		brandName: lf.brandName,
+		roomTitle: lf.roomTitle,
+		readyTitle: lf.readyTitle,
+		consentTitle: lf.consentTitle,
+		consentDescription: lf.consentDescription,
+		changePatient: lf.changePatient,
+		testAudio: lf.testAudio,
+		testingAudio: lf.testingAudio,
+		calibratedAudio: lf.calibratedAudio,
+		startSession: lf.startSession,
+		startingSession: lf.startingSession,
+		secondaryAction: lf.secondaryAction,
+		modalityInPerson: lf.modalityInPerson,
+		modalityTelemedicine: lf.modalityTelemedicine,
+		captureInPerson: lf.captureInPerson,
+		captureTelemedicine: lf.captureTelemedicine,
+		deviceInPerson: lf.deviceInPerson,
+		deviceTelemedicine: lf.deviceTelemedicine,
+		engineInPerson: lf.engineInPerson,
+		engineTelemedicine: lf.engineTelemedicine,
+		audioStatus: lf.audioStatus,
+		networkStatus: lf.networkStatus,
+		encryption: lf.encryption,
+		connectionStable: lf.connectionStable,
+	};
+	const liveLabels: Partial<LiveConsultationLabels> = {
+		live: lf.live,
+		paused: lf.paused,
+		ended: lf.ended,
+		encryption: lf.encryption,
+		anamnesis: lf.anamnesis,
+		endConsultation: lf.endConsultation,
+		transcriptTitle: lf.transcriptTitle,
+		diarizationActive: lf.diarizationActive,
+		diarizationPaused: lf.diarizationPaused,
+		diarizationEnded: lf.diarizationEnded,
+		copy: lf.copy,
+		export: lf.export,
+		listening: lf.listening,
+		pausedListening: lf.pausedListening,
+		endedListening: lf.endedListening,
+		audioSourceInPerson: lf.audioSourceInPerson,
+		audioSourceTelemedicine: lf.audioSourceTelemedicine,
+		yearsOld: lf.yearsOld,
+		recordPrefix: lf.recordPrefix,
+	};
+	const livePatient: LiveConsultationPatient = {
+		name: selectedPatient?.name ?? nc.unlinked,
+		...(selectedPatientAge !== undefined ? { age: selectedPatientAge } : {}),
+		...(selectedPatient ? { recordNumber: selectedPatient.id } : {}),
+	};
+	// Enumerate audio inputs for the room's device picker — in-person
+	// mic capture only; telemedicine captures the meeting tab instead.
+	// Labels stay blank until mic permission is granted, so the list is
+	// refreshed on `devicechange` (plug/unplug, permission grant).
+	useEffect(() => {
+		if (!showRoom || modality !== "in-person") return;
+		// Effects never run during SSR — navigator is always defined here.
+		const md = navigator.mediaDevices;
+		if (!md?.enumerateDevices) return;
+		let cancelled = false;
+		const refresh = () => {
+			void md
+				.enumerateDevices()
+				.then((list) => {
+					if (cancelled) return;
+					const mics = list
+						.filter((d) => d.kind === "audioinput")
+						.map((d, i) => ({
+							id: d.deviceId,
+							label: d.label || `Microphone ${i + 1}`,
+						}));
+					setAudioDevices([
+						{ id: "default", label: lf.systemDefaultDevice },
+						...mics.filter((d) => d.id !== "default"),
+					]);
+				})
+				.catch(() => {});
+		};
+		refresh();
+		md.addEventListener("devicechange", refresh);
+		return () => {
+			cancelled = true;
+			md.removeEventListener("devicechange", refresh);
+		};
+	}, [showRoom, modality, lf.systemDefaultDevice]);
+
+	const liveTurns = liveConsultationTurns(chatRows, {
+		doctor: t.speakers.doctor,
+		patient: t.speakers.patient,
+		doctorName: physician,
+	});
+	const anamnesisTopicCount = anamnesis
+		? Object.values(anamnesis).filter((s) => s?.content?.trim()).length
+		: 0;
+	const liveFooter = (
+		<>
+			{chatRows.length === 0 && !partial ? (
+				<p className="text-sm text-muted-foreground">{nc.transcriptPlaceholder}</p>
+			) : null}
+			{partial ? (
+				<p className="text-sm text-muted-foreground italic">
+					{partialName}: {partial}…
+				</p>
+			) : null}
+		</>
+	);
+
+	/** Green-room CTA: in-person captures the room mic (clinician
+	 * channel), telemedicine captures the meeting tab (patient
+	 * channel). Latches `roomDone` so the workspace — not the room —
+	 * is what the doctor sees when the session ends. */
+	function startFromRoom() {
+		setRoomDone(true);
+		setPatientPickerOpen(false);
+		// Neither capture can already be running — the room gates the
+		// only entry point — so the toggle guards inside are dead code.
+		if (modality === "in-person") {
+			toggleRecording();
+		} else {
+			toggleTabCapture();
+		}
+	}
+
+	// Capture-source tabs — shared by the capture rail and the
+	// pre-consultation room strip so upload/bot stay reachable from the
+	// green room. ZK tenants have no server audio/transcript path, so
+	// the tabs stay hidden there (T-145/T-147).
+	const sourceTabs =
+		mode === "live" && !zk ? (
+			<Tabs
+				value={source}
+				onValueChange={(v) => setSource(v as "record" | "upload" | "bot")}
+				className="w-fit"
+			>
+				<TabsList className="text-xs">
+					<TabsTrigger value="record">{nc.tabRecord}</TabsTrigger>
+					<TabsTrigger value="upload">{nc.tabUpload}</TabsTrigger>
+					<TabsTrigger value="bot">{nc.tabBot}</TabsTrigger>
+				</TabsList>
+			</Tabs>
+		) : null;
+
+	// Draft recovery notices — rendered above every workspace variant so
+	// an interrupted session is never hidden behind a stage switch.
+	const draftNotices = (
+		<>
+			{draft ? (
+				<div
+					role="status"
+					className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-info/40 bg-info/10 px-3 py-2 text-sm"
+				>
+					<span>
+						{nc.draftRecovered(
+							new Date(draft.savedAt).toLocaleTimeString(locale, {
+								hour: "2-digit",
+								minute: "2-digit",
+							}),
+						)}
+					</span>
+					<span className="flex gap-2">
+						<Button type="button" size="sm" variant="outline" onClick={restoreDraft}>
+							{nc.restoreDraft}
+						</Button>
+						<Button type="button" size="sm" variant="ghost" onClick={discardDraft}>
+							{nc.discardDraft}
+						</Button>
+					</span>
+					{draftUrl ? (
+						<div className="w-full">
+							<ConsultationAudioPlayer
+								src={draftUrl}
+								ariaLabel={nc.draftAudio}
+								preload="metadata"
+							/>
+						</div>
+					) : null}
+				</div>
+			) : null}
+			{restoredUrl ? (
+				<div className="shrink-0 rounded-lg border bg-muted/30 p-2">
+					<p className="mb-1 text-[11px] font-medium text-muted-foreground">{nc.draftAudio}</p>
+					<ConsultationAudioPlayer src={restoredUrl} ariaLabel={nc.draftAudio} preload="metadata" />
+				</div>
+			) : null}
+		</>
+	);
+
+	// Real mic check for the room's "Test audio" — captures ~2.5s through
+	// an AnalyserNode and feeds the room's VU meter; a silent/denied mic
+	// surfaces as a toast instead of a fake "calibrated".
+	const [audioTestLevel, setAudioTestLevel] = useState<number | undefined>(undefined);
+	const audioTestActive = useRef(false);
+
+	async function runAudioTest() {
+		// Testing audio signals capture intent — warm the ASR engine so the
+		// first real capture doesn't pay the model-load latency.
+		backend.load();
+		if (audioTestActive.current || !supported || typeof AudioContext === "undefined") return;
+		audioTestActive.current = true;
+		setAudioTestLevel(0);
+		let stream: MediaStream | null = null;
+		let audioCtx: AudioContext | null = null;
+		try {
+			stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					echoCancellation: true,
+					noiseSuppression: true,
+					...(micDeviceId ? { deviceId: { exact: micDeviceId } } : {}),
+				},
+			});
+			audioCtx = new AudioContext();
+			const source = audioCtx.createMediaStreamSource(stream);
+			const analyser = audioCtx.createAnalyser();
+			analyser.fftSize = 512;
+			source.connect(analyser);
+			const buf = new Uint8Array(analyser.frequencyBinCount);
+			const started = Date.now();
+			let peak = 0;
+			while (Date.now() - started < 2500) {
+				analyser.getByteTimeDomainData(buf);
+				let sum = 0;
+				for (const v of buf) {
+					const d = (v - 128) / 128;
+					sum += d * d;
+				}
+				const rms = Math.sqrt(sum / buf.length);
+				peak = Math.max(peak, rms);
+				setAudioTestLevel(Math.min(1, rms * 3));
+				await new Promise((r) => setTimeout(r, 80));
+			}
+			if (peak < 0.015) {
+				showToast({ text: "Audio test failed — no sound detected. Check your microphone." });
+			}
+		} catch {
+			showToast({ text: "Audio test failed — microphone unavailable or permission denied." });
+		} finally {
+			stream?.getTracks().forEach((track) => track.stop());
+			void audioCtx?.close();
+			audioTestActive.current = false;
+			setAudioTestLevel(undefined);
+		}
+	}
+
+	// Quick-create a patient from the name+age fields — shared by the
+	// capture rail and the room's change-patient dialog.
+	async function createQuickPatient() {
+		if (!patientName.trim()) return;
+		const age = Number(patientAge);
+		if (patientAge === "" || !Number.isInteger(age) || age < 0) {
+			setPatientError(nc.ageRequired);
+			return;
+		}
+		setPatientError(null);
+		const res = await api.createPatient({
+			data: { name: patientName, birthDate: birthDateFromAge(age) },
+		});
+		if (!res.ok) {
+			// Validation comes back as codes; this view is English-only (T-025).
+			const code = Object.values(res.errors)[0];
+			setPatientError(code ? errorMessage(code, locale) : nc.patientCreateFailed);
+			return;
+		}
+		const p = res.patient;
+		setPatients((prev) => [...prev, { id: p.id, name: p.name }]);
+		setPatientId(p.id);
+		setQuickCreatedId(p.id);
+		setCreatedAges((m) => ({ ...m, [p.id]: age }));
+		// A brand-new patient has no portal access — carry the
+		// quick-create answer into their access card (T-258);
+		// "Yes" without a usable email stays undecided.
+		const email = newPatientAccess.email.trim();
+		accessLookedUp.current.add(p.id);
+		setStandings((s) => ({ ...s, [p.id]: { status: "none", email: null } }));
+		setChoices((c) => ({
+			...c,
+			[p.id]: { send: newPatientAccess.send && looksLikeEmail(email), email },
+		}));
+		setNewPatientAccess({ send: true, email: "" });
+		setPatientName("");
+		setPatientAge("");
+		setPatientPickerOpen(false);
+	}
+
+	// Name + age + create button (+ access question, error, record link)
+	// — rendered by the capture rail and the room's patient dialog.
+	const patientCreateControls = (
+		<>
+			<Input
+				value={patientName}
+				onChange={(e) => setPatientName(e.target.value)}
+				placeholder={nc.newPatientPlaceholder}
+				aria-label={nc.newPatientNameLabel}
+				className="w-40"
+			/>
+			<Input
+				type="number"
+				min={0}
+				max={130}
+				inputMode="numeric"
+				value={patientAge}
+				onChange={(e) => setPatientAge(e.target.value)}
+				placeholder={nc.agePlaceholder}
+				aria-label={nc.newPatientAgeLabel}
+				className="w-20"
+			/>
+			<Button type="button" variant="outline" size="sm" onClick={() => void createQuickPatient()}>
+				{nc.addPatient}
+			</Button>
+			{accessEnabled && patientName.trim() !== "" ? (
+				<div className="basis-full">
+					<NewPatientAccessQuestion
+						choice={newPatientAccess}
+						onChange={setNewPatientAccess}
+						nc={nc}
+					/>
+				</div>
+			) : null}
+			{patientError ? <FieldError className="text-xs">{patientError}</FieldError> : null}
+			{quickCreatedId !== null && quickCreatedId === patientId ? (
+				<Link
+					to={portalPath(`/patients/${quickCreatedId}/edit`)}
+					className="text-xs font-medium underline"
+				>
+					{nc.completeRecord}
+				</Link>
+			) : null}
+		</>
+	);
+
+	// Compact patient picker revealed by the room's "Change" action —
+	// rendered as a real dialog from the fullscreen stage.
+	const patientPicker = (
+		<div className="flex flex-wrap items-center gap-3">
+			<Label
+				id="patient-label"
+				className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+			>
+				{nc.patientLabel}
+			</Label>
+			<Select
+				value={patientId === null ? "" : String(patientId)}
+				onValueChange={(v) => setPatientId(v ? Number(v) : null)}
+				items={[
+					{ label: nc.unlinked, value: "" },
+					...patients.map((p) => ({ label: p.name, value: String(p.id) })),
+				]}
+			>
+				<SelectTrigger aria-labelledby="patient-label" className="border-border">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					<SelectItem value="">{nc.unlinked}</SelectItem>
+					{patients.map((p) => (
+						<SelectItem key={p.id} value={String(p.id)}>
+							{p.name}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+			<Button type="button" variant="ghost" size="sm" onClick={() => setPatientPickerOpen(false)}>
+				{lf.pickerDone}
+			</Button>
+		</div>
+	);
+
+	// Account menu for the room header — the fullscreen stage hides the
+	// portal shell, so session info + portal navigation live here.
+	// SPA navigations (same mechanism the portal sidebar uses) — a full
+	// reload through location.assign lands on the error boundary.
+	const navigate = useNavigate();
+	const userMenu = user ? (
+		<DropdownMenu>
+			<DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground">
+				<Avatar size="sm">
+					<AvatarFallback className="bg-muted text-[11px] font-semibold uppercase">
+						{user.name?.[0] ?? user.email[0] ?? "?"}
+					</AvatarFallback>
+				</Avatar>
+				<span className="max-w-32 truncate">{user.name ?? user.email}</span>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-56">
+				{/* Base UI requires group parts (label/items) inside a
+				 * DropdownMenuGroup — a bare label crashes the menu. */}
+				<DropdownMenuGroup>
+					<DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
+						<span className="text-sm font-medium text-foreground">{user.name ?? user.email}</span>
+						{user.name ? (
+							<span className="truncate text-xs text-muted-foreground">{user.email}</span>
+						) : null}
+					</DropdownMenuLabel>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("") })}>
+						Portal home
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("/patients") })}>
+						Patients
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("/consultations") })}>
+						Consultations
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("/review") })}>
+						Review queue
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	) : null;
+
+	// Change-patient modal for the room — select an existing patient or
+	// quick-create one, same controls as the capture rail.
+	const patientPickerDialog = (
+		<PickerDialog open={patientPickerOpen} onOpenChange={setPatientPickerOpen}>
+			<PickerDialogContent className="sm:max-w-md">
+				<PickerDialogHeader>
+					<PickerDialogTitle>{nc.patientLabel}</PickerDialogTitle>
+				</PickerDialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="flex flex-wrap items-center gap-3">{patientPicker}</div>
+					<div className="flex flex-wrap items-center gap-2 border-t pt-3">
+						{patientCreateControls}
+					</div>
+				</div>
+			</PickerDialogContent>
+		</PickerDialog>
+	);
+
+	// Gear button in the room's preview strip — input device picker plus
+	// a shortcut into the real mic test. Only meaningful for in-person
+	// mic capture; telemedicine hears the meeting tab instead.
+	const audioSettingsDialog = (
+		<PickerDialog open={audioSettingsOpen} onOpenChange={setAudioSettingsOpen}>
+			<PickerDialogContent className="sm:max-w-md">
+				<PickerDialogHeader>
+					<PickerDialogTitle>{lf.audioSettingsTitle}</PickerDialogTitle>
+				</PickerDialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="flex flex-col gap-1.5">
+						<Label
+							id="audio-device-label"
+							className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+						>
+							{lf.inputDevice}
+						</Label>
+						<Select
+							value={micDeviceId ?? "default"}
+							onValueChange={(v) => setMicDeviceId(v === "default" ? null : String(v))}
+							items={audioDevices.map((d) => ({ label: d.label, value: d.id }))}
+						>
+							<SelectTrigger aria-labelledby="audio-device-label" className="border-border">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{audioDevices.map((d) => (
+									<SelectItem key={d.id} value={d.id}>
+										{d.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+					<div className="flex justify-end">
+						<Button
+							type="button"
+							size="sm"
+							onClick={() => {
+								setAudioSettingsOpen(false);
+								void runAudioTest();
+							}}
+						>
+							{lf.testAudio}
+						</Button>
+					</div>
+				</div>
+			</PickerDialogContent>
+		</PickerDialog>
+	);
+
 	return (
-		<PageContainer className="max-w-screen-2xl">
+		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
 			<PageHeader
+				className="shrink-0"
 				title={nc.title}
 				description={nc.subtitle}
 				actions={
@@ -871,414 +1630,570 @@ export function NewConsultationPage({
 				}
 			/>
 
-			{/* ---- capture: mode tabs, patient + consent, controls ---- */}
-			<Card>
-				<CardHeader className="border-b">
-					{/* mode: live consultation vs post-consultation dictation */}
-					<Tabs
-						value={mode}
-						onValueChange={(v) => setMode(v as "live" | "dictation")}
-						className="w-fit"
-					>
-						<TabsList aria-label={nc.modeLabel}>
-							<TabsTrigger value="live" disabled={live}>
-								{nc.modeLive}
-							</TabsTrigger>
-							<TabsTrigger value="dictation" disabled={live}>
-								{nc.modeDictation}
-							</TabsTrigger>
-						</TabsList>
-					</Tabs>
-					<Breadcrumb>
-						<BreadcrumbList>
-							<BreadcrumbItem>
-								<Step n={1} label={nc.steps.prepare} done={step1} />
-							</BreadcrumbItem>
-							<BreadcrumbSeparator />
-							<BreadcrumbItem>
-								<Step n={2} label={nc.steps.transcribe} done={step2} />
-							</BreadcrumbItem>
-							<BreadcrumbSeparator />
-							<BreadcrumbItem>
-								<Step n={3} label={nc.steps.review} done={step3} />
-							</BreadcrumbItem>
-						</BreadcrumbList>
-					</Breadcrumb>
-				</CardHeader>
-				<CardContent className="space-y-5">
-					{/* 1. prepare: patient + consent */}
-					<div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-						<div className="flex items-center gap-2">
-							<Label
-								id="patient-label"
-								className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+			{!showRoom ? (
+				<PatientContextBar
+					className="shrink-0"
+					name={selectedPatient?.name ?? nc.unlinked}
+					meta={[
+						...(selectedPatient ? [`${t.list.patientRecord} #${selectedPatient.id}`] : []),
+						...(selectedPatientAge !== undefined ? [nc.yearsOld(selectedPatientAge)] : []),
+					]}
+					chips={
+						<>
+							<Badge
+								variant="secondary"
+								className={`text-[10px] ring-1 ${consented ? BADGE_TONES.green : BADGE_TONES.neutral}`}
 							>
-								{nc.patientLabel}
-							</Label>
-							<Select
-								value={patientId === null ? "" : String(patientId)}
-								onValueChange={(v) => setPatientId(v ? Number(v) : null)}
-								items={[
-									{ label: nc.unlinked, value: "" },
-									...patients.map((p) => ({ label: p.name, value: String(p.id) })),
-								]}
-							>
-								<SelectTrigger aria-labelledby="patient-label" className="border-border">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="">{nc.unlinked}</SelectItem>
-									{patients.map((p) => (
-										<SelectItem key={p.id} value={String(p.id)}>
-											{p.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								{consented ? t.list.consent : t.detail.consentNotRecorded}
+							</Badge>
+							{live ? (
+								<Badge variant="destructive" className="text-[10px]">
+									<span className="size-1.5 animate-pulse rounded-full bg-destructive-foreground" />
+									{fmtElapsed(elapsedSec)}
+								</Badge>
+							) : null}
+							{anamnesis ? (
+								<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.blue}`}>
+									{t.common.anamnesis}
+								</Badge>
+							) : null}
+						</>
+					}
+					actions={
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => setAnamnesisOpen(true)}
+						>
+							<SparklesIcon data-icon="inline-start" />
+							{nc.anamnesisDrawer}
+						</Button>
+					}
+				/>
+			) : null}
+
+			{showRoom ? (
+				stageReady ? (
+					createPortal(
+						/* ---- pre-consultation room: standalone fullscreen
+						 * stage portaled to <body> — covers the portal chrome
+						 * like the catalog demo. The single header carries
+						 * source tabs + notices; patient, consent and the
+						 * audio test live inside the room itself. ---- */
+						<div className="fixed inset-0 z-50 overflow-hidden bg-background">
+							{/* floating chrome — the room itself stays full-bleed
+							 * exactly like the catalog demo; navigation + account
+							 * live in the room header's actions slot */}
+							{patientPickerDialog}
+							{audioSettingsDialog}
+							{draft || restoredUrl ? (
+								<div className="absolute top-20 right-3 z-10 flex w-80 flex-col gap-2">
+									{draftNotices}
+								</div>
+							) : null}
+							{!supported ? (
+								<p className="absolute right-3 bottom-3 z-10 rounded-md bg-background/80 px-2 py-1 text-xs text-info backdrop-blur">
+									{nc.unsupportedBrowser}
+								</p>
+							) : null}
+							<PreconsultationRoom
+								className="h-full"
+								physician={{ name: physician ?? t.speakers.doctor }}
+								patient={{
+									name: selectedPatient?.name ?? nc.unlinked,
+									...(selectedPatientAge !== undefined ? { age: selectedPatientAge } : {}),
+									...(selectedPatient ? { recordNumber: selectedPatient.id } : {}),
+								}}
+								modality={modality}
+								onModalityChange={setModality}
+								consentChecked={consented}
+								onConsentChange={(checked) => setConsented(checked)}
+								onStart={startFromRoom}
+								onPostpone={() => setMode("dictation")}
+								onChangePatient={() => setPatientPickerOpen(true)}
+								onAudioTest={() => void runAudioTest()}
+								onAudioSettings={() => setAudioSettingsOpen(true)}
+								micMuted={micMuted}
+								onMicToggle={() => setMicMuted((m) => !m)}
+								devices={
+									modality === "in-person" && audioDevices.length > 0 ? audioDevices : undefined
+								}
+								selectedDeviceId={micDeviceId ?? "default"}
+								onDeviceChange={(id) => setMicDeviceId(!id || id === "default" ? null : id)}
+								vuLevel={audioTestLevel}
+								telemetry={{ encryptionLabel: lf.encryption }}
+								headerActions={
+									<>
+										{/* the account menu already carries the user
+										 * identity — hide the room's physician block so
+										 * the header doesn't show the same person twice */}
+										<Link
+											to={portalPath("/consultations")}
+											className={buttonVariants({ variant: "outline", size: "sm" })}
+										>
+											<ArrowLeftIcon />
+											{t.detail.back}
+										</Link>
+										{userMenu}
+									</>
+								}
+								showPhysicianHeader={false}
+								labels={roomLabels}
+							/>
+						</div>,
+						document.body,
+					)
+				) : null
+			) : liveScreen ? (
+				/* ---- live consultation screen: leaf composition of the ui
+				 * LiveConsultation blocks — header, diarized-turn transcript
+				 * (channel attribution, honest copy), status strip and the
+				 * anamnesis control bar. The legacy Sheet drawer stays the
+				 * anamnesis surface. ---- */
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+					{/* engine status + transcript utilities stay reachable
+					 * while the capture runs */}
+					<div className="flex shrink-0 flex-wrap items-center gap-2 px-1 pb-2">
+						{modelStatus ? (
+							<Badge variant="secondary" className="min-w-0 font-normal text-muted-foreground">
+								<BrainIcon className="size-3.5 shrink-0" />
+								<span className="truncate">{modelStatus}</span>
+							</Badge>
+						) : null}
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-7 px-2 text-[11px]"
+							onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
+						>
+							{nc.useSample}
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-7 px-2 text-[11px]"
+							onClick={() => setTranscript("")}
+							disabled={!transcript}
+						>
+							{nc.clear}
+						</Button>
+						{error ? (
+							<Alert variant="destructive" className="px-3 py-2 text-xs">
+								{error}
+							</Alert>
+						) : null}
+					</div>
+					{draftNotices}
+					<LiveConsultationHeader
+						patient={livePatient}
+						status="live"
+						elapsedSeconds={elapsedSec}
+						modality={modality}
+						anamnesisCount={anamnesisTopicCount}
+						anamnesisOpen={anamnesisOpen}
+						onToggleAnamnesis={() => setAnamnesisOpen((o) => !o)}
+						onEndConsultation={stopCapture}
+						labels={liveLabels}
+					/>
+					<div className="flex min-h-0 flex-1 flex-col px-4 py-3 md:px-8">
+						<div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
+							<LiveTranscriptPanel
+								turns={liveTurns}
+								status="live"
+								onCopyTranscript={transcript.trim() ? copyTranscript : undefined}
+								onExportTranscript={transcript.trim() ? exportTranscript : undefined}
+								footer={liveFooter}
+								labels={liveLabels}
+								className="rounded-b-none border-b-0"
+							/>
+							<LiveStatusStrip
+								status="live"
+								modality={modality}
+								audioSource={
+									modality === "telemedicine" ? lf.audioSourceTelemedicine : lf.audioSourceInPerson
+								}
+								labels={liveLabels}
+								className="rounded-b-2xl border-x border-b"
+							/>
 						</div>
-						<div className="flex flex-wrap items-center gap-2">
-							<Input
-								value={patientName}
-								onChange={(e) => setPatientName(e.target.value)}
-								placeholder={nc.newPatientPlaceholder}
-								aria-label={nc.newPatientNameLabel}
-								className="w-40"
-							/>
-							<Input
-								type="number"
-								min={0}
-								max={130}
-								inputMode="numeric"
-								value={patientAge}
-								onChange={(e) => setPatientAge(e.target.value)}
-								placeholder={nc.agePlaceholder}
-								aria-label={nc.newPatientAgeLabel}
-								className="w-20"
-							/>
+					</div>
+					<ConsultationControlBar
+						status="live"
+						anamnesisOpen={anamnesisOpen}
+						anamnesisCount={anamnesisTopicCount}
+						onToggleAnamnesis={() => setAnamnesisOpen((o) => !o)}
+						labels={liveLabels}
+					/>
+				</div>
+			) : (
+				/* ---- Workspace: the page itself never scrolls — the capture rail
+				 * and the transcript panel carry their own scroll instead. ---- */
+				<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-hidden">
+					{/* ---- capture rail: mode tabs, patient + consent, controls ---- */}
+					<Card className="w-full shrink-0 lg:w-[330px] xl:w-[360px]">
+						<CardHeader className="shrink-0 border-b">
+							{/* mode: live consultation vs post-consultation dictation */}
+							<Tabs
+								value={mode}
+								onValueChange={(v) => setMode(v as "live" | "dictation")}
+								className="w-fit"
+							>
+								<TabsList aria-label={nc.modeLabel}>
+									<TabsTrigger value="live" disabled={live}>
+										{nc.modeLive}
+									</TabsTrigger>
+									<TabsTrigger value="dictation" disabled={live}>
+										{nc.modeDictation}
+									</TabsTrigger>
+								</TabsList>
+							</Tabs>
+						</CardHeader>
+						<CardContent className="space-y-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+							{/* 1. prepare: patient + consent */}
+							<div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+								<div className="flex items-center gap-2">
+									<Label
+										id="patient-label"
+										className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+									>
+										{nc.patientLabel}
+									</Label>
+									<Select
+										value={patientId === null ? "" : String(patientId)}
+										onValueChange={(v) => setPatientId(v ? Number(v) : null)}
+										items={[
+											{ label: nc.unlinked, value: "" },
+											...patients.map((p) => ({ label: p.name, value: String(p.id) })),
+										]}
+									>
+										<SelectTrigger aria-labelledby="patient-label" className="border-border">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="">{nc.unlinked}</SelectItem>
+											{patients.map((p) => (
+												<SelectItem key={p.id} value={String(p.id)}>
+													{p.name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+								<div className="flex flex-wrap items-center gap-2">{patientCreateControls}</div>
+								<label
+									className={`ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs ${
+										consented
+											? "bg-primary/10 text-primary ring-1 ring-primary/20"
+											: "bg-info/10 text-info ring-1 ring-info/20"
+									}`}
+								>
+									<Checkbox
+										checked={consented}
+										onCheckedChange={(checked) => setConsented(checked === true)}
+									/>
+									{nc.consentDeclaration}
+								</label>
+							</div>
+							{patientId !== null && standings[patientId] !== undefined ? (
+								<PatientAccessCard
+									patientName={accessPatientName}
+									standing={standings[patientId]}
+									choice={
+										choices[patientId] ??
+										defaultChoice(
+											standings[patientId].status === "none" ? standings[patientId].email : null,
+										)
+									}
+									onChange={(choice) => setChoices((c) => ({ ...c, [patientId]: choice }))}
+									nc={nc}
+								/>
+							) : null}
+
+							{/* capture source — ZK tenants have no server audio/transcript
+							 * path, so upload and the meet bot stay hidden (T-145/T-147). */}
+							{sourceTabs}
+							{mode === "dictation" ? (
+								<div className="flex flex-col items-center gap-3 rounded-xl border border-border px-6 py-8 text-center">
+									<p className="max-w-md text-sm text-muted-foreground">
+										{nc.dictationDescription}
+									</p>
+									<Button
+										type="button"
+										onClick={toggleDictation}
+										disabled={!supported || !consented}
+										className={`h-auto gap-3 rounded-full px-6 py-3 text-sm font-semibold ${
+											dictating
+												? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+												: ""
+										}`}
+									>
+										<span
+											className={`size-3 rounded-full ${dictating ? "animate-pulse bg-destructive-foreground" : "bg-destructive-foreground/70"}`}
+										/>
+										{dictating ? nc.stopDictation(fmtElapsed(elapsedSec)) : nc.startDictation}
+									</Button>
+									{dictating ? (
+										<p className="text-xs text-muted-foreground">
+											{nc.dictatingHint(fmtElapsed(elapsedSec))}
+										</p>
+									) : null}
+									{!consented ? (
+										<Alert className="border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
+											{nc.consentRequiredDictation}
+										</Alert>
+									) : null}
+									{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
+								</div>
+							) : source === "upload" ? (
+								<label className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground transition hover:border-foreground/20">
+									<input
+										type="file"
+										accept="audio/*"
+										className="hidden"
+										disabled={busy}
+										onChange={(e) => {
+											const f = e.target.files?.[0];
+											if (f) void uploadAudio(f);
+											e.target.value = "";
+										}}
+									/>
+									<span className="font-medium text-foreground">
+										{busy ? nc.uploading : nc.uploadRecording}
+									</span>
+									<span className="text-[11px]">{nc.uploadHint}</span>
+								</label>
+							) : source === "record" ? (
+								<>
+									<div className="grid gap-3 sm:grid-cols-2">
+										<Button
+											type="button"
+											variant="outline"
+											onClick={toggleRecording}
+											disabled={!supported || !consented}
+											className={`h-auto flex-col items-start rounded-xl p-3 text-left ${
+												recording ? "border-destructive/30 bg-destructive/10" : ""
+											}`}
+										>
+											<span className="flex items-center gap-2 text-sm font-medium">
+												{recording ? (
+													<span className="size-2.5 animate-pulse rounded-full bg-destructive" />
+												) : (
+													<span className="size-2.5 rounded-full bg-muted-foreground" />
+												)}
+												{recording ? nc.stopMic : nc.recordMic}
+											</span>
+											<span className="mt-1 text-[11px] text-muted-foreground">
+												{nc.micHint(t.speakers.doctor)}
+											</span>
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											onClick={toggleTabCapture}
+											disabled={!consented}
+											className={`h-auto flex-col items-start rounded-xl p-3 text-left ${
+												tabRecording ? "border-destructive/30 bg-destructive/10" : ""
+											}`}
+										>
+											<span className="flex items-center gap-2 text-sm font-medium">
+												{tabRecording ? (
+													<span className="size-2.5 animate-pulse rounded-full bg-destructive" />
+												) : (
+													<span className="size-2.5 rounded-full bg-muted-foreground" />
+												)}
+												{tabRecording ? nc.stopTab : nc.captureTab}
+											</span>
+											<span className="mt-1 text-[11px] text-muted-foreground">
+												{nc.tabHint(t.speakers.patient)}
+											</span>
+										</Button>
+									</div>
+									{!consented ? (
+										<Alert className="border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
+											{nc.consentRequiredRecording}
+										</Alert>
+									) : (
+										<p className="text-[11px] text-muted-foreground">{nc.recordingTip}</p>
+									)}
+									{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
+								</>
+							) : (
+								<div>
+									<div className="flex items-center gap-2">
+										<Badge
+											variant="secondary"
+											className="text-[10px] ring-1 ring-primary/20 bg-primary/10 text-primary"
+										>
+											{nc.channelsBadge}
+										</Badge>
+									</div>
+									<p className="mt-2 text-xs text-muted-foreground">{nc.botDescription}</p>
+									<div className="mt-3 flex gap-2">
+										<Input
+											type="url"
+											value={meetUrl}
+											onChange={(e) => setMeetUrl(e.target.value)}
+											aria-label={nc.teleconsultLinkLabel}
+											placeholder="https://meet.google.com/xxx-xxxx-xxx"
+										/>
+										<Button
+											type="button"
+											onClick={sendBot}
+											disabled={!meetUrl.trim() || liveStatus === "live"}
+											className="shrink-0"
+										>
+											{liveStatus === "live" ? nc.botInCall : nc.sendBot}
+										</Button>
+									</div>
+									{liveId ? (
+										<p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+											{liveStatus === "live" ? (
+												<span className="size-2 animate-pulse rounded-full bg-destructive" />
+											) : (
+												<span className="size-2 rounded-full bg-primary" />
+											)}
+											{nc.consultationLive(
+												liveId,
+												liveStatus === "live" ? nc.transcribingLive : nc.callEnded,
+											)}
+										</p>
+									) : null}
+								</div>
+							)}
+
+							{/* state: recording (model status lives in the transcript header) */}
+							<div className="flex flex-wrap items-center gap-2 text-xs">
+								{live ? (
+									<Badge variant="destructive">
+										<span className="size-2 animate-pulse rounded-full bg-destructive" />
+										{nc.recordingSpeak}
+									</Badge>
+								) : null}
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* ---- transcript workspace: chat while capturing ---- */}
+					<Card className="min-h-[420px] min-w-0 flex-1 gap-0 p-0 lg:min-h-0">
+						<TranscriptPanelHeader live={live} title={t.common.transcript}>
+							{live ? (
+								<RecordingIndicator
+									elapsed={fmtElapsed(elapsedSec)}
+									onStop={stopCapture}
+									stopLabel={nc.stopCapture}
+								/>
+							) : null}
+							{modelStatus ? (
+								<Badge variant="secondary" className="min-w-0 font-normal text-muted-foreground">
+									<BrainIcon className="size-3.5 shrink-0" />
+									<span className="truncate">{modelStatus}</span>
+								</Badge>
+							) : null}
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-7 px-2 text-[11px]"
+								onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
+							>
+								{nc.useSample}
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="h-7 px-2 text-[11px]"
+								onClick={() => setTranscript("")}
+								disabled={!transcript}
+							>
+								{nc.clear}
+							</Button>
 							<Button
 								type="button"
 								variant="outline"
 								size="sm"
-								onClick={async () => {
-									if (!patientName.trim()) return;
-									const age = Number(patientAge);
-									if (patientAge === "" || !Number.isInteger(age) || age < 0) {
-										setPatientError(nc.ageRequired);
-										return;
-									}
-									setPatientError(null);
-									const res = await api.createPatient({
-										data: { name: patientName, birthDate: birthDateFromAge(age) },
-									});
-									if (!res.ok) {
-										// Validation comes back as codes; this view is English-only (T-025).
-										const code = Object.values(res.errors)[0];
-										setPatientError(code ? errorMessage(code, locale) : nc.patientCreateFailed);
-										return;
-									}
-									const p = res.patient;
-									setPatients((prev) => [...prev, { id: p.id, name: p.name }]);
-									setPatientId(p.id);
-									setQuickCreatedId(p.id);
-									// A brand-new patient has no portal access — carry the
-									// quick-create answer into their access card (T-258);
-									// "Yes" without a usable email stays undecided.
-									const email = newPatientAccess.email.trim();
-									accessLookedUp.current.add(p.id);
-									setStandings((s) => ({ ...s, [p.id]: { status: "none", email: null } }));
-									setChoices((c) => ({
-										...c,
-										[p.id]: { send: newPatientAccess.send && looksLikeEmail(email), email },
-									}));
-									setNewPatientAccess({ send: true, email: "" });
-									setPatientName("");
-									setPatientAge("");
-								}}
+								className="h-7 gap-1 px-2 text-[11px]"
+								onClick={copyTranscript}
+								disabled={!transcript.trim()}
 							>
-								{nc.addPatient}
+								<CopyIcon className="size-3" />
+								{nc.copyTranscript}
 							</Button>
-							{accessEnabled && patientName.trim() !== "" ? (
-								<div className="basis-full">
-									<NewPatientAccessQuestion
-										choice={newPatientAccess}
-										onChange={setNewPatientAccess}
-										nc={nc}
-									/>
-								</div>
-							) : null}
-							{patientError ? <FieldError className="text-xs">{patientError}</FieldError> : null}
-							{quickCreatedId !== null && quickCreatedId === patientId ? (
-								<Link
-									to={portalPath(`/patients/${quickCreatedId}/edit`)}
-									className="text-xs font-medium underline"
-								>
-									{nc.completeRecord}
-								</Link>
-							) : null}
-						</div>
-						<label
-							className={`ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs ${
-								consented
-									? "bg-primary/10 text-primary ring-1 ring-primary/20"
-									: "bg-info/10 text-info ring-1 ring-info/20"
-							}`}
-						>
-							<Checkbox
-								checked={consented}
-								onCheckedChange={(checked) => setConsented(checked === true)}
-							/>
-							{nc.consentDeclaration}
-						</label>
-					</div>
-					{patientId !== null && standings[patientId] !== undefined ? (
-						<PatientAccessCard
-							patientName={accessPatientName}
-							standing={standings[patientId]}
-							choice={
-								choices[patientId] ??
-								defaultChoice(
-									standings[patientId].status === "none" ? standings[patientId].email : null,
-								)
-							}
-							onChange={(choice) => setChoices((c) => ({ ...c, [patientId]: choice }))}
-							nc={nc}
-						/>
-					) : null}
-
-					{/* capture source — ZK tenants have no server audio/transcript
-					 * path, so upload and the meet bot stay hidden (T-145/T-147). */}
-					{mode === "live" && !zk ? (
-						<Tabs
-							value={source}
-							onValueChange={(v) => setSource(v as "record" | "upload" | "bot")}
-							className="w-fit"
-						>
-							<TabsList className="text-xs">
-								<TabsTrigger value="record">{nc.tabRecord}</TabsTrigger>
-								<TabsTrigger value="upload">{nc.tabUpload}</TabsTrigger>
-								<TabsTrigger value="bot">{nc.tabBot}</TabsTrigger>
-							</TabsList>
-						</Tabs>
-					) : null}
-					{mode === "dictation" ? (
-						<div className="flex flex-col items-center gap-3 rounded-xl border border-border px-6 py-8 text-center">
-							<p className="max-w-md text-sm text-muted-foreground">{nc.dictationDescription}</p>
 							<Button
 								type="button"
-								onClick={toggleDictation}
-								disabled={!supported || !consented}
-								className={`h-auto gap-3 rounded-full px-6 py-3 text-sm font-semibold ${
-									dictating
-										? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-										: ""
-								}`}
+								variant="outline"
+								size="sm"
+								className="h-7 gap-1 px-2 text-[11px]"
+								onClick={exportTranscript}
+								disabled={!transcript.trim()}
 							>
-								<span
-									className={`size-3 rounded-full ${dictating ? "animate-pulse bg-destructive-foreground" : "bg-destructive-foreground/70"}`}
-								/>
-								{dictating ? nc.stopDictation(fmtElapsed(elapsedSec)) : nc.startDictation}
+								<DownloadIcon className="size-3" />
+								{nc.exportTranscript}
 							</Button>
-							{dictating ? (
-								<p className="text-xs text-muted-foreground">
-									{nc.dictatingHint(fmtElapsed(elapsedSec))}
-								</p>
+						</TranscriptPanelHeader>
+						<CardContent className="flex min-h-0 flex-1 flex-col gap-3">
+							{draftNotices}
+							{/* While a capture runs the transcript renders as chat
+							 * rows (auto-scrolled); the editable text stays mounted so
+							 * the value keeps mirroring the transcript. */}
+							{live ? (
+								<ScrollArea className="min-h-0 flex-1 rounded-lg border border-input bg-muted/20">
+									<div className="space-y-4 p-4">
+										<EncryptionPill>{t.transcriptPanel.encryptionNote}</EncryptionPill>
+										{chatRows.map((row, i) => (
+											<SpeakerChatRow
+												// biome-ignore lint/suspicious/noArrayIndexKey: static, ordered transcript lines
+												key={i}
+												speaker={row.speaker}
+												name={row.name}
+												time={row.time}
+												roleLabel={row.speaker}
+											>
+												{row.text}
+											</SpeakerChatRow>
+										))}
+										{partial ? (
+											<SpeakerChatRow
+												speaker={partialSpeaker}
+												name={partialName}
+												time={fmtElapsed(elapsedSec)}
+												roleLabel={partialSpeaker}
+												bubbleClassName="text-muted-foreground italic"
+											>
+												{partial}…
+											</SpeakerChatRow>
+										) : null}
+										{chatRows.length === 0 && !partial ? (
+											<p className="text-sm text-muted-foreground">{nc.transcriptPlaceholder}</p>
+										) : null}
+										<ListeningIndicator>{nc.listening}</ListeningIndicator>
+										<div ref={chatEndRef} />
+									</div>
+								</ScrollArea>
 							) : null}
-							{!consented ? (
-								<Alert className="border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
-									{nc.consentRequiredDictation}
-								</Alert>
-							) : null}
-							{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
-						</div>
-					) : source === "upload" ? (
-						<label className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground transition hover:border-foreground/20">
-							<input
-								type="file"
-								accept="audio/*"
-								className="hidden"
-								disabled={busy}
-								onChange={(e) => {
-									const f = e.target.files?.[0];
-									if (f) void uploadAudio(f);
-									e.target.value = "";
-								}}
-							/>
-							<span className="font-medium text-foreground">
-								{busy ? nc.uploading : nc.uploadRecording}
-							</span>
-							<span className="text-[11px]">{nc.uploadHint}</span>
-						</label>
-					) : source === "record" ? (
-						<>
-							<div className="grid gap-3 sm:grid-cols-2">
-								<Button
-									type="button"
-									variant="outline"
-									onClick={toggleRecording}
-									disabled={!supported || !consented}
-									className={`h-auto flex-col items-start rounded-xl p-3 text-left ${
-										recording ? "border-destructive/30 bg-destructive/10" : ""
-									}`}
-								>
-									<span className="flex items-center gap-2 text-sm font-medium">
-										{recording ? (
-											<span className="size-2.5 animate-pulse rounded-full bg-destructive" />
-										) : (
-											<span className="size-2.5 rounded-full bg-muted-foreground" />
-										)}
-										{recording ? nc.stopMic : nc.recordMic}
-									</span>
-									<span className="mt-1 text-[11px] text-muted-foreground">
-										{nc.micHint(t.speakers.doctor)}
-									</span>
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={toggleTabCapture}
-									disabled={!consented}
-									className={`h-auto flex-col items-start rounded-xl p-3 text-left ${
-										tabRecording ? "border-destructive/30 bg-destructive/10" : ""
-									}`}
-								>
-									<span className="flex items-center gap-2 text-sm font-medium">
-										{tabRecording ? (
-											<span className="size-2.5 animate-pulse rounded-full bg-destructive" />
-										) : (
-											<span className="size-2.5 rounded-full bg-muted-foreground" />
-										)}
-										{tabRecording ? nc.stopTab : nc.captureTab}
-									</span>
-									<span className="mt-1 text-[11px] text-muted-foreground">
-										{nc.tabHint(t.speakers.patient)}
-									</span>
-								</Button>
-							</div>
-							{!consented ? (
-								<Alert className="border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
-									{nc.consentRequiredRecording}
-								</Alert>
-							) : (
-								<p className="text-[11px] text-muted-foreground">{nc.recordingTip}</p>
-							)}
-							{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
-						</>
-					) : (
-						<div>
-							<div className="flex items-center gap-2">
-								<Badge
-									variant="secondary"
-									className="text-[10px] ring-1 ring-primary/20 bg-primary/10 text-primary"
-								>
-									{nc.channelsBadge}
-								</Badge>
-							</div>
-							<p className="mt-2 text-xs text-muted-foreground">{nc.botDescription}</p>
-							<div className="mt-3 flex gap-2">
-								<Input
-									type="url"
-									value={meetUrl}
-									onChange={(e) => setMeetUrl(e.target.value)}
-									aria-label={nc.teleconsultLinkLabel}
-									placeholder="https://meet.google.com/xxx-xxxx-xxx"
-								/>
-								<Button
-									type="button"
-									onClick={sendBot}
-									disabled={!meetUrl.trim() || liveStatus === "live"}
-									className="shrink-0"
-								>
-									{liveStatus === "live" ? nc.botInCall : nc.sendBot}
-								</Button>
-							</div>
-							{liveId ? (
-								<p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-									{liveStatus === "live" ? (
-										<span className="size-2 animate-pulse rounded-full bg-destructive" />
-									) : (
-										<span className="size-2 rounded-full bg-primary" />
-									)}
-									{nc.consultationLive(
-										liveId,
-										liveStatus === "live" ? nc.transcribingLive : nc.callEnded,
-									)}
-								</p>
-							) : null}
-						</div>
-					)}
-
-					{/* state: model / recording / partial */}
-					<div className="flex flex-wrap items-center gap-2 text-xs">
-						{modelStatus ? (
-							<Badge variant="secondary" className="font-normal text-muted-foreground">
-								<BrainIcon className="size-3.5" />
-								{modelStatus}
-							</Badge>
-						) : null}
-						{live ? (
-							<Badge variant="destructive">
-								<span className="size-2 animate-pulse rounded-full bg-destructive" />
-								{nc.recordingSpeak}
-							</Badge>
-						) : null}
-					</div>
-					{partial ? (
-						<p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground italic">
-							{partial}…
-						</p>
-					) : null}
-				</CardContent>
-			</Card>
-
-			<ResizablePanelGroup className="items-start">
-				{/* ================= left column: transcript ================= */}
-				<ResizablePanel defaultSize="50" minSize="30">
-					<Card>
-						<CardHeader className="border-b">
-							<CardTitle>{t.common.transcript}</CardTitle>
-							<CardAction>
-								<div className="flex gap-2">
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
-									>
-										{nc.useSample}
-									</Button>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={() => setTranscript("")}
-										disabled={!transcript}
-									>
-										{nc.clear}
-									</Button>
-								</div>
-							</CardAction>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<Field>
+							<Field className={live ? "hidden" : "flex min-h-0 flex-1 flex-col gap-1.5"}>
 								<FieldLabel
 									htmlFor="transcript"
 									className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 								>
 									{nc.consultationText}
 								</FieldLabel>
-								<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[60vh] rounded-lg border border-input">
+								<ScrollArea className="min-h-0 flex-1 rounded-lg border border-input">
 									<Textarea
 										id="transcript"
 										value={transcript}
 										onChange={(e) => setTranscript(e.target.value)}
 										placeholder={nc.transcriptPlaceholder}
-										className="field-sizing-content min-h-[40vh] resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
+										className="field-sizing-content min-h-full resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
 									/>
 								</ScrollArea>
 							</Field>
 
 							{audioDetail || audioConsultId !== null ? (
-								<div className="rounded-xl border border-border p-3">
+								<div className="max-h-[45%] shrink-0 overflow-y-auto rounded-xl border border-border p-3">
 									<p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
 										{nc.serverTranscript}
 									</p>
@@ -1296,128 +2211,135 @@ export function NewConsultationPage({
 								</div>
 							) : null}
 
-							<Button
-								type="button"
-								onClick={generate}
-								disabled={busy || !extractText.trim()}
-								className="h-auto w-full px-4 py-2.5"
-							>
-								{busy ? <Spinner /> : null}
-								{busy ? nc.generating : nc.generate}
-							</Button>
-							{viewedText ? (
-								<p className="text-[11px] text-muted-foreground">
-									{nc.generatedFrom(viewedText.source)}
-								</p>
-							) : null}
-							{error ? (
-								<Alert variant="destructive" className="px-3 py-2 text-xs">
-									{error}
-								</Alert>
-							) : null}
+							<div className="shrink-0 space-y-3">
+								<Button
+									type="button"
+									onClick={generate}
+									disabled={busy || !extractText.trim()}
+									className="h-auto w-full px-4 py-2.5"
+								>
+									{busy ? <Spinner /> : null}
+									{busy ? nc.generating : nc.generate}
+								</Button>
+								{viewedText ? (
+									<p className="text-[11px] text-muted-foreground">
+										{nc.generatedFrom(viewedText.source)}
+									</p>
+								) : null}
+								{error ? (
+									<Alert variant="destructive" className="px-3 py-2 text-xs">
+										{error}
+									</Alert>
+								) : null}
+							</div>
 						</CardContent>
 					</Card>
-				</ResizablePanel>
-				<ResizableHandle withHandle className="mx-2" />
-				{/* ================= right column: result ================= */}
-				<ResizablePanel defaultSize="50" minSize="30">
-					<Card>
-						<CardHeader className="border-b">
-							<CardTitle>{t.common.anamnesis}</CardTitle>
-							{engine ? (
-								<CardAction>
-									<Badge
-										variant="secondary"
-										className="font-normal text-muted-foreground ring-1 ring-border"
-									>
-										{t.common.engine(engine)}
-									</Badge>
-								</CardAction>
-							) : null}
-						</CardHeader>
+				</div>
+			)}
 
-						{!anamnesis ? (
-							<CardContent>
-								<Empty className="py-14">
-									<EmptyHeader>
-										<EmptyMedia variant="icon">
-											<ClipboardListIcon />
-										</EmptyMedia>
-										<EmptyTitle>{nc.waitingTitle}</EmptyTitle>
-										<EmptyDescription className="max-w-xs">
-											{nc.waitingDescription}
-										</EmptyDescription>
-									</EmptyHeader>
-								</Empty>
-							</CardContent>
-						) : (
-							<CardContent>
-								<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[60vh]">
-									<div className="space-y-3 pr-3">
-										{anamnesis.historico ? (
-											<div className="rounded-xl border border-border bg-muted/40 p-3">
-												<p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-													{t.sections.historico}
-												</p>
-												<p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
-													{anamnesis.historico.content}
-												</p>
-											</div>
-										) : null}
-										{(
-											Object.keys(t.sections).filter(
-												(k) => k !== "historico",
-											) as AnamnesisSectionKey[]
-										).map((key) => {
-											const sec = anamnesis[key];
-											return (
-												<Field
-													key={key}
-													className={`gap-1.5 rounded-xl border border-l-4 border-border bg-card p-3 ${CONF_BAR[sec.confidence]}`}
-												>
-													<div className="flex items-center justify-between gap-2">
-														<FieldLabel
-															htmlFor={`sec-${key}`}
-															className="text-xs font-semibold text-foreground"
-														>
-															{t.sections[key]}
-														</FieldLabel>
-														<Badge
-															variant="secondary"
-															className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
-														>
-															{t.confidence[sec.confidence]}
-														</Badge>
-													</div>
+			{/* Anamnese drawer: the structured draft lives off-canvas so
+			 * the workspace stays a pure capture + transcript surface. */}
+			<Sheet open={anamnesisOpen} onOpenChange={setAnamnesisOpen}>
+				<SheetContent side="right" className="w-full gap-0 sm:max-w-xl">
+					<SheetHeader className="shrink-0 border-b border-border">
+						<SheetTitle className="flex items-center gap-2">
+							<SparklesIcon className="size-4" />
+							{nc.anamnesisDrawer}
+						</SheetTitle>
+						<SheetDescription className="flex items-center gap-2">
+							{nc.anamnesisDrawerDescription}
+							{engine ? (
+								<Badge
+									variant="secondary"
+									className="shrink-0 font-normal text-muted-foreground ring-1 ring-border"
+								>
+									{t.common.engine(engine)}
+								</Badge>
+							) : null}
+						</SheetDescription>
+					</SheetHeader>
+					{!anamnesis ? (
+						<Empty className="min-h-0 flex-1 py-14">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<ClipboardListIcon />
+								</EmptyMedia>
+								<EmptyTitle>{nc.waitingTitle}</EmptyTitle>
+								<EmptyDescription className="max-w-xs">{nc.waitingDescription}</EmptyDescription>
+							</EmptyHeader>
+							<EmptyContent>
+								<Button
+									type="button"
+									size="sm"
+									onClick={generate}
+									disabled={busy || !extractText.trim()}
+								>
+									{busy ? <Spinner /> : null}
+									{busy ? nc.generating : nc.generate}
+								</Button>
+							</EmptyContent>
+						</Empty>
+					) : (
+						<>
+							<ScrollArea className="min-h-0 flex-1 px-4">
+								<div className="space-y-3.5 py-4 pr-3">
+									<EncryptionPill>{t.transcriptPanel.encryptionNote}</EncryptionPill>
+									{anamnesis.historico ? (
+										<AnamnesisSection title={t.sections.historico}>
+											<p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+												{anamnesis.historico.content}
+											</p>
+										</AnamnesisSection>
+									) : null}
+									{(
+										Object.keys(t.sections).filter(
+											(k) => k !== "historico",
+										) as AnamnesisSectionKey[]
+									).map((key) => {
+										const sec = anamnesis[key];
+										return (
+											<AnamnesisSection
+												key={key}
+												title={t.sections[key]}
+												status={
+													<Badge
+														variant="secondary"
+														className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+													>
+														{t.confidence[sec.confidence]}
+													</Badge>
+												}
+											>
+												<Field className="gap-1.5">
+													<FieldLabel htmlFor={`sec-${key}`} className="sr-only">
+														{t.sections[key]}
+													</FieldLabel>
 													<Textarea
 														id={`sec-${key}`}
 														value={sec.content}
 														onChange={(e) => updateSection(key, e.target.value)}
 														rows={Math.min(5, Math.max(2, Math.ceil(sec.content.length / 70)))}
-														className="mt-1.5 resize-y text-sm leading-relaxed"
+														className="resize-y text-sm leading-relaxed"
 													/>
-													{sec.evidence.length ? (
-														<details className="mt-1">
-															<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-muted-foreground">
-																{t.detail.evidence(sec.evidence.length)}
-															</summary>
-															<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
-																{sec.evidence.map((ev) => (
-																	<li key={ev.slice(0, 40)}>“{ev}”</li>
-																))}
-															</ul>
-														</details>
-													) : null}
 												</Field>
-											);
-										})}
-									</div>
-								</ScrollArea>
-							</CardContent>
-						)}
-
-						{anamnesis ? (
-							<CardFooter className="gap-2">
+												{sec.evidence.length ? (
+													<details className="mt-1.5">
+														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
+															{t.detail.evidence(sec.evidence.length)}
+														</summary>
+														<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
+															{sec.evidence.map((ev) => (
+																<li key={ev.slice(0, 40)}>“{ev}”</li>
+															))}
+														</ul>
+													</details>
+												) : null}
+											</AnamnesisSection>
+										);
+									})}
+								</div>
+							</ScrollArea>
+							<SheetFooter className="shrink-0 flex-row gap-2 border-t border-border">
 								<Button type="button" variant="outline" size="sm" onClick={copyAnamnesis}>
 									{t.common.copy}
 								</Button>
@@ -1425,11 +2347,11 @@ export function NewConsultationPage({
 									{saving ? <Spinner /> : null}
 									{saving ? nc.saving : savedId ? nc.updateConsultation : nc.saveConsultation}
 								</Button>
-							</CardFooter>
-						) : null}
-					</Card>
-				</ResizablePanel>
-			</ResizablePanelGroup>
+							</SheetFooter>
+						</>
+					)}
+				</SheetContent>
+			</Sheet>
 			<Toast toast={toast} onClose={() => setToast(null)} />
 			<Dialog
 				open={saveDialog !== null}

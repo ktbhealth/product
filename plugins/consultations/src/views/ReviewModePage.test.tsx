@@ -168,7 +168,8 @@ describe("ReviewModePage — queue overview", () => {
 	it("queue rows show chief complaint, duration and the pending steps", () => {
 		renderPage({}, [item({ chiefComplaint: "dor lombar", audioKey: "k", audioDurationSec: 1452 })]);
 		expect(screen.getByText("dor lombar")).toBeTruthy();
-		expect(screen.getByText("24:12")).toBeTruthy(); // 1452s
+		// Duration shows on the queue row and in the patient context bar.
+		expect(screen.getAllByText("24:12").length).toBeGreaterThan(0); // 1452s
 		// Pending-step chips: transcript unstamped + anamnesis unapproved.
 		expect(screen.getAllByText("Transcript").length).toBeGreaterThan(0);
 		expect(screen.getAllByText("Anamnesis").length).toBeGreaterThan(0);
@@ -244,8 +245,9 @@ describe("ReviewModePage — transcript step", () => {
 			}),
 		);
 		// Same card always renders — contents swap chips for the note.
+		// The confidence banner repeats the title up top, so allow >1.
 		expect(screen.getByText("Passages to check")).toBeTruthy();
-		expect(screen.getByText("High-confidence transcript")).toBeTruthy();
+		expect(screen.getAllByText("High-confidence transcript").length).toBeGreaterThan(0);
 		expect(screen.queryByRole("button", { name: "Next uncertain" })).toBeNull();
 		expect(screen.queryByText(/of \d+ checked/)).toBeNull();
 	});
@@ -335,6 +337,34 @@ describe("ReviewModePage — anamnesis step", () => {
 		expect(document.querySelectorAll("mark").length).toBeGreaterThan(0);
 	});
 
+	it("chapter index seeks + plays the audio at the evidence anchor", () => {
+		renderPage({ c: detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }) });
+		const audio = document.querySelector("audio")!;
+		// Both evidence sentences land in the same segment (2.5s).
+		const chip = screen.getByText("Chief complaint · 0:02");
+		fireEvent.click(chip);
+		expect(audio.currentTime).toBe(2.5);
+		expect(audio.play).toHaveBeenCalled();
+	});
+
+	it("omits chapters whose evidence resolves to no segment", () => {
+		renderPage({
+			c: detail({
+				transcriptReviewedAt: new Date(),
+				transcriptReviewedEdits: 0,
+				anamnesis: {
+					...ANAMNESIS,
+					queixa_principal: {
+						...ANAMNESIS.queixa_principal,
+						evidence: ["paráfrase sem match algum"],
+					},
+					hda: { ...ANAMNESIS.hda, evidence: ["outra frase sem match"] },
+				},
+			}),
+		});
+		expect(screen.queryByLabelText("Chapters")).toBeNull();
+	});
+
 	it("approve stamps and navigates to the next pending item", async () => {
 		const approve = vi.fn(async (): Promise<{ ok: boolean }> => ({ ok: true }));
 		renderPage(
@@ -345,6 +375,56 @@ describe("ReviewModePage — anamnesis step", () => {
 		fireEvent.click(screen.getByText("Approve & next"));
 		await waitFor(() => expect(approve).toHaveBeenCalledWith({ data: 10 }));
 		expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/portal/doctor/review/9" });
+	});
+
+	it("section edit saves the merged doc with the edited tag", async () => {
+		const edit = vi.fn<NonNullable<ConsultationDetailApi["editAnamnesis"]>>(async () => ({
+			ok: true,
+		}));
+		renderPage(
+			{ api: api({ editAnamnesis: edit }) },
+			[item({})],
+			detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }),
+		);
+		// Sections sort low-confidence first — [0] is `hda` (baixa).
+		fireEvent.click(screen.getAllByRole("button", { name: "Edit section" })[0]);
+		const area = screen.getByDisplayValue("HDA");
+		fireEvent.change(area, { target: { value: "HDA revisada pelo médico" } });
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() => expect(edit).toHaveBeenCalled());
+		expect(edit).toHaveBeenCalledWith({
+			data: {
+				consultationId: 10,
+				anamnesis: {
+					...ANAMNESIS,
+					hda: { ...ANAMNESIS.hda, content: "HDA revisada pelo médico", edited: true },
+				},
+			},
+		});
+	});
+
+	it("cancel discards the section draft", () => {
+		renderPage(
+			{ api: api({ editAnamnesis: vi.fn(async () => ({ ok: true })) }) },
+			[item({})],
+			detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }),
+		);
+		fireEvent.click(screen.getAllByRole("button", { name: "Edit section" })[0]);
+		fireEvent.change(screen.getByDisplayValue("HDA"), {
+			target: { value: "rascunho" },
+		});
+		fireEvent.click(screen.getByText("Cancel"));
+		expect(screen.queryByDisplayValue("rascunho")).toBeNull();
+		expect(screen.getByText("HDA")).toBeTruthy();
+	});
+
+	it("no pencil without the edit api (ZK rows stay read-only)", () => {
+		renderPage(
+			{},
+			[item({})],
+			detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }),
+		);
+		expect(screen.queryAllByRole("button", { name: "Edit section" })).toHaveLength(0);
 	});
 
 	it("no-anamnesis step offers generate, fed with the projected transcript", async () => {
@@ -366,7 +446,8 @@ describe("ReviewModePage — anamnesis step", () => {
 describe("ReviewModePage — queue edge cases", () => {
 	it("item header and rail fall back to #id when patientName is null", () => {
 		renderPage({}, [item({ id: 11, patientName: null })], detail({ patientName: null }));
-		expect(screen.getByText("#10")).toBeTruthy();
+		// The review chip shows the #id fallback as both name and number.
+		expect(screen.getAllByText("#10").length).toBeGreaterThan(0);
 		expect(screen.getByText("#11")).toBeTruthy();
 	});
 
@@ -717,9 +798,9 @@ describe("ReviewModePage — anamnesis step extras", () => {
 		renderPage({}, [item({})], reviewed());
 		// Starts on anamnesis — transcript tab brings the segments back.
 		expect(screen.getByText("Chief complaint")).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "Transcript" }));
+		fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
 		expect(screen.getByText("Vou examinar agora.")).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "Anamnesis" }));
+		fireEvent.click(screen.getByRole("tab", { name: "Anamnesis" }));
 		expect(screen.getByText("Chief complaint")).toBeTruthy();
 	});
 
@@ -872,6 +953,77 @@ describe("ReviewModePage — anamnesis step extras", () => {
 		expect(document.querySelectorAll("mark").length).toBeGreaterThan(0);
 		fireEvent.click(section);
 		expect(document.querySelectorAll("mark").length).toBe(0);
+	});
+
+	it("a fully filled anamnesis hides the pending-data strip", () => {
+		const filled: Anamnesis = {
+			historico: SECTION,
+			queixa_principal: { content: "Dor", confidence: "alta", evidence: [] },
+			hda: { content: "HDA", confidence: "baixa", evidence: [] },
+			antecedentes: { content: "HAS", confidence: "media", evidence: [] },
+			alergias: { content: "nenhuma", confidence: "alta", evidence: [] },
+			medicamentos_em_uso: { content: "nenhum", confidence: "alta", evidence: [] },
+			exame_fisico: { content: "normal", confidence: "alta", evidence: [] },
+			hipoteses: { content: "virose", confidence: "media", evidence: [] },
+			conduta: { content: "repouso", confidence: "alta", evidence: [] },
+		};
+		renderPage({}, [item({})], detail({ ...reviewed(), anamnesis: filled }));
+		expect(screen.getByText("Chief complaint")).toBeTruthy();
+		expect(screen.queryByText("Pending data")).toBeNull();
+	});
+
+	it("a failed section save keeps the editor open and does not invalidate", async () => {
+		const edit = vi.fn<NonNullable<ConsultationDetailApi["editAnamnesis"]>>(async () => ({
+			ok: false,
+		}));
+		renderPage({ api: api({ editAnamnesis: edit }) }, [item({})], reviewed());
+		fireEvent.click(screen.getAllByRole("button", { name: "Edit section" })[0]!);
+		fireEvent.change(screen.getByDisplayValue("HDA"), { target: { value: "rascunho" } });
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() => expect(edit).toHaveBeenCalled());
+		expect(screen.getByDisplayValue("rascunho")).toBeTruthy();
+		expect(routerMocks.invalidate).not.toHaveBeenCalled();
+	});
+
+	it("homologation bar offers regenerate without approve when only generate exists", () => {
+		const stored = serializeTranscriptEdits([
+			{
+				at: "2026-01-01T00:00:00.000Z",
+				by: "u1",
+				u: bytesToB64(genesisUpdate("stale-z")),
+			},
+		]);
+		renderPage(
+			{ api: api({ approveAnamnesis: undefined }) },
+			[item({})],
+			detail({ ...reviewed(), transcriptEdits: stored, transcriptReviewedEdits: 1 }),
+		);
+		expect(screen.getByText("Regenerate anamnesis")).toBeTruthy();
+		expect(screen.queryByText("Approve & next")).toBeNull();
+	});
+
+	it("chapter seek is a no-op when no audio element is mounted", () => {
+		renderPage({}, [item({})], detail({ ...reviewed(), audioKey: null, audioStatus: "none" }));
+		const chip = screen.getByText("Chief complaint · 0:02");
+		expect(document.querySelector("audio")).toBeNull();
+		expect(() => fireEvent.click(chip)).not.toThrow();
+	});
+
+	it("a rejected play() on chapter seek is swallowed", async () => {
+		window.HTMLMediaElement.prototype.play = vi.fn(() => Promise.reject(new Error("nope")));
+		renderPage({}, [item({})], reviewed());
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("Chief complaint · 0:02"));
+		expect(audio.currentTime).toBe(2.5);
+		await waitFor(() => expect(audio.play).toHaveBeenCalled());
+	});
+
+	it("ZK rows reach the anamnesis step with the decrypted audio url slot", async () => {
+		const zk = { keyring: {}, api: {} } as unknown as ConsultationZk;
+		zkMocks.decryptConsultation.mockResolvedValueOnce(null);
+		renderPage({ zk }, [item({})], reviewed());
+		await waitFor(() => expect(zkMocks.decryptConsultation).toHaveBeenCalled());
+		expect(screen.getByText("Chief complaint")).toBeTruthy();
 	});
 });
 
@@ -1072,5 +1224,50 @@ describe("ReviewModePage — ZK overlay without raw anamnesis", () => {
 		await waitFor(() => expect(zkMocks.decryptConsultation).toHaveBeenCalled());
 		const row = zkMocks.decryptConsultation.mock.calls[0]![2] as { anamnesis?: unknown };
 		expect(row.anamnesis).toBeNull();
+	});
+
+	it("context bar flags a deferred, stale, audio-less item", () => {
+		renderPage(
+			{},
+			[item({})],
+			detail({
+				deferredUntil: new Date(Date.now() + 864e5),
+				anamnesisReviewedAt: new Date(),
+				anamnesisVersion: 2,
+				anamnesisReviewedVersion: 1,
+				audioKey: null,
+			}),
+		);
+		expect(screen.getAllByText("deferred").length).toBeGreaterThan(0);
+		expect(screen.getByText("New version v2")).toBeTruthy();
+		expect(screen.getAllByText("no audio").length).toBeGreaterThan(0);
+	});
+
+	it("groups chat rows by speaker with role chips and unknown fallbacks", () => {
+		const segs = [
+			{ start: 0, end: 2, text: "Bom dia", avgLogprob: -0.1, speaker: "Doctor" },
+			{ start: 2, end: 4, text: "Estou bem", avgLogprob: -0.1, speaker: "Doctor" },
+			{ start: 4, end: 6, text: "Quanto tempo", avgLogprob: -0.1, speaker: "Patient" },
+			{ start: 6, end: 8, text: "Falando", avgLogprob: -0.1, speaker: "SPEAKER_01" },
+			{ start: 8, end: 10, text: "Sem etiqueta", avgLogprob: -0.1 },
+		];
+		renderPage({}, [item({})], detail({ transcriptSegments: serializeTranscriptSegments(segs) }));
+		// Consecutive Doctor rows share one header; Patient/SPEAKER_01/none
+		// each open their own group.
+		expect(screen.getAllByText("Doctor").length).toBeGreaterThan(0);
+		expect(screen.getByText("Speaker 2")).toBeTruthy();
+		expect(screen.getByText("Speaker")).toBeTruthy();
+		// Enter on a bubble seeks like a click; other keys are ignored.
+		const bubble = screen.getAllByRole("button").find((b) => b.textContent?.includes("Estou bem"))!;
+		const audio = document.querySelector("audio")!;
+		audio.currentTime = 0;
+		fireEvent.keyDown(bubble, { key: "Enter" });
+		expect(audio.currentTime).toBe(2);
+		fireEvent.keyDown(bubble, { key: "a" });
+	});
+
+	it("context bar flags an in-flight audio pipeline", () => {
+		renderPage({}, [item({})], detail({ audioStatus: "processing" }));
+		expect(screen.getAllByText("processing").length).toBeGreaterThan(0);
 	});
 });

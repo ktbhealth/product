@@ -3,15 +3,13 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 
 import { makeSqliteDatabase } from "@ktb/db-sqlite";
+import { loadDevVars, makeLocalAudioBucket, makeLocalQueue } from "@ktb/dev-node";
 import { connect as nodeSocketConnect } from "@ktb/email-smtp/node-connect";
-import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
+import { observabilityEnvKeys } from "@ktb/observability";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 import { createRedisPubSubTransport } from "@ktb/pubsub-transport-redis";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
-import { loadDevVars } from "./dev-vars.ts";
-import { makeLocalAudioBucket } from "./node-audio.ts";
-import { makeLocalQueue } from "./node-queue.ts";
 
 /**
  * Node/Bun stand-in for the `cloudflare:workers` module — aliased in
@@ -25,9 +23,9 @@ import { makeLocalQueue } from "./node-queue.ts";
  * dev path — with the drizzle migrations applied at boot.
  *
  * Bindings without a workerd runtime get local equivalents (see
- * node-audio.ts): AUDIO_BUCKET is a filesystem object store under
+ * @ktb/dev-node): AUDIO_BUCKET is a filesystem object store under
  * ./data/audio (gitignored; override with AUDIO_BUCKET_DIR), and
- * AUDIO_QUEUE is a SQLite-backed queue (node-queue.ts) dispatching to
+ * AUDIO_QUEUE is a SQLite-backed queue dispatching to
  * the same consumer handler server.ts exports as `queue` — jobs
  * survive restarts and exhausted deliveries sit as `failed` rows (the
  * DLQ) in the queue db. AI still resolves through
@@ -45,7 +43,7 @@ const MIGRATIONS_DIR = resolve(
 
 // apps/web/.dev.vars is what `dev:secrets` writes for workerd/miniflare;
 // under dev:node nothing loads it, so merge it here — real env vars win
-// (see dev-vars.ts). Key names only; values are never logged.
+// (see @ktb/dev-node's loadDevVars). Key names only; values are never logged.
 const devVarsFile = resolve(dirname(fileURLToPath(import.meta.url)), "../../.dev.vars");
 const devVarsKeys = loadDevVars(devVarsFile);
 if (devVarsKeys.length > 0) {
@@ -66,8 +64,12 @@ const ENV_KEYS = [
 	"LLM_MODEL",
 	"WORKERS_AI_MODEL",
 	"RECALL_API_KEY",
+	"RECALL_BOT_NAME",
 	"PLATFORM_ADMIN_EMAILS",
 	"AUDIO_TRANSCRIBE_MODEL",
+	"AUDIO_DIARIZATION",
+	"AUDIO_DIARIZATION_API_KEY",
+	"AUDIO_DIARIZATION_URL",
 	"AI_STUB",
 	"AI_BASE_URL",
 	"SMTP_URL",
@@ -94,10 +96,14 @@ const ENV_KEYS = [
 	// into the queue-registry entry behind /platform/queue.
 	"REDIS_URL",
 	"JOBS_QUEUE",
-	// Every ObservabilityEnv key — telemetryConfigFromEnv reads them off
-	// the worker env, so dev:node must forward the full canonical list
-	// (single source in @ktb/observability, pinned by its tests).
-	...OBSERVABILITY_ENV_KEYS,
+	// SchedulerDo resolves its dispatch queue through this var (the DO
+	// itself never runs under dev:node, but keep the contract identical).
+	"SCHEDULER_QUEUE_BINDING",
+	// Every observability env key for this deployment's prefix —
+	// telemetryConfigFromEnv reads them off the worker env, so dev:node
+	// must forward the full canonical list (single source in
+	// @ktb/observability, pinned by its tests).
+	...observabilityEnvKeys("KTB_"),
 	"METRICS_SCRAPE_TOKEN",
 ] as const;
 
@@ -115,6 +121,12 @@ for (const key of ENV_KEYS) {
 // EMAIL_STUB via driver precedence.
 env.CAPTCHA_STUB ??= "1";
 env.EMAIL_STUB ??= "1";
+// Product literals the generic infra packages read via config — same
+// values alchemy.run.ts binds in prod and wrangler*.jsonc vars set for
+// workerd dev. Explicit env always wins.
+env.RECALL_BOT_NAME ??= "KTB Health";
+env.OBSERVABILITY_ENV_PREFIX ??= "KTB_";
+env.SCHEDULER_QUEUE_BINDING ??= "AUDIO_QUEUE";
 if (env.AI_STUB === undefined && env.AI_BASE_URL === undefined) env.AI_STUB = "1";
 
 // DATABASE_URL selects the SQLite file (default ./data/app.db relative

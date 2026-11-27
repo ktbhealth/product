@@ -1945,6 +1945,9 @@ export const I18N_MANIFEST = {
 		"detail.queueDoneToast": {
 			params: [],
 		},
+		"detail.audioFailed": {
+			params: [],
+		},
 		"review.title": {
 			params: [],
 		},
@@ -2023,6 +2026,9 @@ export const I18N_MANIFEST = {
 		"review.editSegment": {
 			params: [],
 		},
+		"review.editSection": {
+			params: [],
+		},
 		"review.editFullText": {
 			params: [],
 		},
@@ -2059,6 +2065,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"review.shortcutConfirm": {
+			params: [],
+		},
+		"review.chapters": {
 			params: [],
 		},
 		"review.staleAnamnesis": {
@@ -2103,10 +2112,39 @@ export const I18N_MANIFEST = {
 		"transcriptPanel.audioLabel": {
 			params: [],
 		},
+		"transcriptPanel.playbackRate": {
+			params: [],
+		},
+		"transcriptPanel.skipSilence": {
+			params: [],
+		},
 		"transcriptPanel.tabCorrected": {
 			params: [],
 		},
+		"transcriptPanel.tabChanges": {
+			params: [],
+		},
+		"transcriptPanel.tabTranscript": {
+			params: [],
+		},
+		"transcriptPanel.noChanges": {
+			params: [],
+		},
 		"transcriptPanel.tabOriginal": {
+			params: [],
+		},
+		"transcriptPanel.speakerN": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "Speaker {n}",
+		},
+		"transcriptPanel.speakerUnknown": {
+			params: [],
+		},
+		"transcriptPanel.encryptionNote": {
 			params: [],
 		},
 		"newConsultation.title": {
@@ -2285,6 +2323,23 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"newConsultation.useSample": {
+			params: [],
+		},
+		"newConsultation.draftRecovered": {
+			params: [
+				{
+					name: "time",
+				},
+			],
+			template: "Draft recovered — recording finished at {time}",
+		},
+		"newConsultation.restoreDraft": {
+			params: [],
+		},
+		"newConsultation.discardDraft": {
+			params: [],
+		},
+		"newConsultation.draftAudio": {
 			params: [],
 		},
 		"newConsultation.clear": {
@@ -2488,6 +2543,35 @@ export const I18N_MANIFEST = {
 		"newConsultation.patientFallback": {
 			params: [],
 		},
+		"newConsultation.anamnesisDrawer": {
+			params: [],
+		},
+		"newConsultation.anamnesisDrawerDescription": {
+			params: [],
+		},
+		"newConsultation.stopCapture": {
+			params: [],
+		},
+		"newConsultation.copyTranscript": {
+			params: [],
+		},
+		"newConsultation.transcriptCopied": {
+			params: [],
+		},
+		"newConsultation.exportTranscript": {
+			params: [],
+		},
+		"newConsultation.yearsOld": {
+			params: [
+				{
+					name: "age",
+				},
+			],
+			template: "{age} years",
+		},
+		"newConsultation.listening": {
+			params: [],
+		},
 		"admin.title": {
 			params: [],
 		},
@@ -2660,6 +2744,182 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"warmup.dismiss": {
+			params: [],
+		},
+		"liveFlow.brandName": {
+			params: [],
+		},
+		"liveFlow.roomTitle": {
+			params: [],
+		},
+		"liveFlow.readyTitle": {
+			params: [],
+		},
+		"liveFlow.consentTitle": {
+			params: [],
+		},
+		"liveFlow.consentDescription": {
+			params: [],
+		},
+		"liveFlow.changePatient": {
+			params: [],
+		},
+		"liveFlow.testAudio": {
+			params: [],
+		},
+		"liveFlow.testingAudio": {
+			params: [],
+		},
+		"liveFlow.calibratedAudio": {
+			params: [],
+		},
+		"liveFlow.startSession": {
+			params: [],
+		},
+		"liveFlow.startingSession": {
+			params: [],
+		},
+		"liveFlow.secondaryAction": {
+			params: [],
+		},
+		"liveFlow.modalityInPerson": {
+			params: [],
+		},
+		"liveFlow.modalityTelemedicine": {
+			params: [],
+		},
+		"liveFlow.captureInPerson": {
+			params: [],
+		},
+		"liveFlow.captureTelemedicine": {
+			params: [],
+		},
+		"liveFlow.deviceInPerson": {
+			params: [],
+		},
+		"liveFlow.deviceTelemedicine": {
+			params: [],
+		},
+		"liveFlow.engineInPerson": {
+			params: [],
+		},
+		"liveFlow.engineTelemedicine": {
+			params: [],
+		},
+		"liveFlow.audioStatus.ready": {
+			params: [],
+		},
+		"liveFlow.audioStatus.muted": {
+			params: [],
+		},
+		"liveFlow.audioStatus.testing": {
+			params: [],
+		},
+		"liveFlow.audioStatus.calibrated": {
+			params: [],
+		},
+		"liveFlow.networkStatus": {
+			params: [],
+		},
+		"liveFlow.encryption": {
+			params: [],
+		},
+		"liveFlow.connectionStable": {
+			params: [],
+		},
+		"liveFlow.pickerDone": {
+			params: [],
+		},
+		"liveFlow.audioSettingsTitle": {
+			params: [],
+		},
+		"liveFlow.inputDevice": {
+			params: [],
+		},
+		"liveFlow.systemDefaultDevice": {
+			params: [],
+		},
+		"liveFlow.live": {
+			params: [],
+		},
+		"liveFlow.paused": {
+			params: [],
+		},
+		"liveFlow.ended": {
+			params: [],
+		},
+		"liveFlow.anamnesis": {
+			params: [],
+		},
+		"liveFlow.endConsultation": {
+			params: [],
+		},
+		"liveFlow.transcriptTitle": {
+			params: [],
+		},
+		"liveFlow.diarizationActive": {
+			params: [],
+		},
+		"liveFlow.diarizationPaused": {
+			params: [],
+		},
+		"liveFlow.diarizationEnded": {
+			params: [],
+		},
+		"liveFlow.copy": {
+			params: [],
+		},
+		"liveFlow.export": {
+			params: [],
+		},
+		"liveFlow.listening": {
+			params: [],
+		},
+		"liveFlow.pausedListening": {
+			params: [],
+		},
+		"liveFlow.endedListening": {
+			params: [],
+		},
+		"liveFlow.audioSourceInPerson": {
+			params: [],
+		},
+		"liveFlow.audioSourceTelemedicine": {
+			params: [],
+		},
+		"liveFlow.yearsOld": {
+			params: [],
+		},
+		"liveFlow.recordPrefix": {
+			params: [],
+		},
+		"reviewUi.playback": {
+			params: [],
+		},
+		"reviewUi.syncBadge": {
+			params: [],
+		},
+		"reviewUi.volume": {
+			params: [],
+		},
+		"reviewUi.confirming": {
+			params: [],
+		},
+		"reviewUi.flaggedTitle": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} passages flagged",
+		},
+		"reviewUi.flaggedHint": {
+			params: [],
+		},
+		"reviewUi.pendingTitle": {
+			params: [],
+		},
+		"reviewUi.approveHint": {
 			params: [],
 		},
 	},

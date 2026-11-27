@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 import { richTextServicesPlugin } from "@ktb/rich-text";
 import { templatesServicesPlugin } from "@ktb/templates";
 
@@ -119,20 +119,12 @@ export const layoutsPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, layoutsServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "layouts.admin",
 				path: "/platform/layouts",
 				component: LayoutsAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const layoutsService = yield* Layouts;
@@ -147,7 +139,7 @@ export const layoutsPanelPlugin = definePlugin({
 							updatedAt: row.updatedAt.toISOString(),
 						}));
 					}),
-			},
+			}),
 		],
 	},
 });

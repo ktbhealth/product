@@ -7,7 +7,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 
 import { FontsFamilySynced, FontsProviderChanged } from "./events.ts";
@@ -33,52 +34,10 @@ import type { FontFamilySummary } from "./types.ts";
 
 const DDL = `
 PRAGMA foreign_keys = ON;
-CREATE TABLE font_providers (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	kind text NOT NULL,
-	name text NOT NULL,
-	config text,
-	enabled integer DEFAULT true NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-CREATE TABLE font_families (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	provider_id integer NOT NULL REFERENCES font_providers(id) ON DELETE CASCADE,
-	family text NOT NULL,
-	weights text,
-	status text DEFAULT 'pending' NOT NULL,
-	meta text,
-	created_at integer NOT NULL
-);
-CREATE UNIQUE INDEX font_families_provider_family_idx ON font_families(provider_id, family);
-CREATE TABLE theme_definitions (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	scope text NOT NULL,
-	scope_id text DEFAULT '' NOT NULL,
-	app_name text,
-	seeds text NOT NULL,
-	tokens text NOT NULL,
-	fonts text,
-	brand text,
-	enabled integer DEFAULT true NOT NULL,
-	version integer DEFAULT 1 NOT NULL,
-	created_at integer NOT NULL,
-	updated_at integer
-);
-CREATE TABLE theme_assets (
-	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	theme_id integer REFERENCES theme_definitions(id) ON DELETE SET NULL,
-	kind text NOT NULL,
-	r2_key text,
-	status text DEFAULT 'pending' NOT NULL,
-	variants text,
-	created_at integer NOT NULL
-);
 `;
 
 const makeTestDb = () => {
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1(DDL);
 	return { db: makeDb(d1), d1 };
 };
 

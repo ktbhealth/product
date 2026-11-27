@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
@@ -21,7 +22,7 @@ import {
 	schemasTablesPlugin,
 } from "./index.ts";
 import { schemas } from "./schema.ts";
-import { SCHEMAS_TEST_DDL, SchemasLive } from "./service.ts";
+import { SchemasLive } from "./service.ts";
 
 describe("schemas plugins", () => {
 	it("exposes the four single-concern plugins", () => {
@@ -73,7 +74,7 @@ describe("schemas page effects", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(SCHEMAS_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

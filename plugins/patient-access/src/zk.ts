@@ -1,7 +1,7 @@
-// Canonical `consultationCipher.entity` — lives in @ktb/crypto/entities
-// because @ktb/consultations already depends on this plugin (apis.ts),
-// so importing its constant here would cycle the package graph.
-import { CONSULTATION_ENTITY_TYPE } from "@ktb/crypto/entities";
+// Canonical `consultationCipher.entity` — lives in ./entities.ts: this
+// plugin is the lowest one both consultations (cipher spec) and
+// patient-access (grant pass) can see without a package-graph cycle.
+import { CONSULTATION_ENTITY_TYPE } from "./entities.ts";
 import type { KeyringService } from "@ktb/crypto/keyring";
 import { PATIENT_ENTITY_TYPE, type GrantInput } from "@ktb/patients/zk";
 import { vaultDekEnvelopesFn, vaultGrantAccessFn } from "@ktb/vault/fns";

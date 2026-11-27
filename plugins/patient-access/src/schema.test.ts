@@ -2,7 +2,8 @@ import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { eq } from "drizzle-orm";
 
 import {
@@ -11,11 +12,6 @@ import {
 	PATIENT_ACCESS_STATUSES,
 	patientAccess,
 } from "./schema.ts";
-
-const DDL = `
-CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX patient_access_patient_user_idx ON patient_access (patient_id, user_id);
-`;
 
 describe("patient-access schema", () => {
 	it("exposes patient_access with cascading FKs and lookup indexes", () => {
@@ -52,7 +48,7 @@ describe("patient-access schema", () => {
 	});
 
 	it("allows several unclaimed invites per patient but one row per user", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const invite = { patientId: 1, relation: "guardian", status: "invited", source: "invite" };
 		await db
 			.insert(patientAccess)

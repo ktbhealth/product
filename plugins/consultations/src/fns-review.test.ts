@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	runAs: vi.fn<(user: unknown, effect: unknown) => Promise<unknown>>(async () => ({ id: 1 })),
 	reviewTranscript: vi.fn(),
 	approveAnamnesis: vi.fn(),
+	attachAnamnesis: vi.fn(),
 	deferConsultation: vi.fn(),
 	nextPendingReview: vi.fn(),
 	countPendingReview: vi.fn(),
@@ -19,27 +20,33 @@ const mocks = vi.hoisted(() => ({
 // Same fake as fns-zk.test.ts: handlers run as plain async fns and the
 // validator is applied to the incoming `data`.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => ({
-	ensureDoctorUser: vi.fn(async () => ({ id: "u1" })),
-	ensureSessionUser: vi.fn(async () => ({ id: "u1" })),
-	getDoctorAccess: vi.fn(),
-	getDoctorContext: vi.fn(),
-	getDoctorUser: mocks.getDoctorUser,
-	getLocale: vi.fn(),
-	getServerRuntime: vi.fn(),
-	getSessionUser: vi.fn(),
-	purgeAudio: vi.fn(),
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		...actual,
+		ensureDoctorUser: vi.fn(async () => ({ id: "u1" })),
+		ensureSessionUser: vi.fn(async () => ({ id: "u1" })),
+		getDoctorAccess: vi.fn(),
+		getDoctorContext: vi.fn(),
+		getDoctorUser: mocks.getDoctorUser,
+		getLocale: vi.fn(),
+		getServerRuntime: vi.fn(),
+		getSessionUser: vi.fn(),
+		purgeAudio: vi.fn(),
+		runAs: mocks.runAs,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 
 import { Consultations } from "./index.ts";
 import { Forbidden } from "@ktb/authz";
 import {
 	approveAnamnesisFn,
+	editAnamnesisFn,
 	countPendingReviewFn,
 	deferConsultationFn,
-	nextPendingReviewFn,
 	saveTranscriptEditsFn,
+	nextPendingReviewFn,
 	reviewTranscriptFn,
 } from "./fns.ts";
 
@@ -53,6 +60,7 @@ const runEffects = () => {
 				Layer.succeed(Consultations, {
 					reviewTranscript: mocks.reviewTranscript,
 					approveAnamnesis: mocks.approveAnamnesis,
+					attachAnamnesis: mocks.attachAnamnesis,
 					deferConsultation: mocks.deferConsultation,
 					nextPendingReview: mocks.nextPendingReview,
 					countPendingReview: mocks.countPendingReview,
@@ -67,6 +75,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.reviewTranscript.mockReturnValue(Effect.succeed(undefined));
 	mocks.approveAnamnesis.mockReturnValue(Effect.succeed(undefined));
+	mocks.attachAnamnesis.mockReturnValue(Effect.succeed(undefined));
 	mocks.deferConsultation.mockReturnValue(Effect.succeed(undefined));
 	mocks.nextPendingReview.mockReturnValue(Effect.succeed(44));
 	mocks.countPendingReview.mockReturnValue(Effect.succeed(3));
@@ -132,6 +141,49 @@ describe("review server fns (PL-022)", () => {
 			ok: false,
 		});
 		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	const DOC = {
+		queixa_principal: { content: "dor", confidence: "alta", evidence: [], edited: true },
+		hda: { content: "h", confidence: "alta", evidence: [] },
+		antecedentes: { content: "a", confidence: "alta", evidence: [] },
+		alergias: { content: "a", confidence: "alta", evidence: [] },
+		medicamentos_em_uso: { content: "m", confidence: "alta", evidence: [] },
+		exame_fisico: { content: "e", confidence: "alta", evidence: [] },
+		hipoteses: { content: "h", confidence: "alta", evidence: [] },
+		conduta: { content: "c", confidence: "alta", evidence: [] },
+	};
+	it("editAnamnesisFn delegates to attachAnamnesis under the manual-edit engine", async () => {
+		await expect(editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } })).resolves.toEqual(
+			{ ok: true },
+		);
+		expect(mocks.attachAnamnesis).toHaveBeenCalledWith("u1", {
+			consultationId: 7,
+			anamnesis: DOC,
+			engine: "manual-edit",
+			version: undefined,
+		});
+	});
+
+	it("editAnamnesisFn is { ok: false } without a session user", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce(null);
+		await expect(editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } })).resolves.toEqual(
+			{ ok: false },
+		);
+	});
+
+	it("editAnamnesisFn collapses Forbidden to { ok: false }", async () => {
+		mocks.attachAnamnesis.mockReturnValueOnce(Effect.fail(new Forbidden({ path: "x" })));
+		await expect(editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } })).resolves.toEqual(
+			{ ok: false },
+		);
+	});
+
+	it("editAnamnesisFn rejects a string anamnesis without the ciphered flag", async () => {
+		await expect(
+			editAnamnesisFn({ data: { consultationId: 7, anamnesis: "v1.wire" } }),
+		).resolves.toEqual({ ok: false });
+		expect(mocks.attachAnamnesis).not.toHaveBeenCalled();
 	});
 
 	it("nextPendingReviewFn returns the next queue id", async () => {

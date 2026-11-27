@@ -1,14 +1,15 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { GLOBAL_SCOPE, portalScope } from "@ktb/i18n";
 
-import { I18N_TEST_DDL, i18nLocales, i18nMessages } from "./index.ts";
+import { i18nLocales, i18nMessages } from "./index.ts";
 import { resolveRequestI18n } from "./request.ts";
 import { I18nRuntime, I18nRuntimeLive } from "./runtime.ts";
 import { syncBaseline } from "./baseline.ts";
@@ -16,7 +17,7 @@ import { syncBaseline } from "./baseline.ts";
 let db: DbClient;
 
 beforeAll(async () => {
-	db = makeDb(makeD1(I18N_TEST_DDL));
+	db = makeDb(makeTestD1());
 	await syncBaseline(db, [
 		{ namespace: "app", key: "hi", locale: "en", value: "Hello" },
 		{ namespace: "app", key: "hi", locale: "pt-BR", value: "Olá" },

@@ -75,13 +75,38 @@ const audioToBytes = (audio: unknown): Uint8Array<ArrayBuffer> => {
 	throw new Error("local AI: unsupported audio payload");
 };
 
-/** OpenAI-compatible HTTP backend (whisper.cpp, llama.cpp, LM Studio). */
-export const createLocalAi = (baseUrl: string, fetchImpl: typeof fetch = fetch): AiBinding => ({
+/** OpenAI-compatible HTTP backend (whisper.cpp, llama.cpp, LM Studio).
+ * `apiKey` sends `Authorization: Bearer` — Speaches >= 0.9 rejects
+ * unauthenticated calls when `SPEACHES_API_KEY` is set, which any
+ * exposed diarization instance must be. */
+export const createLocalAi = (
+	baseUrl: string,
+	fetchImpl: typeof fetch = fetch,
+	apiKey?: string,
+): AiBinding => ({
 	run: async (model, inputs) => {
 		const i = (inputs ?? {}) as Record<string, unknown>;
 		// Accept the base with or without the /v1 suffix (LLM_BASE_URL
 		// convention includes it; bare host roots are common too).
 		const base = `${baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1`;
+		const auth: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {};
+		// Speaker diarization (P-118): `diarize: true` routes to the
+		// Speaches /audio/diarization endpoint — same audio payload as
+		// transcription but the response carries speaker turns instead
+		// of text. Only OpenAI-compatible backends >= Speaches 0.9 have
+		// it; gated by AUDIO_DIARIZATION upstream.
+		if (i.diarize === true && "audio" in i) {
+			const form = new FormData();
+			form.set("file", new Blob([audioToBytes(i.audio)]), "audio.wav");
+			form.set("response_format", "json");
+			const res = await fetchImpl(`${base}/audio/diarization`, {
+				method: "POST",
+				headers: auth,
+				body: form,
+			});
+			if (!res.ok) throw new Error(`local AI diarization failed: HTTP ${res.status}`);
+			return res.json();
+		}
 		if ("audio" in i) {
 			const form = new FormData();
 			form.set("model", model);
@@ -97,6 +122,7 @@ export const createLocalAi = (baseUrl: string, fetchImpl: typeof fetch = fetch):
 			form.set("response_format", "verbose_json");
 			const res = await fetchImpl(`${base}/audio/transcriptions`, {
 				method: "POST",
+				headers: auth,
 				body: form,
 			});
 			if (!res.ok) throw new Error(`local AI transcription failed: HTTP ${res.status}`);
@@ -105,7 +131,7 @@ export const createLocalAi = (baseUrl: string, fetchImpl: typeof fetch = fetch):
 		if (Array.isArray(i.messages)) {
 			const res = await fetchImpl(`${base}/chat/completions`, {
 				method: "POST",
-				headers: { "content-type": "application/json" },
+				headers: { "content-type": "application/json", ...auth },
 				body: JSON.stringify({
 					model,
 					messages: i.messages,

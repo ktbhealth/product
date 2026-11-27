@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
+import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
@@ -111,81 +111,91 @@ const isHandled = (error: unknown): boolean =>
  * non-admins and handled domain failures. */
 export const createLayoutFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<LayoutDocWire | null> => {
-		await requirePluginEnabled("layouts.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const layouts = yield* Layouts;
-				const row = yield* layouts.adminCreate(data);
-				return row === null ? null : toDocWire(row);
+	.handler(
+		pluginHandler(
+			"layouts.panel",
+			sessionHandler(async ({ data, user }): Promise<LayoutDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const layouts = yield* Layouts;
+						const row = yield* layouts.adminCreate(data);
+						return row === null ? null : toDocWire(row);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Update a layout's name/description/config; `null` for non-admins,
  * missing rows, invalid config JSON, name conflicts and other handled
  * failures. */
 export const updateLayoutFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<LayoutDocWire | null> => {
-		await requirePluginEnabled("layouts.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const layouts = yield* Layouts;
-				const { id, ...input } = data;
-				return toDocWire(yield* layouts.adminUpdate(id, input));
+	.handler(
+		pluginHandler(
+			"layouts.panel",
+			sessionHandler(async ({ data, user }): Promise<LayoutDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const layouts = yield* Layouts;
+						const { id, ...input } = data;
+						return toDocWire(yield* layouts.adminUpdate(id, input));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Delete a layout by id; `false` for non-admins and missing rows. */
 export const deleteLayoutFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("layouts.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const layouts = yield* Layouts;
-				yield* layouts.adminRemove(data.id);
-				return true;
+	.handler(
+		pluginHandler(
+			"layouts.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const layouts = yield* Layouts;
+						yield* layouts.adminRemove(data.id);
+						return true;
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return false;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return false;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Admin layout list for pickers — id/name/description/sectionCount/
  * updatedAt only, no config payload. Handled failures collapse to an
  * empty list. */
 export const listLayoutsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly LayoutMetaWire[]> => {
-		await requirePluginEnabled("layouts.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const layouts = yield* Layouts;
-				const rows = yield* layouts.adminList();
-				return rows.map(toMetaWire);
-			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as readonly LayoutMetaWire[];
-			throw error;
-		});
-	},
+	pluginHandler(
+		"layouts.panel",
+		sessionHandler(async ({ user }): Promise<readonly LayoutMetaWire[]> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const layouts = yield* Layouts;
+					const rows = yield* layouts.adminList();
+					return rows.map(toMetaWire);
+				}),
+			).catch((error: unknown) => {
+				if (isHandled(error)) return [] as readonly LayoutMetaWire[];
+				throw error;
+			});
+		}),
+	),
 );
 
 /** Public layout read by id — session-optional (anonymous app pages

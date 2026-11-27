@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 import type { Json } from "effect/Schema";
 
-import { ensureSessionUser, run, runAs } from "@ktb/server-fns";
+import { run, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import { assertWizardDefinition, type WizardDefinition, type WizardStep } from "./definition.ts";
@@ -215,113 +215,118 @@ export const wizardDefsFn = createServerFn({ method: "GET" }).handler(
  * null for handled failures (bad key/def, unpublished DB def). */
 export const startWizardFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeStart(input))
-	.handler(async ({ data }): Promise<WizardRunWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					return toRunWire(yield* wizards.startRun(data));
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<WizardRunWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						return toRunWire(yield* wizards.startRun(data));
+					}),
+				),
+			);
+		}),
+	);
 
 /** Fetch a run — null when missing or not owned (indistinguishable). */
 export const getWizardRunFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRunId(input))
-	.handler(async ({ data }): Promise<WizardRunWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					const view = yield* wizards.getRun(data.runId);
-					return view === null ? null : toRunWire(view);
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<WizardRunWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						const view = yield* wizards.getRun(data.runId);
+						return view === null ? null : toRunWire(view);
+					}),
+				),
+			);
+		}),
+	);
 
 /** Submit the current step's value and advance (or complete). */
 export const advanceWizardFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAdvance(input))
-	.handler(async ({ data }): Promise<WizardRunWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					return toRunWire(
-						yield* wizards.advance(data.runId, {
-							stepId: data.stepId,
-							value: data.value,
-						}),
-					);
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<WizardRunWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						return toRunWire(
+							yield* wizards.advance(data.runId, {
+								stepId: data.stepId,
+								value: data.value,
+							}),
+						);
+					}),
+				),
+			);
+		}),
+	);
 
 /** Move to the previous visible step. */
 export const backWizardFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRunId(input))
-	.handler(async ({ data }): Promise<WizardRunWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					return toRunWire(yield* wizards.back(data.runId));
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<WizardRunWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						return toRunWire(yield* wizards.back(data.runId));
+					}),
+				),
+			);
+		}),
+	);
 
 /** Abandon the run (terminal). */
 export const abandonWizardFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRunId(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		const user = await ensureSessionUser();
-		return orFalse(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					yield* wizards.abandon(data.runId);
-					return true;
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<boolean> => {
+			return orFalse(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						yield* wizards.abandon(data.runId);
+						return true;
+					}),
+				),
+			);
+		}),
+	);
 
 /** Force-complete an active run (fires the completion target with
  * current answers). */
 export const completeWizardFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRunId(input))
-	.handler(async ({ data }): Promise<WizardRunWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					return toRunWire(yield* wizards.complete(data.runId));
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<WizardRunWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						return toRunWire(yield* wizards.complete(data.runId));
+					}),
+				),
+			);
+		}),
+	);
 
 // ---------- admin (PlatformAdmin-gated) ----------
 
 /** Every DB definition incl. drafts — admin view. */
 export const adminListWizardDefsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly WizardDefWire[]> => {
-		const user = await ensureSessionUser();
+	sessionHandler(async ({ user }): Promise<readonly WizardDefWire[]> => {
 		return orNull(
 			asAdmin(
 				user,
@@ -331,56 +336,59 @@ export const adminListWizardDefsFn = createServerFn({ method: "GET" }).handler(
 				}),
 			),
 		).then((rows) => rows ?? []);
-	},
+	}),
 );
 
 /** Create/update a definition by key; null for non-admins and
  * handled validation failures. */
 export const adminSaveWizardDefFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpsert(input))
-	.handler(async ({ data }): Promise<WizardDefWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asAdmin(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					return toDefWire(yield* wizards.adminUpsert(data));
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<WizardDefWire | null> => {
+			return orNull(
+				asAdmin(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						return toDefWire(yield* wizards.adminUpsert(data));
+					}),
+				),
+			);
+		}),
+	);
 
 /** Flip the published flag; false for non-admins/missing defs. */
 export const adminSetWizardPublishedFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePublish(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		const user = await ensureSessionUser();
-		return orFalse(
-			asAdmin(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					yield* wizards.adminSetPublished(data.key, data.published);
-					return true;
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<boolean> => {
+			return orFalse(
+				asAdmin(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						yield* wizards.adminSetPublished(data.key, data.published);
+						return true;
+					}),
+				),
+			);
+		}),
+	);
 
 /** Delete a definition by key; false for non-admins/missing defs. */
 export const adminDeleteWizardDefFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeKey(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		const user = await ensureSessionUser();
-		return orFalse(
-			asAdmin(
-				user,
-				Effect.gen(function* () {
-					const wizards = yield* Wizards;
-					yield* wizards.adminRemove(data.key);
-					return true;
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<boolean> => {
+			return orFalse(
+				asAdmin(
+					user,
+					Effect.gen(function* () {
+						const wizards = yield* Wizards;
+						yield* wizards.adminRemove(data.key);
+						return true;
+					}),
+				),
+			);
+		}),
+	);

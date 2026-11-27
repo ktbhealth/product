@@ -83,16 +83,18 @@ import {
 	resolveRequestI18n,
 } from "@ktb/i18n-plugin";
 
-import { resolveAi, type AiEnv } from "./ai.ts";
+import { createLocalAi, resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { makeOrchestrationHost } from "./orchestration.ts";
 import { portalInstances } from "./registry.ts";
 import { builtinMiddlewareStages } from "./middleware-stages.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
-import { requestTelemetryContext } from "./telemetry.ts";
-import { makeFlushThrottler } from "./telemetry-flush.ts";
-import { setAccessLogSink } from "./access-log.ts";
+import {
+	makeFlushThrottler,
+	requestTelemetryContext,
+	setAccessLogSink,
+} from "@ktb/observability-edge";
 import { createApp } from "@ktb/app-host";
 import { packageLive } from "@ktb/kernel";
 import type { ExportFormat, RecordExporter } from "@ktb/interop";
@@ -232,6 +234,24 @@ const DEFAULT_AUDIO_MODEL = "@cf/openai/whisper-large-v3-turbo";
  * stand-ins). Defaults to the recommended Workers AI Whisper model. */
 export const audioTranscribeModel =
 	appEnv.AUDIO_TRANSCRIBE_MODEL?.toString() ?? DEFAULT_AUDIO_MODEL;
+
+/** Speaker diarization on the audio pipeline (P-118): opt-in flag.
+ * `AUDIO_DIARIZATION_URL` points at the diarization backend (Speaches
+ * >= 0.9 `/v1/audio/diarization`); unset falls back to `ai` — a single
+ * OpenAI-compatible server can serve both, but a dedicated URL lets the
+ * proven ASR image keep VAD segmentation while a newer backend does
+ * the diarizing. `AUDIO_DIARIZATION_API_KEY` maps to Speaches'
+ * `SPEACHES_API_KEY` — the diarization endpoint is unauthenticated by
+ * default and its pyannote loader resolves model-repo class paths, so
+ * any deployed instance must sit behind the key. Off by default:
+ * Workers AI has no such endpoint and a wasted call per job is cost. */
+export const audioDiarization = appEnv.AUDIO_DIARIZATION?.toString() === "1";
+const diarizationUrl = appEnv.AUDIO_DIARIZATION_URL?.toString();
+const diarizationApiKey = appEnv.AUDIO_DIARIZATION_API_KEY?.toString();
+export const audioDiarizationAi =
+	audioDiarization && diarizationUrl
+		? createLocalAi(diarizationUrl, fetch, diarizationApiKey)
+		: undefined;
 
 /** Interop adapters behind the @ktb/interop port, one per supported standard. */
 const recordExporters: Record<ExportFormat, RecordExporter> = {
@@ -827,6 +847,8 @@ setServerRuntime({
 	},
 	ai: aiBinding,
 	audioTranscribeModel,
+	audioDiarization,
+	audioDiarizationAi,
 	recordExporters,
 	getLocale: currentLocale,
 	// PL-008: DB-canonical i18n capability — resolves enabled locales +
@@ -899,7 +921,7 @@ export const audioBucket = env.AUDIO_BUCKET;
 export const themeAssetsBucket = env.THEME_ASSETS_BUCKET;
 export const imagesBucket = env.IMAGES_BUCKET;
 
-/** Coalesced flush (see telemetry-flush.ts): at most one real drain per
+/** Coalesced flush (see @ktb/observability-edge): at most one real drain per
  * min-interval across ALL callers — the worker entry invokes this after
  * every fetch and queue batch, and per-request draining would multiply
  * OTLP export subrequests under load. */

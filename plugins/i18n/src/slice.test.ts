@@ -1,19 +1,20 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 
 import { GLOBAL_SCOPE, localeChain, tenantScope } from "@ktb/i18n";
 
 import { syncBaseline } from "./baseline.ts";
-import { I18N_TEST_DDL, i18nMessages } from "./index.ts";
+import { i18nMessages } from "./index.ts";
 import { catalogSlice, stableSlice } from "./slice.ts";
 
 let db: DbClient;
 
 beforeAll(async () => {
-	db = makeDb(makeD1(I18N_TEST_DDL));
+	db = makeDb(makeTestD1());
 	await syncBaseline(db, [
 		{ namespace: "app", key: "title", locale: "en", value: "App title" },
 		{ namespace: "app", key: "title", locale: "pt-BR", value: "Título" },

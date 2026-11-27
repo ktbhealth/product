@@ -492,21 +492,3 @@ export const LayoutsLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the `layouts` migration — re-exported for
- * sibling test files (same convention as `SCHEMAS_TEST_DDL` in
- * plugins/schemas). Never used by production code.
- */
-export const LAYOUTS_TEST_DDL = `
-CREATE TABLE layouts (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL UNIQUE,
-	description TEXT,
-	config TEXT NOT NULL,
-	builder_json TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE INDEX layouts_updated_idx ON layouts (updated_at);
-`;

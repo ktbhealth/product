@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { ElementKinds, ElementKindsLive } from "@ktb/platform/element-kinds";
 import * as Effect from "effect/Effect";
@@ -12,7 +13,7 @@ import * as Option from "effect/Option";
 import { images } from "./schema.ts";
 import { ImageDeleteHooks, ImageDeleteHooksLive } from "./delete-hooks.ts";
 import { ImageElementKindLive, IMAGE_ELEMENT_KIND } from "./element-kind.ts";
-import { ImagesLive, IMAGES_TEST_DDL } from "./service.ts";
+import { ImagesLive } from "./service.ts";
 
 /**
  * Element-kind registration (P-111): `ImageElementKindLive` registers
@@ -30,7 +31,7 @@ describe("ImageElementKindLive", () => {
 	let imageId: number;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(IMAGES_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -167,7 +168,7 @@ describe("ImageElementKindLive", () => {
 
 describe("ImageElementKindLive without ElementKinds", () => {
 	it("builds cleanly and registers nothing when the registry is absent", async () => {
-		const db = makeDb(makeD1(IMAGES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

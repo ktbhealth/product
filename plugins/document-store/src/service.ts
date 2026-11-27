@@ -2586,38 +2586,3 @@ export const DocumentStoreLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the document-store migration — same
- * convention as PAGES_TEST_DDL / I18N_TEST_DDL. Never used by
- * production code. `groups` must exist for the tenant_id FK — tests
- * create a minimal groups stub alongside.
- */
-export const DOCUMENT_STORE_TEST_DDL = `
-CREATE TABLE document_collections (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL,
-	owner_plugin_id TEXT NOT NULL DEFAULT '',
-	schema_json TEXT NOT NULL,
-	version INTEGER NOT NULL DEFAULT 1,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX document_collections_name_idx ON document_collections (name);
-CREATE TABLE document_records (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	collection_id INTEGER NOT NULL REFERENCES document_collections(id) ON DELETE CASCADE,
-	data TEXT NOT NULL,
-	schema_version INTEGER NOT NULL DEFAULT 1,
-	version INTEGER NOT NULL DEFAULT 1,
-	owner_id TEXT NOT NULL DEFAULT '',
-	tenant_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
-	idempotency_key TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE INDEX document_records_collection_idx ON document_records (collection_id);
-CREATE INDEX document_records_collection_owner_idx ON document_records (collection_id, owner_id);
-CREATE INDEX document_records_collection_tenant_idx ON document_records (collection_id, tenant_id);
-CREATE UNIQUE INDEX document_records_idempotency_idx ON document_records (collection_id, idempotency_key);
-`;

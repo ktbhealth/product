@@ -6,7 +6,7 @@ import type { Forbidden } from "@ktb/authz";
 import { Db } from "@ktb/db";
 import { jobHandlers, listJobRuns, type JobRecord, type JobStatus } from "@ktb/jobs-port";
 import { PlatformAdmin } from "@ktb/platform";
-import { getServerRuntime, type QueueInfo } from "@ktb/server-fns";
+import { runtimeProbe, type QueueInfo } from "@ktb/server-fns";
 
 /**
  * Queue console port: the read/enqueue side of /platform/queue.
@@ -67,7 +67,7 @@ export const QueueAdminLive = Layer.effect(
 					Effect.andThen(
 						Effect.promise(async (): Promise<readonly QueueInfo[] | null> => {
 							try {
-								const read = getServerRuntime().queues;
+								const read = runtimeProbe((r) => r.queues);
 								return read === undefined ? null : await read();
 							} catch {
 								return null;
@@ -99,12 +99,7 @@ export const QueueAdminLive = Layer.effect(
 				platformAdmin.requireAdmin().pipe(
 					Effect.andThen(
 						Effect.promise(async (): Promise<EnqueueJobResult> => {
-							let jobs: ReturnType<typeof getServerRuntime>["jobs"];
-							try {
-								jobs = getServerRuntime().jobs;
-							} catch {
-								return { ok: false, reason: "unavailable" };
-							}
+							const jobs = runtimeProbe((r) => r.jobs);
 							if (jobs === undefined) return { ok: false, reason: "unavailable" };
 							try {
 								await jobs.enqueue(kind, payload ?? {});

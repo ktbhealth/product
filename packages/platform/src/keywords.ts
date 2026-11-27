@@ -1,11 +1,16 @@
 /**
- * Controlled vocabulary for `PluginMeta.keywords` (P-082).
+ * Product-controlled vocabulary for `PluginMeta.keywords` (P-082).
  *
- * Every plugin manifest declares keywords; the `PluginKeyword` union
- * rejects unknown strings at compile time, so adding a word is a
- * one-line change here. Convention: the FIRST keyword is the plugin's
- * domain lane — it drives the "Domains" view in the plugins map;
- * remaining keywords describe role and audience.
+ * Moved out of @ktb/kernel: the kernel contract types `keywords` as
+ * open strings — the vocabulary is product data, owned here next to
+ * the plugin-management surfaces that consume it (the plugins map's
+ * "Domains" view groups by the FIRST keyword — the domain lane).
+ *
+ * Enforcement is the host registry test (apps/web plugins.test.ts
+ * asserts every declared keyword is in {@link PLUGIN_KEYWORD_SET}),
+ * not the type system. Adding a word is a one-line change here.
+ * Convention: the FIRST keyword is the plugin's domain lane; remaining
+ * keywords describe role and audience.
  */
 export const PLUGIN_KEYWORDS = [
 	// domains — the lanes of the Domains view; one per plugin namespace

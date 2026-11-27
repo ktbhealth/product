@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { ImageAdminConsolePage } from "./platform-page.tsx";
 import { images } from "./schema.ts";
@@ -100,20 +100,12 @@ export const imagePanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, imageServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "image.admin",
 				path: "/platform/images",
 				component: ImageAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const images = yield* Images;
@@ -122,7 +114,7 @@ export const imagePanelPlugin = definePlugin({
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
 						return rows.map(toLoaderRow);
 					}),
-			},
+			}),
 		],
 	},
 });

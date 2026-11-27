@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
@@ -22,7 +23,7 @@ import {
 	templatesTablesPlugin,
 } from "./index.ts";
 import { templates } from "./schema.ts";
-import { TemplatesLive, TEMPLATES_TEST_DDL } from "./service.ts";
+import { TemplatesLive } from "./service.ts";
 
 describe("templates plugins", () => {
 	it("exposes the four single-concern plugins", () => {
@@ -74,7 +75,7 @@ describe("templates page effects", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(TEMPLATES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

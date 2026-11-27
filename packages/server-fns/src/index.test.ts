@@ -7,6 +7,7 @@ import {
 	resetServerRuntime,
 	run,
 	runAs,
+	runtimeProbe,
 	setServerRuntime,
 	type AudioDeleter,
 	type ServerRuntime,
@@ -50,6 +51,30 @@ describe("server runtime registry", () => {
 		await expect(run(Effect.succeed(1))).resolves.toBe(1);
 		await expect(runAs({ id: "u1" }, Effect.succeed(2))).resolves.toBe(2);
 		expect(seen).toEqual(["run", "runAs:u1"]);
+	});
+});
+
+describe("runtimeProbe", () => {
+	it("returns undefined when no runtime is registered", () => {
+		resetServerRuntime();
+		expect(runtimeProbe((r) => r.getLocale())).toBeUndefined();
+	});
+
+	it("returns the picked value when a runtime is registered", () => {
+		resetServerRuntime();
+		setServerRuntime(stubRuntime());
+		expect(runtimeProbe((r) => r.getLocale())).toBe("en");
+		expect(runtimeProbe((r) => r.audio)).toBeUndefined();
+	});
+
+	it("collapses a throwing pick to undefined", () => {
+		resetServerRuntime();
+		setServerRuntime(stubRuntime());
+		expect(
+			runtimeProbe(() => {
+				throw new Error("boom");
+			}),
+		).toBeUndefined();
 	});
 });
 

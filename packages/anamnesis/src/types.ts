@@ -21,6 +21,8 @@ export const CONFIDENCE_LABELS: Record<Confidence, string> = {
 export interface AnamnesisSection {
 	readonly content: string;
 	readonly confidence: Confidence;
+	/** True when the doctor hand-edited this section (T-227). */
+	readonly edited?: boolean;
 	/** Verbatim transcript sentences that ground this section. */
 	readonly evidence: readonly string[];
 }

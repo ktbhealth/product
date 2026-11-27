@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { makeDb, type DbClient } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { scheduledJobs } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
 
 import {
 	claimDueScheduledJobs,
@@ -20,25 +20,7 @@ import {
 	type ScheduledJob,
 } from "./index.ts";
 
-const DDL = `
-CREATE TABLE scheduled_jobs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	params TEXT,
-	cron_expr TEXT,
-	run_at INTEGER,
-	next_run_at INTEGER NOT NULL,
-	claimed_until INTEGER,
-	last_run_at INTEGER,
-	status TEXT NOT NULL DEFAULT 'active',
-	tenant_id INTEGER,
-	created_by TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-`;
-
-const makeTestDb = (): DbClient => makeDb(makeD1(DDL));
+const makeTestDb = (): DbClient => makeDb(makeTestD1());
 
 const T0 = Date.UTC(2026, 0, 1, 12, 0, 0); // fixed instant for determinism
 
@@ -137,6 +119,29 @@ describe("insert/get/list", () => {
 		await insertScheduledJob(db, { kind: "t", runAt: T0 + 1000, tenantId: 7 }, T0);
 		expect((await listScheduledJobs(db, { tenantId: null })).map((j) => j.id)).toEqual([global.id]);
 		expect((await listScheduledJobs(db, { tenantId: 7 })).map((j) => j.kind)).toEqual(["t"]);
+	});
+
+	it("normalizes TenantId strings to the integer tenant_id storage form", async () => {
+		const db = makeTestDb();
+		// Numeric strings store as the integer column value; non-numeric
+		// strings cannot be stamped and project as global scope
+		// (tenantStorageId contract — same as tenantScopeId).
+		const numeric = await insertScheduledJob(
+			db,
+			{ kind: "n", runAt: T0 + 1000, tenantId: "7" },
+			T0,
+		);
+		const opaque = await insertScheduledJob(
+			db,
+			{ kind: "s", runAt: T0 + 1000, tenantId: "clinic-9" },
+			T0,
+		);
+		expect(numeric.tenantId).toBe(7);
+		expect(opaque.tenantId).toBeNull();
+		// Filters normalize the same way; a non-numeric id matches
+		// nothing rather than collapsing onto the global-scope NULLs.
+		expect((await listScheduledJobs(db, { tenantId: "7" })).map((j) => j.id)).toEqual([numeric.id]);
+		expect(await listScheduledJobs(db, { tenantId: "clinic-9" })).toEqual([]);
 	});
 
 	it("reads corrupt params JSON as null rather than throwing", async () => {
@@ -300,7 +305,7 @@ describe("claimDueScheduledJobs", () => {
 	});
 
 	it("skips a candidate another writer changed between select and update", async () => {
-		const inner = makeD1(DDL);
+		const inner = makeTestD1();
 		let tripped = false;
 		const db = makeDb({
 			...inner,
@@ -459,7 +464,7 @@ describe("runSchedulerSweep", () => {
 	it("logs and continues when a claim release fails", async () => {
 		// The release UPDATE is the only scheduled_jobs write whose SET
 		// clause is claimed_until alone — fail just that statement.
-		const inner = makeD1(DDL);
+		const inner = makeTestD1();
 		const db = makeDb({
 			...inner,
 			prepare: (q: string) => {

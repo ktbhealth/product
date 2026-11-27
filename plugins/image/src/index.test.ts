@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
@@ -24,7 +25,7 @@ import {
 } from "./index.ts";
 import { ImageDeleteHooksLive } from "./delete-hooks.ts";
 import { images } from "./schema.ts";
-import { ImagesLive, IMAGES_TEST_DDL } from "./service.ts";
+import { ImagesLive } from "./service.ts";
 
 describe("image plugins", () => {
 	it("exposes the six single-concern plugins", () => {
@@ -89,7 +90,7 @@ describe("image page effects", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(IMAGES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

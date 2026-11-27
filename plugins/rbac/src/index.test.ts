@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Command, Query } from "@effect-server-utils/cqrs";
-import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
+import { adminAudit, AuditLive } from "@ktb/audit";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { GroupMembership, Permissions, PermissionInvalidator, readEpoch } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
@@ -37,17 +38,8 @@ import { relationTuples as relationTuplesTable, roles as rolesTable } from "@ktb
 import { RbacCommands, RbacQueries } from "./api.ts";
 
 const DDL = `
-CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
-CREATE INDEX relation_tuples_subject_idx ON relation_tuples (subject_kind, subject_id);
-CREATE INDEX relation_tuples_natural_idx ON relation_tuples (object_type, object_id, relation, subject_kind, subject_id);
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
 INSERT INTO groups (id, name, slug, kind, meta, created_at, updated_at) VALUES (7, 'Clinic', 'clinic', 'clinic', NULL, 1, 1);
 INSERT INTO group_members (group_id, member_kind, member_id, role, created_at) VALUES (7, 'user', 'u1', NULL, 1), (7, 'patient', 'p1', NULL, 1);
-${AUDIT_TEST_DDL}
 `;
 
 const ADMIN = { userId: "admin@x.com", email: "admin@x.com" };
@@ -123,7 +115,7 @@ describe("rbac repo", () => {
 	let db: DbClient;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("role CRUD round-trips", async () => {
@@ -649,7 +641,7 @@ describe("rbac services + CQRS", () => {
 		);
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		await db.insert(rolesTable).values({
 			name: "auditor",
 			description: null,
@@ -987,7 +979,7 @@ describe("rbac services — empty-driver paths", () => {
 	});
 
 	it("assignSubject records a null grantedBy without a bound principal", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		await db.insert(rolesTable).values({
 			name: "auditor",
 			description: null,
@@ -1032,7 +1024,7 @@ describe("rbac panel loader", () => {
 	>;
 
 	it("returns roles, details, assignments and the catalog", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		await db.insert(rolesTable).values({
 			name: "auditor",
 			description: null,
@@ -1063,7 +1055,7 @@ describe("rbac panel loader", () => {
 	});
 
 	it("collapses Forbidden to the empty console", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const env = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(PlatformAdmin, adminGate));
 		const rt = ManagedRuntime.make(
 			servicesLayer().pipe(Layer.provide(env)) as unknown as Layer.Layer<unknown, never, never>,

@@ -6,7 +6,7 @@ import type { Forbidden } from "@ktb/authz";
 import { consultationsServicesPlugin } from "@ktb/consultations";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformHeaderPlugin } from "@ktb/platform-header";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { Ops, OpsLive } from "./ops.ts";
 import { OpsPlatformPage } from "./platform-page.tsx";
@@ -102,20 +102,12 @@ export const opsPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, opsServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "jobs.ops",
 				path: "/platform/ops",
 				component: OpsPlatformPage,
 				// Hard 404 for non-admins — same contract as the /platform
 				// layout guard; every service call re-checks anyway.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: () =>
 					Effect.gen(function* () {
 						const ops = yield* Ops;
@@ -130,7 +122,7 @@ export const opsPanelPlugin = definePlugin({
 						);
 						return { jobs, queue, storage };
 					}),
-			},
+			}),
 		],
 	},
 });

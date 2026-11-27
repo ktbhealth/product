@@ -7,16 +7,21 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { makeDb, Db, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { consultations, jobRuns } from "@ktb/db/schema";
 import { jobHandlers, registerJobHandler } from "@ktb/jobs-port";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import type { AudioJobMessage } from "@ktb/server-fns";
 
+import { ConsultationAudioUpdated } from "./api.ts";
 import { AUDIO_TRANSCRIPTION_JOB_KIND, attachAudioRecord } from "./audio-jobs.ts";
 import {
+	assignSpeakers,
 	bytesToBase64,
 	defaultAudioJobDeps,
+	diarizeAudio,
+	extractDiarizedSegments,
 	extractWhisperResult,
 	extractWhisperText,
 	handleAudioQueueBatch,
@@ -33,23 +38,13 @@ import {
 import { createConsultation } from "./lifecycle.ts";
 
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL DEFAULT 'browser', status TEXT NOT NULL DEFAULT 'done', bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, transcript_segments TEXT,
-		transcript_edits TEXT,
-		transcript_edits_base TEXT,
-		transcript_reviewed_edits INTEGER,
-		deferred_until INTEGER);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO groups (id, name, slug, kind, zk) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1, 0, 0);
 `;
 
 const TEST_MODEL = "test-whisper";
 
 const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 	const calls = {
 		corrected: [] as string[],
 		segments: [] as (readonly WhisperSegment[] | undefined)[],
@@ -209,6 +204,74 @@ describe("audio-consumer pure helpers", () => {
 			{ start: 1.25, end: 2, text: "mundo" },
 		]);
 	});
+	it("extractDiarizedSegments parses speaker turns and skips malformed entries", () => {
+		expect(
+			extractDiarizedSegments({
+				segments: [
+					null,
+					42,
+					"SPEAKER_00",
+					{ start: 0.5, end: 4.2, speaker: "SPEAKER_00" },
+					{ start: "bad", end: 9, speaker: "SPEAKER_01" },
+					{ start: 5, end: 6, speaker: "" },
+					{ start: 7, end: 8, speaker: "Doctor" },
+				],
+			}),
+		).toEqual([
+			{ start: 0.5, end: 4.2, speaker: "SPEAKER_00" },
+			{ start: 7, end: 8, speaker: "Doctor" },
+		]);
+		expect(extractDiarizedSegments(null)).toBeNull();
+		expect(extractDiarizedSegments({ segments: "x" })).toBeNull();
+		expect(extractDiarizedSegments({ segments: [] })).toBeNull();
+	});
+
+	it("assignSpeakers labels ASR segments by max overlap and drops blip turns", () => {
+		const segs = [
+			{ start: 0, end: 4, text: "a" },
+			{ start: 4, end: 8, text: "b" },
+			{ start: 8, end: 12, text: "c" },
+			{ start: 20, end: 22, text: "d" },
+		];
+		const diarized = [
+			{ start: 0, end: 5, speaker: "SPEAKER_00" },
+			{ start: 4.1, end: 4.3, speaker: "SPEAKER_99" }, // 0.2s blip — below floor
+			{ start: 5, end: 12, speaker: "SPEAKER_01" },
+		];
+		const out = assignSpeakers(segs, diarized)!;
+		expect(out.map((s) => s.speaker)).toEqual([
+			"SPEAKER_00",
+			"SPEAKER_01",
+			"SPEAKER_01",
+			undefined, // no overlap → stays unspeaker'd
+		]);
+	});
+
+	it("assignSpeakers passthrough on missing sides and filters all-blips", () => {
+		const segs = [{ start: 0, end: 4, text: "a" }];
+		expect(assignSpeakers(segs, null)).toEqual(segs);
+		expect(assignSpeakers(null, [{ start: 0, end: 4, speaker: "S" }])).toBeNull();
+		expect(
+			assignSpeakers(segs, [{ start: 0, end: 0.2, speaker: "S" }])![0]!.speaker,
+		).toBeUndefined();
+	});
+
+	it("diarizeAudio resolves null on provider failure", async () => {
+		const ok = await diarizeAudio(
+			{ run: async () => ({ segments: [{ start: 0, end: 2, speaker: "SPEAKER_00" }] }) },
+			new Uint8Array([1]),
+		);
+		expect(ok).toEqual([{ start: 0, end: 2, speaker: "SPEAKER_00" }]);
+		const missing = await diarizeAudio(
+			{
+				run: async () => {
+					throw new Error("HTTP 404");
+				},
+			},
+			new Uint8Array([1]),
+		);
+		expect(missing).toBeNull();
+	});
 });
 
 describe("processAudioJob", () => {
@@ -264,6 +327,110 @@ describe("processAudioJob", () => {
 				detail: { segments: 2 },
 			},
 		]);
+	});
+
+	it("labels transcript segments with diarized speakers when enabled (P-118)", async () => {
+		const diarizeCalls: unknown[] = [];
+		const { db, deps } = makeDeps({
+			diarization: true,
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) {
+						diarizeCalls.push(inputs);
+						return {
+							segments: [
+								{ start: 0, end: 3, speaker: "SPEAKER_00" },
+								{ start: 3, end: 8, speaker: "SPEAKER_01" },
+							],
+						};
+					}
+					return {
+						text: "oi tchau",
+						segments: [
+							{ start: 0, end: 2.5, text: "oi" },
+							{ start: 3.5, end: 7, text: "tchau" },
+						],
+					};
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+
+		expect(diarizeCalls).toHaveLength(1);
+		const r = await row(db, id);
+		const segs = JSON.parse(r?.transcriptSegments as string) as {
+			text: string;
+			speaker?: string;
+		}[];
+		expect(segs.map((s) => s.speaker)).toEqual(["SPEAKER_00", "SPEAKER_01"]);
+	});
+
+	it("prefers the dedicated diarization runner when bound", async () => {
+		const calls: string[] = [];
+		const { db, deps } = makeDeps({
+			diarization: true,
+			diarizationAi: {
+				run: async (_model: string, inputs: unknown) => {
+					calls.push("diarization-ai");
+					expect((inputs as { diarize?: boolean }).diarize).toBe(true);
+					return { segments: [{ start: 0, end: 5, speaker: "SPEAKER_00" }] };
+				},
+			},
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) {
+						calls.push("shared-ai");
+						return { segments: [] };
+					}
+					return { text: "oi", segments: [{ start: 0, end: 2, text: "oi" }] };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect(calls).toEqual(["diarization-ai"]);
+	});
+
+	it("skips diarization entirely when the flag is off", async () => {
+		const diarizeCalls: unknown[] = [];
+		const { db, deps } = makeDeps({
+			// flag omitted — default off
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) diarizeCalls.push(inputs);
+					return { text: "oi" };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect(diarizeCalls).toHaveLength(0);
+	});
+
+	it("keeps unspeaker'd segments when diarization fails", async () => {
+		const { db, deps } = makeDeps({
+			diarization: true,
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) {
+						throw new Error("HTTP 404");
+					}
+					return { text: "oi", segments: [{ start: 0, end: 2, text: "oi" }] };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		const r = await row(db, id);
+		expect(r?.audioStatus).toBe("done");
+		const segs = JSON.parse(r?.transcriptSegments as string) as { speaker?: string }[];
+		expect(segs[0]!.speaker).toBeUndefined();
 	});
 
 	it("refuses to send zero-knowledge audio to Whisper (T-147)", async () => {
@@ -631,7 +798,7 @@ describe("transcription audit trail (P-080)", () => {
 
 describe("defaultAudioJobDeps", () => {
 	it("resolves bindings from the server runtime and Db from the app runtime", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const bucket = { get: async () => null };
 		const ai = { run: async () => ({}) };
 		const correct = async () => null;
@@ -857,5 +1024,89 @@ describe("handleAudioQueueBatch", () => {
 				getLocale: () => "en",
 			} as unknown as ServerRuntime);
 		}
+	});
+
+	it("default publish dispatches ConsultationAudioUpdated through the runtime EventBus", async () => {
+		const busRuntime = ManagedRuntime.make(makeEventBus());
+		const bus = await busRuntime.runPromise(EventBus);
+		const seen: { consultationId: number; audioStatus: string }[] = [];
+		await Effect.runPromise(
+			bus.subscribe(ConsultationAudioUpdated, (e) =>
+				Effect.sync(() => {
+					seen.push({ consultationId: e.consultationId, audioStatus: e.audioStatus });
+				}),
+			),
+		);
+		const plainRun = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+			Effect.runPromise(effect as Effect.Effect<A, E, never>);
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				plainRun((effect as Effect.Effect<A, E, never>).pipe(Effect.provideService(EventBus, bus))),
+			runAs: () => Promise.reject(new Error("unused")),
+			audioTranscribeModel: TEST_MODEL,
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+		try {
+			const { db, deps } = makeDeps();
+			const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+			const log: string[] = [];
+			// deps carry no publishAudioUpdate → the default side-effect
+			// dispatches through the bound runtime's EventBus.
+			await handleAudioQueueBatch([msg(job(id), log)], deps);
+			expect(log).toEqual(["ack"]);
+			// notify() defers the publish — flush microtasks until it lands.
+			for (let i = 0; i < 50 && seen.length === 0; i++) {
+				await new Promise((r) => setTimeout(r, 5));
+			}
+			expect(seen.map((e) => e.audioStatus)).toContain("done");
+			expect(seen.find((e) => e.audioStatus === "done")?.consultationId).toBe(id);
+		} finally {
+			setServerRuntime({
+				run: plainRun,
+				runAs: () => Promise.reject(new Error("unused")),
+				audioTranscribeModel: TEST_MODEL,
+				getLocale: () => "en",
+			} as unknown as ServerRuntime);
+			await busRuntime.dispose();
+		}
+	});
+});
+
+describe("processAudioJob anamnesis regeneration", () => {
+	it("chains regenerateAnamnesis after cleanup and survives its failure", async () => {
+		const regen = vi.fn(async () => {});
+		const { db, deps } = makeDeps({ regenerateAnamnesis: regen });
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+		expect(regen).toHaveBeenCalledWith(id, "transcrição servidor (corrigido)");
+		expect((await row(db, id))?.audioStatus).toBe("done");
+
+		// A throwing regen only logs — the job stays done.
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		regen.mockRejectedValueOnce(new Error("regen boom"));
+		const id2 = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id2, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id2), deps);
+		expect(warn).toHaveBeenCalledWith(
+			"anamnesis regeneration failed; review can regenerate manually",
+			expect.objectContaining({ consultationId: id2 }),
+		);
+		expect((await row(db, id2))?.audioStatus).toBe("done");
+		warn.mockRestore();
+	});
+
+	it("skips regeneration when cleanup produces no correction", async () => {
+		const regen = vi.fn(async () => {});
+		const { db, deps } = makeDeps({
+			correctTranscript: async () => null,
+			regenerateAnamnesis: regen,
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect(regen).not.toHaveBeenCalled();
 	});
 });

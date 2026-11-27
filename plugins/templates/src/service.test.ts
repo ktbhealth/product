@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { eq } from "drizzle-orm";
@@ -18,7 +19,6 @@ import {
 	TemplateKindsLive,
 	Templates,
 	TemplatesLive,
-	TEMPLATES_TEST_DDL,
 	TemplateNameTaken,
 	TemplateNotFound,
 	UnknownTemplateKind,
@@ -54,7 +54,7 @@ describe("TemplatesLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(TEMPLATES_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(

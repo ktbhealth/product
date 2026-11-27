@@ -3,7 +3,13 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, requirePluginEnabled, runAs } from "@ktb/server-fns";
+import {
+	ensureSessionUser,
+	pluginHandler,
+	requirePluginEnabled,
+	runAs,
+	sessionHandler,
+} from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import {
@@ -171,61 +177,68 @@ const toSetInput = (d: Schema.Schema.Type<typeof SetInput>, value: unknown): KvA
  * non-admins and handled validation failures. */
 export const kvListFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeList(input ?? {}))
-	.handler(async ({ data }): Promise<KvListWire | null> => {
-		await requirePluginEnabled("kv.admin.services");
-		const user = await ensureSessionUser();
-		const list = await asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* KvAdmin;
-				return yield* admin.list(toFilter(data));
+	.handler(
+		pluginHandler(
+			"kv.admin.services",
+			sessionHandler(async ({ data, user }): Promise<KvListWire | null> => {
+				const list = await asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* KvAdmin;
+						return yield* admin.list(toFilter(data));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
+				return list === null ? null : { items: list.items.map(toWire), total: list.total };
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-		return list === null ? null : { items: list.items.map(toWire), total: list.total };
-	});
+		),
+	);
 
 /** Per-namespace counts for the console overview; `null` when denied
  * or the input is invalid (there is no input — defensive). */
 export const kvNamespacesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly KvNamespaceWire[] | null> => {
-		await requirePluginEnabled("kv.admin.services");
-		const user = await ensureSessionUser();
-		const rows = await asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* KvAdmin;
-				return yield* admin.namespaces();
-			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-		return rows === null ? null : rows.map((r: KvAdminNamespaceCount) => ({ ...r }));
-	},
+	pluginHandler(
+		"kv.admin.services",
+		sessionHandler(async ({ user }): Promise<readonly KvNamespaceWire[] | null> => {
+			const rows = await asAdmin(
+				user,
+				Effect.gen(function* () {
+					const admin = yield* KvAdmin;
+					return yield* admin.namespaces();
+				}),
+			).catch((error: unknown) => {
+				if (isHandled(error)) return null;
+				throw error;
+			});
+			return rows === null ? null : rows.map((r: KvAdminNamespaceCount) => ({ ...r }));
+		}),
+	),
 );
 
 /** Fresh single-entry read (edit dialog revalidation); `null` for
  * non-admins, missing rows and handled failures. */
 export const kvGetFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeTarget(input))
-	.handler(async ({ data }): Promise<KvEntryWire | null> => {
-		await requirePluginEnabled("kv.admin.services");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* KvAdmin;
-				const entry = yield* admin.get(toTarget(data));
-				return entry === null ? null : toWire(entry);
+	.handler(
+		pluginHandler(
+			"kv.admin.services",
+			sessionHandler(async ({ data, user }): Promise<KvEntryWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* KvAdmin;
+						const entry = yield* admin.get(toTarget(data));
+						return entry === null ? null : toWire(entry);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Create/update an entry. `valueJson` must parse as JSON;
  * `expectedVersion` enables the CAS guard — conflicts come back as
@@ -271,17 +284,20 @@ export const kvSetFn = createServerFn({ method: "POST" })
  * failures (same contract as the pages delete fn). */
 export const kvDeleteFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeTarget(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("kv.admin.services");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* KvAdmin;
-				return yield* admin.remove(toTarget(data));
+	.handler(
+		pluginHandler(
+			"kv.admin.services",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* KvAdmin;
+						return yield* admin.remove(toTarget(data));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return false;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return false;
-			throw error;
-		});
-	});
+		),
+	);

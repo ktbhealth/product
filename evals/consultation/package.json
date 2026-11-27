@@ -11,6 +11,8 @@
 	"dependencies": {
 		"@ktb/eval-core": "workspace:*",
 		"@ktb/pipeline": "workspace:*",
+		"@ktb/transcript-cleanup": "workspace:*",
+		"@ktb/transcript-diff": "workspace:*",
 		"better-sqlite3": "^13.0.3",
 		"effect": "4.1.2",
 		"eta": "^4.6.0"

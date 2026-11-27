@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
 	ArrowLeftIcon,
 	CalendarIcon,
@@ -7,6 +7,7 @@ import {
 	ClipboardListIcon,
 	DownloadIcon,
 	LockIcon,
+	PencilIcon,
 	QuoteIcon,
 } from "lucide-react";
 import type { Locale as CalendarLocale } from "react-day-picker";
@@ -35,15 +36,14 @@ import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@ktbhealth/ui/components/popover";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
+import { AnamnesisSection } from "@ktbhealth/ui/components/anamnesis-review";
 
 import type { ConsultationIntegrityReport } from "../index.ts";
-import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
+import { BADGE_TONES } from "./-ui.ts";
 import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
-import { decryptBlob } from "@ktb/crypto/stream";
 import { LocalDateTime } from "@ktb/views/views";
 
 import {
-	consultationDek,
 	decryptConsultation,
 	decryptConsultations,
 	isEnvelope,
@@ -53,16 +53,31 @@ import {
 import {
 	AudioTranscriptPanel,
 	useConsultationAudio,
+	useZkAudioUrl,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
+import { EncryptionPill, PatientContextBar, TranscriptPanelHeader } from "./-chat.tsx";
 import { parseTranscriptSegments } from "../segments.ts";
+import {
+	parseTranscriptEdits,
+	serializeTranscriptEdits,
+	type TranscriptEditEntry,
+} from "../transcript-edits.ts";
+import {
+	bytesToB64,
+	editsBaseText,
+	projectTranscript,
+	segBaseOffsets,
+	segProjOffset,
+	TranscriptEditSession,
+} from "../transcript-projection.ts";
 
 function Chip({
 	children,
 	tone = "neutral",
 }: {
 	children: React.ReactNode;
-	tone?: "neutral" | "green" | "blue";
+	tone?: "neutral" | "green" | "blue" | "red";
 }) {
 	return (
 		<Badge variant="secondary" className={`ring-1 ${BADGE_TONES[tone]}`}>
@@ -138,9 +153,18 @@ export interface ConsultationDetailApi {
 	generateAnamnesis?(input: {
 		data: { consultationId: number; transcript: string; patientId?: number };
 	}): Promise<{ ok: boolean }>;
+	/** Persist a manually-edited anamnesis doc (T-227) — bumps the
+	 * version so an approved row re-enters the queue as stale. */
+	editAnamnesis?(input: {
+		data: { consultationId: number; anamnesis: unknown; ciphered?: true; version?: unknown };
+	}): Promise<{ ok: boolean }>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
+
+/** Anamnesis confidence scale (alta/media/baixa) → the ui review
+ * blocks' high/medium/low. */
+const ANAMNESIS_CONFIDENCE = { alta: "high", media: "medium", baixa: "low" } as const;
 
 /** react-day-picker locales per app locale (PL-022 defer calendar). */
 const CALENDAR_LOCALES: Record<string, CalendarLocale> = {
@@ -182,6 +206,25 @@ export function ConsultationDetailPage({
 	const navigate = useNavigate();
 	const router = useRouter();
 	const [toast, setToast] = useState<ToastData | null>(null);
+
+	// The detail workspace pins to the viewport: the page itself never
+	// scrolls — the transcript chat and the anamnesis column carry
+	// their own scroll instead. The available height is measured, not
+	// guessed: header/footer live in the app shell and their sizes vary.
+	const frameRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = frameRef.current;
+		/* v8 ignore next -- every render path attaches frameRef, so the ref is never null here */
+		if (!el) return;
+		const fit = () => {
+			const footer = document.querySelector("footer");
+			const reserve = (footer?.getBoundingClientRect().height ?? 0) + 16;
+			el.style.height = `${Math.max(320, window.innerHeight - el.getBoundingClientRect().top - reserve)}px`;
+		};
+		fit();
+		window.addEventListener("resize", fit);
+		return () => window.removeEventListener("resize", fit);
+	}, []);
 
 	// Review stamps (PL-022) — optimistic local overrides applied after
 	// each mutation; the row's columns are the server-side truth.
@@ -228,7 +271,10 @@ export function ConsultationDetailPage({
 					anamnesisVersion: c.anamnesisVersion ?? null,
 				}));
 				setToast({ id: Date.now(), text: t.detail.approvedToast });
-				if (goNext && api?.nextPendingReview) {
+				if (
+					goNext &&
+					/* v8 ignore next -- "Approve & next" only renders when nextPendingReview exists */ api?.nextPendingReview
+				) {
 					void api.nextPendingReview({ data: c.id }).then((next) => {
 						if (next.id !== null) {
 							void navigate({ to: portalPath(`/consultations/${next.id}`) });
@@ -334,34 +380,11 @@ export function ConsultationDetailPage({
 		};
 	}, [zk, historyRows]);
 	const history = zk ? decHistory : historyProp;
-	// ZK audio playback (T-147): the stored object is framed ciphertext —
-	// fetch it, unwrap the consultation DEK, decrypt in the browser and
-	// hand the <audio> element an object URL. Locked/missing grant → no
-	// player, exactly like the rest of the record.
-	const [zkAudioUrl, setZkAudioUrl] = useState<string | null>(null);
-	useEffect(() => {
-		if (!zk || !c.audioKey) return;
-		let live = true;
-		let url: string | null = null;
-		void (async () => {
-			const dek = await consultationDek(zk.keyring, zk.api, c.id);
-			if (!dek) return;
-			const res = await fetch(`/api/consultations/${c.id}/audio`);
-			if (!res.ok) return;
-			const plain = await decryptBlob(dek, new Uint8Array(await res.arrayBuffer()));
-			url = URL.createObjectURL(
-				// The recorded/uploaded type is not part of the detail
-				// wire shape — browsers sniff the decrypted bytes anyway.
-				new Blob([plain as Uint8Array<ArrayBuffer>], { type: "audio/webm" }),
-			);
-			if (live) setZkAudioUrl(url);
-			else URL.revokeObjectURL(url);
-		})().catch(() => {});
-		return () => {
-			live = false;
-			if (url !== null) URL.revokeObjectURL(url);
-		};
-	}, [zk, c]);
+	// ZK audio playback (T-147): shared hook — fetches the ciphertext,
+	// unwraps the consultation DEK, decrypts in the browser and hands
+	// the player an object URL. Locked/missing grant → null and the
+	// player must not fall back to the endpoint (ciphertext).
+	const zkAudioUrl = useZkAudioUrl(zk, c);
 	// Poll only when the loader data says the pipeline may still be
 	// running (or the LLM cleanup is pending); the hook stops itself
 	// once the job reaches a terminal state.
@@ -373,6 +396,75 @@ export function ConsultationDetailPage({
 	// polled audio-pipeline state — never active under ZK (T-147).
 	const v = { ...c, ...live, ...dec };
 	const segments = parseTranscriptSegments(v.transcriptSegments);
+
+	// Transcript editing (PL-023): same Loro edit log the review mode
+	// writes — each save appends a delta and the extra op count makes
+	// the transcript stamp stale, so a post-approval edit re-opens the
+	// record in the review queue automatically. ZK rows stay read-only
+	// (the edits column is ciphered — BYOK re-encryption is T-146
+	// scope), matching the anamnesis editor's gate.
+	const canEditTranscript = !zk && api?.saveTranscriptEdits != null;
+	const storedEdits = useMemo(() => parseTranscriptEdits(v.transcriptEdits), [v.transcriptEdits]);
+	const [newEdits, setNewEdits] = useState<readonly TranscriptEditEntry[]>([]);
+	const entries = useMemo(
+		() => [...storedEdits, ...newEdits.filter((e) => !storedEdits.some((s) => s.u === e.u))],
+		[storedEdits, newEdits],
+	);
+	const editsBase = editsBaseText(v);
+	const projected = useMemo(() => projectTranscript(editsBase, entries), [editsBase, entries]);
+	const segEdits = useMemo(() => {
+		const m = new Map<number, string>();
+		for (const e of entries) if (e.seg != null && e.text != null) m.set(e.seg, e.text);
+		return m;
+	}, [entries]);
+	const editsBaseOffsets = useMemo(
+		() => segBaseOffsets(segments, editsBase),
+		[segments, editsBase],
+	);
+	const sessionRef = useRef<TranscriptEditSession | null>(null);
+	const [segEditing, setSegEditing] = useState<number | "full" | null>(null);
+	const [segDraft, setSegDraft] = useState("");
+	const [editBusy, setEditBusy] = useState(false);
+	const editSession = () => (sessionRef.current ??= new TranscriptEditSession(entries, editsBase));
+	const saveTranscriptEdit = () =>
+		void (async () => {
+			/* v8 ignore next -- save only renders while editing with the api present */
+			if (!api?.saveTranscriptEdits || segEditing === null) return;
+			setEditBusy(true);
+			try {
+				const ses = editSession();
+				const delta =
+					segEditing === "full"
+						? ses.edit((tx) => {
+								tx.delete(0, ses.text().length);
+								tx.insert(0, segDraft);
+							})
+						: ses.edit((tx) => {
+								const i = segEditing;
+								const off = segProjOffset(segments, editsBaseOffsets, entries, i);
+								// editing indexes always resolve to a rendered segment
+								const oldLen = (segEdits.get(i) ?? segments[i]!.text).length;
+								tx.delete(off, oldLen);
+								tx.insert(off, segDraft);
+							});
+				const entry: TranscriptEditEntry = {
+					at: new Date().toISOString(),
+					by: "local",
+					u: bytesToB64(delta),
+					...(segEditing === "full" ? {} : { seg: segEditing, text: segDraft }),
+				};
+				const res = await api.saveTranscriptEdits({
+					data: { id: c.id, edits: serializeTranscriptEdits([...entries, entry]) },
+				});
+				if (res.ok) {
+					setNewEdits((e) => [...e, entry]);
+					setSegEditing(null);
+					void router.invalidate();
+				}
+			} finally {
+				setEditBusy(false);
+			}
+		})();
 	// Clickable transcript evidence: at most one section's grounding
 	// sentences are marked up in the transcript at a time; turning a
 	// section on also scrolls the ScrollArea to the first match.
@@ -412,6 +504,103 @@ export function ConsultationDetailPage({
 			.then(() => setToast({ id: Date.now(), text: t.detail.anamnesisCopied }));
 	}
 
+	// Patient context strip (chat-workspace chrome): patient + visit
+	// metadata, the status chips the old "Details" card carried
+	// (consent, audio pipeline, review stamps, deferred, integrity,
+	// history) and the defer control.
+	const contextMeta: ReactNode[] = [
+		<LocalDateTime
+			key="date"
+			value={c.createdAt}
+			locale={locale}
+			options={{ dateStyle: "medium", timeStyle: "short" }}
+		/>,
+	];
+	const source = sourceLabel(t, c.source);
+	if (source) contextMeta.push(source);
+	if (c.engine) contextMeta.push(t.common.engine(c.engine));
+	const audioChip =
+		v.audioStatus === "failed" ? (
+			<Chip tone="red">{t.detail.audioFailed}</Chip>
+		) : PIPELINE_IN_FLIGHT.has(v.audioStatus ?? "") ? (
+			<Chip tone="blue">
+				{v.audioStatus === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}
+			</Chip>
+		) : null;
+	const contextChips = (
+		<>
+			{c.consentAt ? (
+				<Chip tone="green">
+					{t.detail.consentLabel}{" "}
+					<LocalDateTime
+						value={c.consentAt}
+						locale={locale}
+						options={{ year: "numeric", month: "numeric", day: "numeric" }}
+					/>
+				</Chip>
+			) : (
+				<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
+			)}
+			{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
+			{audioChip}
+			{review.transcriptAt ? (
+				<Chip tone="green">{t.detail.transcriptConfirmed(shortDate(review.transcriptAt))}</Chip>
+			) : null}
+			{anamnesisApproved ? (
+				<Chip tone="green">{t.detail.anamnesisApproved(review.anamnesisVersion!)}</Chip>
+			) : anamnesisStale ? (
+				<Chip tone="blue">{t.detail.anamnesisStale(c.anamnesisVersion!)}</Chip>
+			) : null}
+			{isDeferred ? (
+				<Chip tone="blue">{t.detail.deferredUntil(shortDate(review.deferredUntil!))}</Chip>
+			) : null}
+			{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
+			{history && history.count > 0 ? (
+				<Chip>{t.detail.previousConsultations(history.count)}</Chip>
+			) : null}
+		</>
+	);
+	const deferAction = api?.deferConsultation ? (
+		<Popover open={deferOpen} onOpenChange={setDeferOpen}>
+			<PopoverTrigger render={<Button variant="outline" size="sm" />}>
+				<CalendarIcon data-icon="inline-start" />
+				{isDeferred
+					? t.detail.deferredUntil(shortDate(review.deferredUntil!))
+					: t.detail.deferLabel}
+			</PopoverTrigger>
+			<PopoverContent className="w-auto p-0" align="end">
+				<Calendar
+					mode="single"
+					locale={CALENDAR_LOCALES[locale]}
+					selected={isDeferred ? new Date(review.deferredUntil!) : undefined}
+					disabled={{ before: new Date() }}
+					onSelect={(date) => {
+						if (date) {
+							defer(date);
+							setDeferOpen(false);
+						}
+					}}
+				/>
+				{isDeferred ? (
+					<div className="border-t border-border p-2">
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							disabled={busy}
+							onClick={() => {
+								defer(null);
+								setDeferOpen(false);
+							}}
+						>
+							{t.detail.deferResume}
+						</Button>
+					</div>
+				) : null}
+			</PopoverContent>
+		</Popover>
+	) : undefined;
+
 	// Locked record (T-145): the device holds no grant for this
 	// consultation's DEK — nothing clinical is rendered.
 	if (locked) {
@@ -444,11 +633,12 @@ export function ConsultationDetailPage({
 	}
 
 	return (
-		<PageContainer className="max-w-none">
+		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
 			{/* PageHeader renders any ReactNode, but its `title` prop type
 			    collides with the HTML `title` attribute upstream — cast the
 			    h1 so the page keeps a single heading landmark. */}
 			<PageHeader
+				className="shrink-0"
 				title={
 					(
 						<h1>
@@ -487,46 +677,6 @@ export function ConsultationDetailPage({
 							<ArrowLeftIcon data-icon="inline-start" />
 							{t.detail.back}
 						</Button>
-						{api?.deferConsultation ? (
-							<Popover open={deferOpen} onOpenChange={setDeferOpen}>
-								<PopoverTrigger render={<Button variant="outline" size="sm" />}>
-									<CalendarIcon data-icon="inline-start" />
-									{isDeferred
-										? t.detail.deferredUntil(shortDate(review.deferredUntil!))
-										: t.detail.deferLabel}
-								</PopoverTrigger>
-								<PopoverContent className="w-auto p-0" align="end">
-									<Calendar
-										mode="single"
-										locale={CALENDAR_LOCALES[locale]}
-										selected={isDeferred ? new Date(review.deferredUntil!) : undefined}
-										disabled={{ before: new Date() }}
-										onSelect={(date) => {
-											if (date) {
-												defer(date);
-												setDeferOpen(false);
-											}
-										}}
-									/>
-									{isDeferred ? (
-										<div className="border-t border-border p-2">
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												disabled={busy}
-												onClick={() => {
-													defer(null);
-													setDeferOpen(false);
-												}}
-											>
-												{t.detail.deferResume}
-											</Button>
-										</div>
-									) : null}
-								</PopoverContent>
-							</Popover>
-						) : null}
 						{v.anamnesis ? (
 							<>
 								<Button type="button" variant="outline" onClick={copy}>
@@ -556,71 +706,160 @@ export function ConsultationDetailPage({
 				}
 			/>
 
-			{/* ---------- meta ---------- */}
-			<Card>
-				<CardHeader>
-					<CardTitle>{t.detail.metaTitle}</CardTitle>
-				</CardHeader>
-				<CardContent className="flex flex-wrap items-center gap-1.5">
-					<Chip>{sourceLabel(t, c.source)}</Chip>
-					{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
-					{c.consentAt ? (
-						<Chip tone="green">
-							{t.detail.consentLabel}{" "}
-							<LocalDateTime
-								value={c.consentAt}
-								locale={locale}
-								options={{ year: "numeric", month: "numeric", day: "numeric" }}
-							/>
-						</Chip>
-					) : (
-						<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
-					)}
-					{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
-					{isDeferred ? (
-						<Chip tone="blue">{t.detail.deferredUntil(shortDate(review.deferredUntil!))}</Chip>
-					) : null}
-					{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
-					{history && history.count > 0 ? (
-						<Chip>{t.detail.previousConsultations(history.count)}</Chip>
-					) : null}
-				</CardContent>
-			</Card>
+			{/* ---------- patient context ---------- */}
+			<PatientContextBar
+				className="shrink-0"
+				name={v.patientName ?? `#${c.id}`}
+				meta={contextMeta}
+				chips={contextChips}
+				actions={deferAction}
+			/>
 
 			{history && history.count > 0 ? (
-				<details className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+				<details className="shrink-0 overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
 					<summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
 						{t.sections.historico} · {t.detail.previousConsultations(history.count)}
 					</summary>
-					<ul className="space-y-2 border-t border-border px-4 py-3 text-sm">
-						{history.visits.map((v) => (
-							<li key={v.id}>
-								<span className="text-muted-foreground">
-									<LocalDateTime value={v.date} locale={locale} options={{ dateStyle: "medium" }} />{" "}
-									· {t.common.consultationId(v.id).toLowerCase()}
-								</span>
-								{v.chiefComplaint ? <div>{t.detail.complaint(v.chiefComplaint)}</div> : null}
-								{v.plan ? <div>{t.detail.plan(v.plan)}</div> : null}
-							</li>
-						))}
-					</ul>
-					<p className="px-4 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
+					<div className="max-h-48 overflow-y-auto border-t border-border">
+						<ul className="space-y-2 px-4 py-3 text-sm">
+							{history.visits.map((v) => (
+								<li key={v.id}>
+									<span className="text-muted-foreground">
+										<LocalDateTime
+											value={v.date}
+											locale={locale}
+											options={{ dateStyle: "medium" }}
+										/>{" "}
+										· {t.common.consultationId(v.id).toLowerCase()}
+									</span>
+									{v.chiefComplaint ? <div>{t.detail.complaint(v.chiefComplaint)}</div> : null}
+									{v.plan ? <div>{t.detail.plan(v.plan)}</div> : null}
+								</li>
+							))}
+						</ul>
+						<p className="px-4 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
+					</div>
 				</details>
 			) : null}
 
-			<div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
+			<div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
+				{/* ---------- transcript chat ---------- */}
+				<Card className="flex min-h-0 flex-1 flex-col gap-0 p-0 lg:flex-[1.35]">
+					<TranscriptPanelHeader title={t.common.transcript}>
+						{!review.transcriptAt && api?.reviewTranscript ? (
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-7 text-[11px]"
+								disabled={busy}
+								onClick={confirmTranscript}
+							>
+								<CheckIcon data-icon="inline-start" />
+								{t.detail.confirmTranscript}
+							</Button>
+						) : null}
+					</TranscriptPanelHeader>
+					<CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-4">
+						<ScrollArea className="min-h-0 flex-1">
+							<div className="pr-3" ref={transcriptRef}>
+								<EncryptionPill>{t.transcriptPanel.encryptionNote}</EncryptionPill>
+								{segEditing === "full" ? (
+									<div className="space-y-2">
+										<textarea
+											className="min-h-48 w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed"
+											value={segDraft}
+											onChange={(e) => setSegDraft(e.target.value)}
+										/>
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												size="sm"
+												disabled={editBusy}
+												onClick={saveTranscriptEdit}
+											>
+												{t.review.saveEdit}
+											</Button>
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => setSegEditing(null)}
+											>
+												{t.review.cancelEdit}
+											</Button>
+										</div>
+									</div>
+								) : (
+									<>
+										<AudioTranscriptPanel
+											i18n={i18n}
+											locale={locale}
+											consultationId={c.id}
+											audioStatus={v.audioStatus}
+											audioSrc={zk ? zkAudioUrl : undefined}
+											hasAudio={Boolean(v.audioKey)}
+											browserText={v.transcript}
+											serverText={v.serverTranscript}
+											correctedText={v.correctedTranscript}
+											highlight={evidence?.sentences}
+											segments={segments}
+											segmentEditing={
+												canEditTranscript && segments.length > 0
+													? {
+															segEdits,
+															editing: typeof segEditing === "number" ? segEditing : null,
+															draft: segDraft,
+															busy: editBusy,
+															onStart: (i) => {
+																/* v8 ignore next -- onStart only fires for rendered rows, so the index is always in range and the draft falls back to the segment text */
+																setSegDraft(segEdits.get(i) ?? segments[i]?.text ?? "");
+																setSegEditing(i);
+															},
+															onDraft: setSegDraft,
+															onSave: saveTranscriptEdit,
+															onCancel: () => setSegEditing(null),
+															labels: {
+																edit: t.review.editSegment,
+																save: t.review.saveEdit,
+																cancel: t.review.cancelEdit,
+																editedTag: t.review.editedTag,
+															},
+														}
+													: undefined
+											}
+										/>
+										{/* Legacy/no-segments rows: a whole-doc correction lands
+										 * in the same edit log — identical to review mode. */}
+										{canEditTranscript && segments.length === 0 ? (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												className="mt-2"
+												onClick={() => {
+													setSegDraft(projected);
+													setSegEditing("full");
+												}}
+											>
+												<PencilIcon data-icon="inline-start" />
+												{t.review.editFullText}
+											</Button>
+										) : null}
+									</>
+								)}
+							</div>
+						</ScrollArea>
+					</CardContent>
+				</Card>
+
 				{/* ---------- anamnesis ---------- */}
-				<Card>
-					<CardHeader className="border-b">
+				<Card className="flex min-h-0 flex-1 flex-col">
+					<CardHeader className="shrink-0 border-b">
 						<div className="flex items-center justify-between gap-2">
 							<CardTitle>{t.common.anamnesis}</CardTitle>
 							<span className="flex items-center gap-2">
-								{anamnesisStale ? (
-									<Chip tone="blue">{t.detail.anamnesisStale(c.anamnesisVersion!)}</Chip>
-								) : null}
-								{anamnesisApproved ? (
-									<Chip tone="green">{t.detail.anamnesisApproved(review.anamnesisVersion!)}</Chip>
-								) : v.anamnesis && api?.approveAnamnesis ? (
+								{!anamnesisApproved && v.anamnesis && api?.approveAnamnesis ? (
 									<>
 										<Button
 											type="button"
@@ -647,9 +886,9 @@ export function ConsultationDetailPage({
 							</span>
 						</div>
 					</CardHeader>
-					<CardContent>
+					<CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
 						{v.anamnesis ? (
-							<ScrollArea className="h-[70vh]">
+							<ScrollArea className="min-h-0 flex-1">
 								<div className="divide-y divide-border pr-4">
 									{(
 										Object.keys(t.sections).filter(
@@ -658,51 +897,52 @@ export function ConsultationDetailPage({
 									).map((key) => {
 										const sec = v.anamnesis?.[key];
 										if (!sec) return null;
-										const pending = sec.content.startsWith("A preencher pelo médico");
+										const pending =
+											sec.content.trim() === "" ||
+											sec.content.startsWith("A preencher pelo médico");
 										return (
-											<div key={key} className="py-4 first:pt-1 last:pb-1">
-												<div className="flex items-start justify-between gap-2">
-													<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
-													<div className="flex shrink-0 items-center gap-1.5">
-														{sec.evidence.length ? (
-															<Button
-																type="button"
-																variant="ghost"
-																size="sm"
-																className="aria-pressed:bg-info/10 aria-pressed:text-info"
-																aria-pressed={evidence?.section === key}
-																title={t.detail.evidenceTitle}
-																onClick={() =>
-																	setEvidence(
-																		evidence?.section === key
-																			? null
-																			: { section: key, sentences: sec.evidence },
-																	)
-																}
-															>
-																<QuoteIcon data-icon="inline-start" />
-																{evidence?.section === key
-																	? t.detail.hideEvidence
-																	: t.detail.showEvidence}
-															</Button>
-														) : null}
-														<Badge
-															variant="secondary"
-															className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+											<AnamnesisSection
+												key={key}
+												title={t.sections[key]}
+												confidence={ANAMNESIS_CONFIDENCE[sec.confidence]}
+												confidenceLabel={t.confidence[sec.confidence]}
+												edited={sec.edited}
+												editedLabel={t.review.editedTag}
+												className="py-4 first:pt-1 last:pb-1"
+											>
+												{sec.evidence.length ? (
+													<div>
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															className="aria-pressed:bg-info/10 aria-pressed:text-info"
+															aria-pressed={evidence?.section === key}
+															title={t.detail.evidenceTitle}
+															onClick={() =>
+																setEvidence(
+																	evidence?.section === key
+																		? null
+																		: { section: key, sentences: sec.evidence },
+																)
+															}
 														>
-															{t.confidence[sec.confidence]}
-														</Badge>
+															<QuoteIcon data-icon="inline-start" />
+															{evidence?.section === key
+																? t.detail.hideEvidence
+																: t.detail.showEvidence}
+														</Button>
 													</div>
-												</div>
+												) : null}
 												<p
-													className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
+													className={`text-sm leading-relaxed whitespace-pre-wrap ${
 														pending ? "text-muted-foreground italic" : "text-foreground"
 													}`}
 												>
 													{sec.content || t.detail.notReported}
 												</p>
 												{sec.evidence.length ? (
-													<details className="mt-2">
+													<details>
 														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
 															{t.detail.evidence(sec.evidence.length)}
 														</summary>
@@ -713,7 +953,7 @@ export function ConsultationDetailPage({
 														</ul>
 													</details>
 												) : null}
-											</div>
+											</AnamnesisSection>
 										);
 									})}
 								</div>
@@ -738,50 +978,6 @@ export function ConsultationDetailPage({
 								) : null}
 							</Empty>
 						)}
-					</CardContent>
-				</Card>
-
-				{/* ---------- side: transcript ---------- */}
-				<Card className="lg:sticky lg:top-20">
-					<CardHeader className="border-b">
-						<div className="flex items-center justify-between gap-2">
-							<CardTitle>{t.common.transcript}</CardTitle>
-							{review.transcriptAt ? (
-								<Chip tone="green">
-									{t.detail.transcriptConfirmed(shortDate(review.transcriptAt))}
-								</Chip>
-							) : api?.reviewTranscript ? (
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									disabled={busy}
-									onClick={confirmTranscript}
-								>
-									<CheckIcon data-icon="inline-start" />
-									{t.detail.confirmTranscript}
-								</Button>
-							) : null}
-						</div>
-					</CardHeader>
-					<CardContent>
-						<ScrollArea className="h-[70vh]">
-							<div className="pr-3" ref={transcriptRef}>
-								<AudioTranscriptPanel
-									i18n={i18n}
-									locale={locale}
-									consultationId={c.id}
-									audioStatus={v.audioStatus}
-									audioSrc={zk ? zkAudioUrl : undefined}
-									hasAudio={Boolean(v.audioKey)}
-									browserText={v.transcript}
-									serverText={v.serverTranscript}
-									correctedText={v.correctedTranscript}
-									highlight={evidence?.sentences}
-									segments={segments}
-								/>
-							</div>
-						</ScrollArea>
 					</CardContent>
 				</Card>
 			</div>

@@ -7,7 +7,7 @@
 	},
 	"dependencies": {
 		"@ktb/kernel": "workspace:*",
-		"@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react"
+		"@ktbhealth/ui": "github:ktbhealth/ui#feat/review-ux"
 	},
 	"devDependencies": {
 		"@types/react": "^19.2.0",

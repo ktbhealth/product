@@ -539,6 +539,7 @@ export type I18nKey =
 	| "consultations.detail.approveAnamnesis"
 	| "consultations.detail.approveAndNext"
 	| "consultations.detail.approvedToast"
+	| "consultations.detail.audioFailed"
 	| "consultations.detail.back"
 	| "consultations.detail.complaint"
 	| "consultations.detail.confirmTranscript"
@@ -618,6 +619,55 @@ export type I18nKey =
 	| "consultations.list.title"
 	| "consultations.list.transcriptReviewedBadge"
 	| "consultations.list.unlinkedPatient"
+	| "consultations.liveFlow.anamnesis"
+	| "consultations.liveFlow.audioSettingsTitle"
+	| "consultations.liveFlow.audioSourceInPerson"
+	| "consultations.liveFlow.audioSourceTelemedicine"
+	| "consultations.liveFlow.audioStatus.calibrated"
+	| "consultations.liveFlow.audioStatus.muted"
+	| "consultations.liveFlow.audioStatus.ready"
+	| "consultations.liveFlow.audioStatus.testing"
+	| "consultations.liveFlow.brandName"
+	| "consultations.liveFlow.calibratedAudio"
+	| "consultations.liveFlow.captureInPerson"
+	| "consultations.liveFlow.captureTelemedicine"
+	| "consultations.liveFlow.changePatient"
+	| "consultations.liveFlow.connectionStable"
+	| "consultations.liveFlow.consentDescription"
+	| "consultations.liveFlow.consentTitle"
+	| "consultations.liveFlow.copy"
+	| "consultations.liveFlow.deviceInPerson"
+	| "consultations.liveFlow.deviceTelemedicine"
+	| "consultations.liveFlow.diarizationActive"
+	| "consultations.liveFlow.diarizationEnded"
+	| "consultations.liveFlow.diarizationPaused"
+	| "consultations.liveFlow.encryption"
+	| "consultations.liveFlow.endConsultation"
+	| "consultations.liveFlow.ended"
+	| "consultations.liveFlow.endedListening"
+	| "consultations.liveFlow.engineInPerson"
+	| "consultations.liveFlow.engineTelemedicine"
+	| "consultations.liveFlow.export"
+	| "consultations.liveFlow.inputDevice"
+	| "consultations.liveFlow.listening"
+	| "consultations.liveFlow.live"
+	| "consultations.liveFlow.modalityInPerson"
+	| "consultations.liveFlow.modalityTelemedicine"
+	| "consultations.liveFlow.networkStatus"
+	| "consultations.liveFlow.paused"
+	| "consultations.liveFlow.pausedListening"
+	| "consultations.liveFlow.pickerDone"
+	| "consultations.liveFlow.readyTitle"
+	| "consultations.liveFlow.recordPrefix"
+	| "consultations.liveFlow.roomTitle"
+	| "consultations.liveFlow.secondaryAction"
+	| "consultations.liveFlow.startingSession"
+	| "consultations.liveFlow.startSession"
+	| "consultations.liveFlow.systemDefaultDevice"
+	| "consultations.liveFlow.testAudio"
+	| "consultations.liveFlow.testingAudio"
+	| "consultations.liveFlow.transcriptTitle"
+	| "consultations.liveFlow.yearsOld"
 	| "consultations.newConsultation.accessCardHasAccess"
 	| "consultations.newConsultation.accessCardNone"
 	| "consultations.newConsultation.accessCardTitle"
@@ -639,6 +689,8 @@ export type I18nKey =
 	| "consultations.newConsultation.agePlaceholder"
 	| "consultations.newConsultation.ageRequired"
 	| "consultations.newConsultation.anamnesisCopied"
+	| "consultations.newConsultation.anamnesisDrawer"
+	| "consultations.newConsultation.anamnesisDrawerDescription"
 	| "consultations.newConsultation.audioUploadFailed"
 	| "consultations.newConsultation.botDescription"
 	| "consultations.newConsultation.botFailed"
@@ -655,16 +707,22 @@ export type I18nKey =
 	| "consultations.newConsultation.consultationLive"
 	| "consultations.newConsultation.consultationText"
 	| "consultations.newConsultation.copyFailed"
+	| "consultations.newConsultation.copyTranscript"
 	| "consultations.newConsultation.dialogErrorTitle"
 	| "consultations.newConsultation.dialogSavedTitle"
 	| "consultations.newConsultation.dialogUpdatedTitle"
 	| "consultations.newConsultation.dictatingHint"
 	| "consultations.newConsultation.dictationDescription"
+	| "consultations.newConsultation.discardDraft"
+	| "consultations.newConsultation.draftAudio"
+	| "consultations.newConsultation.draftRecovered"
 	| "consultations.newConsultation.engineLabel"
+	| "consultations.newConsultation.exportTranscript"
 	| "consultations.newConsultation.generate"
 	| "consultations.newConsultation.generatedFrom"
 	| "consultations.newConsultation.generating"
 	| "consultations.newConsultation.gotIt"
+	| "consultations.newConsultation.listening"
 	| "consultations.newConsultation.lowConfidenceReprocessing"
 	| "consultations.newConsultation.micHint"
 	| "consultations.newConsultation.modeDictation"
@@ -681,6 +739,7 @@ export type I18nKey =
 	| "consultations.newConsultation.recordingSpeak"
 	| "consultations.newConsultation.recordingTip"
 	| "consultations.newConsultation.recordMic"
+	| "consultations.newConsultation.restoreDraft"
 	| "consultations.newConsultation.saveConsultation"
 	| "consultations.newConsultation.saveFailed"
 	| "consultations.newConsultation.saveSessionExpired"
@@ -691,6 +750,7 @@ export type I18nKey =
 	| "consultations.newConsultation.steps.prepare"
 	| "consultations.newConsultation.steps.review"
 	| "consultations.newConsultation.steps.transcribe"
+	| "consultations.newConsultation.stopCapture"
 	| "consultations.newConsultation.stopDictation"
 	| "consultations.newConsultation.stopMic"
 	| "consultations.newConsultation.stopTab"
@@ -702,6 +762,7 @@ export type I18nKey =
 	| "consultations.newConsultation.teleconsultLinkLabel"
 	| "consultations.newConsultation.title"
 	| "consultations.newConsultation.transcribingLive"
+	| "consultations.newConsultation.transcriptCopied"
 	| "consultations.newConsultation.transcriptionFailed"
 	| "consultations.newConsultation.transcriptionFailedStatus"
 	| "consultations.newConsultation.transcriptionRedone"
@@ -716,18 +777,25 @@ export type I18nKey =
 	| "consultations.newConsultation.viewConsultation"
 	| "consultations.newConsultation.waitingDescription"
 	| "consultations.newConsultation.waitingTitle"
+	| "consultations.newConsultation.yearsOld"
+	| "consultations.review.audioProcessingTag"
 	| "consultations.review.backToConsultations"
 	| "consultations.review.cancelEdit"
+	| "consultations.review.chapters"
 	| "consultations.review.confirmAndContinue"
 	| "consultations.review.deferredTag"
 	| "consultations.review.editedTag"
 	| "consultations.review.editFullText"
+	| "consultations.review.editSection"
 	| "consultations.review.editSegment"
+	| "consultations.review.highConfHint"
+	| "consultations.review.highConfTitle"
 	| "consultations.review.legacyAudioBadge"
 	| "consultations.review.missingDescription"
 	| "consultations.review.missingTitle"
 	| "consultations.review.nextUncertain"
 	| "consultations.review.noAudioBadge"
+	| "consultations.review.noAudioTag"
 	| "consultations.review.notFound"
 	| "consultations.review.pendingCount"
 	| "consultations.review.pendingEdits"
@@ -737,10 +805,26 @@ export type I18nKey =
 	| "consultations.review.regenerateAnamnesis"
 	| "consultations.review.saveEdit"
 	| "consultations.review.sessionDone"
+	| "consultations.review.shortcutConfirm"
+	| "consultations.review.shortcutKeySpace"
+	| "consultations.review.shortcutPlayPause"
+	| "consultations.review.shortcutSeekBack"
+	| "consultations.review.shortcutsTitle"
 	| "consultations.review.staleAnamnesis"
 	| "consultations.review.stepAnamnesis"
 	| "consultations.review.stepTranscript"
 	| "consultations.review.title"
+	| "consultations.review.uncertainProgress"
+	| "consultations.review.uncertainQueue"
+	| "consultations.review.unverifySegment"
+	| "consultations.reviewUi.approveHint"
+	| "consultations.reviewUi.confirming"
+	| "consultations.reviewUi.flaggedHint"
+	| "consultations.reviewUi.flaggedTitle"
+	| "consultations.reviewUi.pendingTitle"
+	| "consultations.reviewUi.playback"
+	| "consultations.reviewUi.syncBadge"
+	| "consultations.reviewUi.volume"
 	| "consultations.sections.alergias"
 	| "consultations.sections.antecedentes"
 	| "consultations.sections.conduta"
@@ -758,14 +842,22 @@ export type I18nKey =
 	| "consultations.speakers.patient"
 	| "consultations.transcriptPanel.audioLabel"
 	| "consultations.transcriptPanel.audioStored"
+	| "consultations.transcriptPanel.encryptionNote"
 	| "consultations.transcriptPanel.enhanced"
 	| "consultations.transcriptPanel.enhancementFailed"
 	| "consultations.transcriptPanel.enhancing"
+	| "consultations.transcriptPanel.noChanges"
+	| "consultations.transcriptPanel.playbackRate"
+	| "consultations.transcriptPanel.skipSilence"
 	| "consultations.transcriptPanel.sourceBrowser"
 	| "consultations.transcriptPanel.sourceCorrected"
 	| "consultations.transcriptPanel.sourceServer"
+	| "consultations.transcriptPanel.speakerN"
+	| "consultations.transcriptPanel.speakerUnknown"
+	| "consultations.transcriptPanel.tabChanges"
 	| "consultations.transcriptPanel.tabCorrected"
 	| "consultations.transcriptPanel.tabOriginal"
+	| "consultations.transcriptPanel.tabTranscript"
 	| "consultations.warmup.description"
 	| "consultations.warmup.dismiss"
 	| "consultations.warmup.failed"
@@ -3181,6 +3273,7 @@ export interface I18nTypedT {
 	(key: "consultations.detail.approveAnamnesis"): Effect.Effect<string>;
 	(key: "consultations.detail.approveAndNext"): Effect.Effect<string>;
 	(key: "consultations.detail.approvedToast"): Effect.Effect<string>;
+	(key: "consultations.detail.audioFailed"): Effect.Effect<string>;
 	(key: "consultations.detail.back"): Effect.Effect<string>;
 	(
 		key: "consultations.detail.complaint",
@@ -3320,6 +3413,55 @@ export interface I18nTypedT {
 	(key: "consultations.list.title"): Effect.Effect<string>;
 	(key: "consultations.list.transcriptReviewedBadge"): Effect.Effect<string>;
 	(key: "consultations.list.unlinkedPatient"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.anamnesis"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioSettingsTitle"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioSourceInPerson"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioSourceTelemedicine"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioStatus.calibrated"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioStatus.muted"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioStatus.ready"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.audioStatus.testing"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.brandName"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.calibratedAudio"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.captureInPerson"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.captureTelemedicine"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.changePatient"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.connectionStable"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.consentDescription"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.consentTitle"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.copy"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.deviceInPerson"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.deviceTelemedicine"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.diarizationActive"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.diarizationEnded"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.diarizationPaused"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.encryption"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.endConsultation"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.ended"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.endedListening"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.engineInPerson"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.engineTelemedicine"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.export"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.inputDevice"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.listening"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.live"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.modalityInPerson"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.modalityTelemedicine"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.networkStatus"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.paused"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.pausedListening"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.pickerDone"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.readyTitle"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.recordPrefix"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.roomTitle"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.secondaryAction"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.startingSession"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.startSession"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.systemDefaultDevice"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.testAudio"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.testingAudio"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.transcriptTitle"): Effect.Effect<string>;
+	(key: "consultations.liveFlow.yearsOld"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessCardHasAccess",
 		params: {
@@ -3366,6 +3508,8 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.agePlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.ageRequired"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.anamnesisCopied"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.anamnesisDrawer"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.anamnesisDrawerDescription"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.audioUploadFailed",
 		params: {
@@ -3398,6 +3542,7 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.consultationText"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.copyFailed"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.copyTranscript"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dialogErrorTitle"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dialogSavedTitle"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dialogUpdatedTitle"): Effect.Effect<string>;
@@ -3408,12 +3553,21 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dictationDescription"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.discardDraft"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.draftAudio"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.draftRecovered",
+		params: {
+			time: unknown;
+		},
+	): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.engineLabel",
 		params: {
 			engine: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.newConsultation.exportTranscript"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.generate"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.generatedFrom",
@@ -3423,6 +3577,7 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.generating"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.gotIt"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.listening"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.lowConfidenceReprocessing"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.micHint",
@@ -3449,6 +3604,7 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.recordingSpeak"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.recordingTip"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.recordMic"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.restoreDraft"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.saveConsultation"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.saveFailed"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.saveSessionExpired"): Effect.Effect<string>;
@@ -3459,6 +3615,7 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.steps.prepare"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.steps.review"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.steps.transcribe"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.stopCapture"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.stopDictation",
 		params: {
@@ -3480,6 +3637,7 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.teleconsultLinkLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.title"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.transcribingLive"): Effect.Effect<string>;
+	(key: "consultations.newConsultation.transcriptCopied"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.transcriptionFailed"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.transcriptionFailedStatus",
@@ -3499,18 +3657,30 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.viewConsultation"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.waitingDescription"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.waitingTitle"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.yearsOld",
+		params: {
+			age: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.review.audioProcessingTag"): Effect.Effect<string>;
 	(key: "consultations.review.backToConsultations"): Effect.Effect<string>;
 	(key: "consultations.review.cancelEdit"): Effect.Effect<string>;
+	(key: "consultations.review.chapters"): Effect.Effect<string>;
 	(key: "consultations.review.confirmAndContinue"): Effect.Effect<string>;
 	(key: "consultations.review.deferredTag"): Effect.Effect<string>;
 	(key: "consultations.review.editedTag"): Effect.Effect<string>;
 	(key: "consultations.review.editFullText"): Effect.Effect<string>;
+	(key: "consultations.review.editSection"): Effect.Effect<string>;
 	(key: "consultations.review.editSegment"): Effect.Effect<string>;
+	(key: "consultations.review.highConfHint"): Effect.Effect<string>;
+	(key: "consultations.review.highConfTitle"): Effect.Effect<string>;
 	(key: "consultations.review.legacyAudioBadge"): Effect.Effect<string>;
 	(key: "consultations.review.missingDescription"): Effect.Effect<string>;
 	(key: "consultations.review.missingTitle"): Effect.Effect<string>;
 	(key: "consultations.review.nextUncertain"): Effect.Effect<string>;
 	(key: "consultations.review.noAudioBadge"): Effect.Effect<string>;
+	(key: "consultations.review.noAudioTag"): Effect.Effect<string>;
 	(key: "consultations.review.notFound"): Effect.Effect<string>;
 	(
 		key: "consultations.review.pendingCount",
@@ -3535,10 +3705,37 @@ export interface I18nTypedT {
 			n: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.review.shortcutConfirm"): Effect.Effect<string>;
+	(key: "consultations.review.shortcutKeySpace"): Effect.Effect<string>;
+	(key: "consultations.review.shortcutPlayPause"): Effect.Effect<string>;
+	(key: "consultations.review.shortcutSeekBack"): Effect.Effect<string>;
+	(key: "consultations.review.shortcutsTitle"): Effect.Effect<string>;
 	(key: "consultations.review.staleAnamnesis"): Effect.Effect<string>;
 	(key: "consultations.review.stepAnamnesis"): Effect.Effect<string>;
 	(key: "consultations.review.stepTranscript"): Effect.Effect<string>;
 	(key: "consultations.review.title"): Effect.Effect<string>;
+	(
+		key: "consultations.review.uncertainProgress",
+		params: {
+			done: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.review.uncertainQueue"): Effect.Effect<string>;
+	(key: "consultations.review.unverifySegment"): Effect.Effect<string>;
+	(key: "consultations.reviewUi.approveHint"): Effect.Effect<string>;
+	(key: "consultations.reviewUi.confirming"): Effect.Effect<string>;
+	(key: "consultations.reviewUi.flaggedHint"): Effect.Effect<string>;
+	(
+		key: "consultations.reviewUi.flaggedTitle",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.reviewUi.pendingTitle"): Effect.Effect<string>;
+	(key: "consultations.reviewUi.playback"): Effect.Effect<string>;
+	(key: "consultations.reviewUi.syncBadge"): Effect.Effect<string>;
+	(key: "consultations.reviewUi.volume"): Effect.Effect<string>;
 	(key: "consultations.sections.alergias"): Effect.Effect<string>;
 	(key: "consultations.sections.antecedentes"): Effect.Effect<string>;
 	(key: "consultations.sections.conduta"): Effect.Effect<string>;
@@ -3556,14 +3753,27 @@ export interface I18nTypedT {
 	(key: "consultations.speakers.patient"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.audioLabel"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.audioStored"): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.encryptionNote"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.enhanced"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.enhancementFailed"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.enhancing"): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.noChanges"): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.playbackRate"): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.skipSilence"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.sourceBrowser"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.sourceCorrected"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.sourceServer"): Effect.Effect<string>;
+	(
+		key: "consultations.transcriptPanel.speakerN",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.speakerUnknown"): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.tabChanges"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.tabCorrected"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.tabOriginal"): Effect.Effect<string>;
+	(key: "consultations.transcriptPanel.tabTranscript"): Effect.Effect<string>;
 	(key: "consultations.warmup.description"): Effect.Effect<string>;
 	(key: "consultations.warmup.dismiss"): Effect.Effect<string>;
 	(

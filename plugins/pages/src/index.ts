@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 // Side-effect type import: pulls @ktb/platform/routes into the program
 // so the `declare module` RouteRegistry augmentation below resolves.
 import type {} from "@ktb/platform/routes";
@@ -236,21 +236,13 @@ export const pagesPanelPlugin = definePlugin({
 	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id, layoutsServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "pages.admin",
 				path: "/platform/pages",
 				routeKey: "pages.admin",
 				component: PagesAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const pages = yield* Pages;
@@ -314,7 +306,7 @@ export const pagesPanelPlugin = definePlugin({
 							layoutEnabled: Option.isSome(layoutService),
 						};
 					}),
-			},
+			}),
 		],
 	},
 });

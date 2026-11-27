@@ -416,27 +416,3 @@ export const PagesLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the `pages` migration — re-exported for
- * sibling test files (same convention as `AUDIT_TEST_DDL` in
- * plugins/audit). Never used by production code.
- */
-export const PAGES_TEST_DDL = `
-CREATE TABLE pages (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	path TEXT NOT NULL,
-	title TEXT NOT NULL,
-	rich_text_id INTEGER,
-	search_schema_id INTEGER,
-	layout_id INTEGER,
-	builder_json TEXT,
-	published INTEGER NOT NULL DEFAULT 0,
-	show_in_nav INTEGER NOT NULL DEFAULT 0,
-	sort_order INTEGER NOT NULL DEFAULT 0,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX pages_path_idx ON pages (path);
-CREATE INDEX pages_nav_idx ON pages (published, show_in_nav);
-`;

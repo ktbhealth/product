@@ -561,4 +561,18 @@ describe("review mode loaders (PL-023)", () => {
 		// Signed-out principals are rejected before the service lookup.
 		expect(await run(g(`${reviewBase}/9`), { principal: null, layer })).toBe(false);
 	});
+
+	it("item guard denies when no principal is bound", async () => {
+		const g = guard("clinician.doctor.review.item");
+		expect(await run(g(`${reviewBase}/9`), { principal: null, layer: Layer.empty })).toBe(false);
+	});
+
+	it("queue loader degrades a Forbidden list to an empty queue", async () => {
+		const result = (await run(loader("clinician.doctor.review")(reviewBase), {
+			principal: { userId: "u1" },
+			layer: consultationsLayer({ list: forbidden }),
+		})) as { view: string; queue: unknown[] };
+		expect(result.view).toBe("queue");
+		expect(result.queue).toEqual([]);
+	});
 });

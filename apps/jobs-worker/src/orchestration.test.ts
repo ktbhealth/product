@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 import type { JobEnvelope, JobsEnqueuer } from "@ktb/jobs-port";
 import { jobHandlers } from "@ktb/jobs-port";
 import {
@@ -137,16 +137,7 @@ describe("makeOrchestrationWorker", () => {
 		// A SqlDatabase whose first prepare() throws simulates a
 		// transient db failure during loadStoredDefs; the memo must
 		// clear so the retry rebuilds against the healthy db.
-		const base = makeD1(`
-			CREATE TABLE orchestration_defs (
-				id TEXT PRIMARY KEY,
-				version TEXT NOT NULL,
-				def TEXT NOT NULL,
-				enabled INTEGER DEFAULT true NOT NULL,
-				created_at INTEGER NOT NULL,
-				updated_at INTEGER NOT NULL
-			);
-		`);
+		const base = makeTestD1();
 		let failPrepare = true;
 		const flaky: SqlDatabase = {
 			...base,

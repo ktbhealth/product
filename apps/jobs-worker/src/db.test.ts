@@ -1,8 +1,12 @@
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { insertJobRun, listJobRuns } from "@ktb/jobs-port";
 
-import { openWorkerDb } from "./db.ts";
+import { openWorkerDb, workerDbFilename } from "./db.ts";
+
+const WEB_DIR = fileURLToPath(new URL("../../../apps/web", import.meta.url));
 
 describe("openWorkerDb", () => {
 	it("returns undefined when JOBS_DB=off", () => {
@@ -19,5 +23,20 @@ describe("openWorkerDb", () => {
 		});
 		const runs = await listJobRuns(db!, { kind: "jobs.ping" });
 		expect(runs.map((r) => r.id)).toContain("run-1");
+	});
+});
+
+describe("workerDbFilename", () => {
+	it("keeps :memory: and absolute paths untouched", () => {
+		expect(workerDbFilename(":memory:")).toBe(":memory:");
+		expect(workerDbFilename("sqlite::memory:")).toBe(":memory:");
+		const abs = fileURLToPath(new URL("../../../tmp/x.db", import.meta.url));
+		expect(workerDbFilename(abs)).toBe(abs);
+	});
+
+	it("resolves relative paths against apps/web, not the worker cwd", () => {
+		expect(workerDbFilename("./data/app.db")).toBe(`${WEB_DIR}/data/app.db`);
+		expect(workerDbFilename("sqlite:./data/app.db")).toBe(`${WEB_DIR}/data/app.db`);
+		expect(workerDbFilename("file:./x.db")).toBe(`${WEB_DIR}/x.db`);
 	});
 });

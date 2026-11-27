@@ -29,7 +29,19 @@ export * from "./diff.ts";
 export * from "./domain.ts";
 export * from "./acp.ts";
 export * from "./anonymize.ts";
-export * from "./asr-ranges.ts";
+// asr-ranges moved to @ktb/transcript-cleanup (shared with production
+// plugins) — named re-export keeps this package's public surface; the
+// cleanup-chain symbols arrive via `export * from "./pipeline.ts"`.
+export {
+	type AsrRange,
+	type AsrRangeLang,
+	type AsrRangeOptions,
+	type AsrRangeResult,
+	charRangesFor,
+	detectAsrErrorRanges,
+	mergeFlaggedRanges,
+	segmentCharSpans,
+} from "@ktb/transcript-cleanup";
 export * from "./generate.ts";
 export * from "./llmscript.ts";
 export * from "./locale.ts";

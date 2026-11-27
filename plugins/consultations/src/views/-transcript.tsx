@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+	type Ref,
+	type RefObject,
+} from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { FastForwardIcon, PencilIcon } from "lucide-react";
+
+import { sentenceDiff, type SentencePair } from "@ktb/transcript-diff";
 
 import {
 	AudioPlayer,
@@ -17,10 +28,21 @@ import {
 	AudioPlayerVolumeRange,
 } from "@ktbhealth/ui/components/ai-elements/audio-player";
 import { Badge } from "@ktbhealth/ui/components/badge";
+import { Button } from "@ktbhealth/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
+import {
+	TranscriptPlayerBar,
+	type ReviewAudioHandlers,
+	type ReviewAudioSource,
+	type ReviewAudioState,
+} from "@ktbhealth/ui/components/transcript-review";
 
-import { BADGE_TONES, SPEAKER_STYLE } from "./-ui.ts";
+import { decryptBlob } from "@ktb/crypto/stream";
+
+import { BADGE_TONES, speakerNumber, speakerTone } from "./-ui.ts";
+import { SpeakerChatRow } from "./-chat.tsx";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { consultationDek, type ConsultationZk } from "../zk.ts";
 import type { TranscriptSegment } from "../segments.ts";
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -36,11 +58,38 @@ const fmtTime = (s: number) =>
  * the rendered transcript wraps or collapses spacing differently; the
  * matched (original) text is what renders inside the <mark>.
  */
+const DIACRITIC_CLASSES: Record<string, string> = {
+	a: "aàáâãä",
+	e: "eéèêë",
+	i: "iíìîï",
+	o: "oóòôõö",
+	u: "uúùûü",
+	c: "cç",
+	n: "nñ",
+};
+
+/** One source char → a matching pattern: letters become the
+ * diacritic-insensitive class of their base form ("à" and "a" both
+ * fold to "a" → `[aàáâãä…]`), everything else stays literal. The
+ * LLM's evidence text normalizes accents the ASR dropped — and the
+ * raw segment keeps them — so a literal match misses the mark. */
+const charPattern = (ch: string): string => {
+	const base = ch.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+	const cls = DIACRITIC_CLASSES[base];
+	return cls ? `[${cls}${cls.toUpperCase()}]` : escapeRegex(ch);
+};
+
 function evidenceRegex(sentences: readonly string[] | undefined): RegExp | null {
 	const parts = (sentences ?? [])
-		.map((s) => s.trim())
-		.filter((s) => s.length > 0)
-		.map((s) => escapeRegex(s).replace(/\s+/g, "\\s+"));
+		.map((s) =>
+			s
+				.trim()
+				.split(/\s+/)
+				.filter(Boolean)
+				.map((w) => [...w].map(charPattern).join(""))
+				.join("\\s+"),
+		)
+		.filter((s) => s.length > 0);
 	return parts.length ? new RegExp(`(${parts.join("|")})`, "gi") : null;
 }
 
@@ -87,9 +136,7 @@ function Transcript({
 						{speaker ? (
 							<Badge
 								variant="secondary"
-								className={`mr-2 align-baseline ring-1 ${
-									SPEAKER_STYLE[speaker] ?? "bg-muted text-muted-foreground ring-border"
-								}`}
+								className={`mr-2 align-baseline ring-1 ${speakerTone(speaker)}`}
 							>
 								{speaker}
 							</Badge>
@@ -228,57 +275,237 @@ function SourceBlock({
 	);
 }
 
+/** Inline segment editing for the karaoke view (detail page): when
+ * `editing` is provided each row gains a pencil on hover and the row
+ * being edited swaps to a textarea.
+ */
+export interface SegmentEditing {
+	/** Per-segment edited text (index → replacement). */
+	readonly segEdits: ReadonlyMap<number, string>;
+	/** Index currently being edited (null = none). */
+	readonly editing: number | null;
+	readonly draft: string;
+	readonly busy?: boolean;
+	readonly onStart: (index: number) => void;
+	readonly onDraft: (text: string) => void;
+	readonly onSave: () => void;
+	readonly onCancel: () => void;
+	readonly labels: {
+		readonly edit: string;
+		readonly save: string;
+		readonly cancel: string;
+		readonly editedTag: string;
+	};
+}
+
 /**
- * Karaoke transcript view (PL-023): one timestamped row per ASR
- * segment, the row under the playhead highlighted live, click-to-seek.
- * Evidence `highlight` sentences still render as <mark> inside the
- * segment text.
+ * Karaoke transcript view (PL-023), chat-row style: consecutive
+ * same-speaker segments group under one `SpeakerChatRow` (avatar +
+ * name header), and each segment keeps its own mm:ss stamp inside the
+ * bubble — the line under the playhead highlights live, every line
+ * click-seeks. Evidence `highlight` sentences still render as <mark>
+ * inside the segment text.
  */
 function SegmentsKaraoke({
 	segments,
 	active,
 	highlight,
 	onSeek,
+	editing,
+	speakerLabel,
+	unknownSpeaker,
 }: {
 	segments: readonly TranscriptSegment[];
 	/** Index of the segment under the playhead (-1 = none yet). */
 	active: number;
 	highlight?: readonly string[];
 	onSeek: (index: number) => void;
+	editing?: SegmentEditing;
+	/** Formats `speaker` for the row header (P-118). */
+	speakerLabel: (speaker: string) => string;
+	/** Header name for segments with no diarized speaker. */
+	unknownSpeaker: string;
 }) {
 	const markRe = evidenceRegex(highlight);
 	const activeRef = useRef<HTMLButtonElement>(null);
+	const activeRowRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		activeRef.current?.scrollIntoView({ block: "nearest" });
+		activeRowRef.current?.scrollIntoView({ block: "nearest" });
 	}, [active]);
+	// Speaker-turn grouping: consecutive segments attributed to the
+	// same speaker collapse into one avatar/name row — a monologue
+	// reads as a single chat turn instead of repeating the speaker on
+	// every ASR split.
+	const runs = useMemo(() => {
+		const out: { speaker?: string; items: { s: TranscriptSegment; i: number }[] }[] = [];
+		segments.forEach((s, i) => {
+			const last = out[out.length - 1];
+			if (last && last.speaker === s.speaker) last.items.push({ s, i });
+			else out.push({ speaker: s.speaker, items: [{ s, i }] });
+		});
+		return out;
+	}, [segments]);
 	return (
-		<div className="space-y-0.5">
-			{segments.map((s, i) => (
-				<button
-					key={i}
-					ref={i === active ? activeRef : undefined}
-					type="button"
-					onClick={() => onSeek(i)}
-					className={`flex w-full gap-2 rounded-md px-2 py-1.5 text-left text-sm leading-relaxed transition-colors ${
-						i === active ? "bg-primary/10" : "hover:bg-muted/50"
-					}`}
+		<div className="space-y-4">
+			{runs.map((run) => (
+				<SpeakerChatRow
+					key={run.items[0]!.i}
+					speaker={run.speaker}
+					name={run.speaker ? speakerLabel(run.speaker) : unknownSpeaker}
 				>
-					<span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
-						{fmtTime(s.start)}
-					</span>
-					<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
-				</button>
+					<div className="space-y-1.5">
+						{run.items.map(({ s, i }) => {
+							const edited = editing?.segEdits.get(i);
+							const shown = edited ?? s.text;
+							// Editing adds buttons inside each line — it becomes a
+							// div with clickable spans instead of one button (no
+							// nested interactives).
+							return editing ? (
+								<div
+									key={i}
+									ref={i === active ? activeRowRef : undefined}
+									className={`-mx-1 flex gap-2 rounded-md px-1 py-0.5 transition-colors ${
+										i === active ? "bg-primary/10" : ""
+									}`}
+								>
+									<button
+										type="button"
+										onClick={() => onSeek(i)}
+										className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums hover:text-foreground"
+									>
+										{fmtTime(s.start)}
+									</button>
+									{editing.editing === i ? (
+										<div className="flex-1 space-y-2">
+											<textarea
+												className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+												rows={2}
+												value={editing.draft}
+												onChange={(e) => editing.onDraft(e.target.value)}
+											/>
+											<div className="flex gap-2">
+												<Button
+													type="button"
+													size="sm"
+													disabled={editing.busy}
+													onClick={editing.onSave}
+												>
+													{editing.labels.save}
+												</Button>
+												<Button type="button" variant="ghost" size="sm" onClick={editing.onCancel}>
+													{editing.labels.cancel}
+												</Button>
+											</div>
+										</div>
+									) : (
+										<>
+											<span className="min-w-0 flex-1 cursor-pointer" onClick={() => onSeek(i)}>
+												{markRe ? markedText(shown, markRe) : shown}
+												{edited != null ? (
+													<span className="ml-2 align-middle">
+														<Badge
+															variant="secondary"
+															className={`text-[9px] ring-1 ${BADGE_TONES.blue}`}
+															title={s.text}
+														>
+															{editing.labels.editedTag}
+														</Badge>
+													</span>
+												) : null}
+											</span>
+											<button
+												type="button"
+												className="invisible shrink-0 pt-0.5 text-muted-foreground group-hover:visible hover:text-foreground"
+												title={editing.labels.edit}
+												onClick={() => editing.onStart(i)}
+											>
+												<PencilIcon className="size-3.5" />
+											</button>
+										</>
+									)}
+								</div>
+							) : (
+								<button
+									key={i}
+									ref={i === active ? activeRef : undefined}
+									type="button"
+									onClick={() => onSeek(i)}
+									className={`-mx-1 flex w-full gap-2 rounded-md px-1 py-0.5 text-left transition-colors ${
+										i === active ? "bg-primary/10" : "hover:bg-muted/50"
+									}`}
+								>
+									<span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+										{fmtTime(s.start)}
+									</span>
+									<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
+								</button>
+							);
+						})}
+					</div>
+				</SpeakerChatRow>
 			))}
 		</div>
 	);
 }
+
+const PLAYBACK_RATES: readonly number[] = [1, 1.25, 1.5, 2];
+/** Gaps below this are natural speech pauses — only longer ones are
+ * treated as silence worth skipping. */
+const SILENCE_MIN_GAP = 1.5;
+const RATE_PREF_KEY = "ktb.audio.playbackRate";
+const SKIP_PREF_KEY = "ktb.audio.skipSilence";
+
+const readPref = (key: string): string | null => {
+	try {
+		return globalThis.localStorage?.getItem(key) ?? null;
+	} catch {
+		return null;
+	}
+};
+const writePref = (key: string, value: string) => {
+	try {
+		globalThis.localStorage?.setItem(key, value);
+	} catch {
+		/* storage unavailable (private mode / SSR) — preference just resets */
+	}
+};
+
+interface SilenceGap {
+	/** Gap start (= previous segment end). */
+	readonly from: number;
+	/** Next segment start — the jump target. */
+	readonly to: number;
+}
+
+/**
+ * Consecutive-segment gaps >= SILENCE_MIN_GAP — the silences the
+ * auto-skip feature jumps over. Sorted by construction.
+ */
+function silenceGaps(segments: readonly TranscriptSegment[] | undefined): readonly SilenceGap[] {
+	if (!segments || segments.length < 2) return [];
+	const gaps: SilenceGap[] = [];
+	for (let i = 0; i + 1 < segments.length; i++) {
+		const cur = segments[i]!;
+		const next = segments[i + 1]!;
+		if (next.start - cur.end >= SILENCE_MIN_GAP) {
+			gaps.push({ from: cur.end, to: next.start });
+		}
+	}
+	return gaps;
+}
+
+const refEl = (ref: Ref<HTMLAudioElement> | undefined): HTMLAudioElement | null =>
+	ref && typeof ref !== "function" ? ref.current : null;
 
 /**
  * Consultation playback bar (PL-023): the design-system media-chrome
  * player — play, ±10s seek, time range, duration, volume. The inner
  * <audio> is exposed through `audioRef` so karaoke views can read the
  * playhead and seek programmatically; `onTimeUpdate` feeds the live
- * segment highlight.
+ * segment highlight. With `segments`, a silence-skip toggle jumps
+ * speech gaps during playback (never while paused or scrubbing); the
+ * rate button cycles playback speed. Both prefs persist per browser.
  */
 export function ConsultationAudioPlayer({
 	src,
@@ -286,6 +513,9 @@ export function ConsultationAudioPlayer({
 	onTimeUpdate,
 	ariaLabel,
 	preload = "metadata",
+	segments,
+	rateLabel = "Playback speed",
+	skipSilenceLabel = "Skip silence",
 }: {
 	src: string;
 	/** Ref to the underlying <audio> element (seek/playhead). */
@@ -293,7 +523,41 @@ export function ConsultationAudioPlayer({
 	onTimeUpdate?: (currentTime: number) => void;
 	ariaLabel?: string;
 	preload?: "none" | "metadata" | "auto";
+	/** Segment timestamps — enables the silence-skip control. */
+	segments?: readonly TranscriptSegment[];
+	rateLabel?: string;
+	skipSilenceLabel?: string;
 }) {
+	const gaps = useMemo(() => silenceGaps(segments), [segments]);
+	const [rate, setRate] = useState(1);
+	const [skipSilence, setSkipSilence] = useState(true);
+
+	// Load persisted prefs after mount (server render can't see
+	// localStorage — fixed defaults keep hydration stable).
+	useEffect(() => {
+		const r = Number(readPref(RATE_PREF_KEY));
+		if (PLAYBACK_RATES.includes(r)) setRate(r);
+		const s = readPref(SKIP_PREF_KEY);
+		if (s !== null) setSkipSilence(s === "1");
+	}, []);
+
+	useEffect(() => {
+		const a = refEl(audioRef);
+		if (a) a.playbackRate = rate;
+	}, [audioRef, rate]);
+
+	const cycleRate = () =>
+		setRate((r) => {
+			const next = PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(r) + 1) % PLAYBACK_RATES.length]!;
+			writePref(RATE_PREF_KEY, String(next));
+			return next;
+		});
+	const toggleSkip = () =>
+		setSkipSilence((on) => {
+			writePref(SKIP_PREF_KEY, on ? "0" : "1");
+			return !on;
+		});
+
 	return (
 		<AudioPlayer className="w-full">
 			<AudioPlayerElement
@@ -301,7 +565,20 @@ export function ConsultationAudioPlayer({
 				ref={audioRef}
 				preload={preload}
 				aria-label={ariaLabel}
-				onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+				onTimeUpdate={(e) => {
+					const a = e.currentTarget;
+					if (skipSilence && !a.paused) {
+						const t = a.currentTime;
+						for (const g of gaps) {
+							if (g.from > t) break;
+							if (t < g.to) {
+								a.currentTime = g.to;
+								break;
+							}
+						}
+					}
+					onTimeUpdate?.(a.currentTime);
+				}}
 			/>
 			<AudioPlayerControlBar className="flex-wrap">
 				<AudioPlayerPlayButton />
@@ -312,8 +589,334 @@ export function ConsultationAudioPlayer({
 				<AudioPlayerDurationDisplay />
 				<AudioPlayerMuteButton />
 				<AudioPlayerVolumeRange className="w-24" />
+				<button
+					type="button"
+					onClick={cycleRate}
+					title={rateLabel}
+					aria-label={rateLabel}
+					className="px-1.5 font-medium text-xs tabular-nums hover:text-foreground"
+				>
+					{rate}×
+				</button>
+				{gaps.length > 0 ? (
+					<button
+						type="button"
+						onClick={toggleSkip}
+						aria-pressed={skipSilence}
+						title={skipSilenceLabel}
+						aria-label={skipSilenceLabel}
+						className={`px-1 ${skipSilence ? "text-foreground" : "text-muted-foreground/60"} hover:text-foreground`}
+					>
+						<FastForwardIcon className="size-3.5" />
+					</button>
+				) : null}
 			</AudioPlayerControlBar>
 		</AudioPlayer>
+	);
+}
+
+/** Playback snapshot mirrored off a media element — the controlled
+ * `audio` + `handlers` pair `TranscriptPlayerBar` needs. Subscribes to
+ * the element's media events; handlers write straight to the element
+ * and the fired events feed the next snapshot back. */
+export function useReviewAudioState(audioRef: RefObject<HTMLAudioElement | null>): {
+	audio: ReviewAudioState;
+	handlers: ReviewAudioHandlers;
+} {
+	const [audio, setAudio] = useState<ReviewAudioState>({
+		playing: false,
+		positionSec: 0,
+		durationSec: 0,
+		speed: 1,
+		volume: 1,
+		muted: false,
+	});
+	useEffect(() => {
+		const el = audioRef.current;
+		if (!el) return;
+		const sync = () =>
+			setAudio({
+				playing: !el.paused,
+				positionSec: el.currentTime,
+				durationSec: Number.isFinite(el.duration) ? el.duration : 0,
+				speed: el.playbackRate,
+				volume: el.volume,
+				muted: el.muted,
+			});
+		const events = [
+			"play",
+			"pause",
+			"ended",
+			"timeupdate",
+			"durationchange",
+			"loadedmetadata",
+			"volumechange",
+			"ratechange",
+		] as const;
+		for (const e of events) el.addEventListener(e, sync);
+		sync();
+		return () => {
+			for (const e of events) el.removeEventListener(e, sync);
+		};
+	}, [audioRef]);
+
+	const current = () => audioRef.current;
+	const handlers: ReviewAudioHandlers = {
+		onPlayPause: () => {
+			const a = current();
+			if (!a) return;
+			if (a.paused) void a.play().catch(() => {});
+			else a.pause();
+		},
+		onSeek: (sec) => {
+			const a = current();
+			if (a) a.currentTime = sec;
+		},
+		onSkip: (delta) => {
+			const a = current();
+			if (!a) return;
+			const end =
+				Number.isFinite(a.duration) && a.duration > 0 ? a.duration : Number.POSITIVE_INFINITY;
+			a.currentTime = Math.min(Math.max(a.currentTime + delta, 0), end);
+		},
+		onSpeedChange: (rate) => {
+			const a = current();
+			if (a) a.playbackRate = rate;
+		},
+		onVolumeChange: (volume) => {
+			const a = current();
+			if (!a) return;
+			a.volume = volume;
+			if (volume > 0) a.muted = false;
+		},
+		onMutedChange: (muted) => {
+			const a = current();
+			if (a) a.muted = muted;
+		},
+	};
+	return { audio, handlers };
+}
+
+export interface ReviewAudioPlayerProps {
+	src: string;
+	/** Ref to the underlying <audio> — karaoke seek + keyboard flow. */
+	audioRef?: RefObject<HTMLAudioElement | null>;
+	onTimeUpdate?: (currentTime: number) => void;
+	ariaLabel?: string;
+	preload?: "none" | "metadata" | "auto";
+	/** Segment timestamps — enables the silence-skip jump. */
+	segments?: readonly TranscriptSegment[];
+	playbackLabel?: ReactNode;
+	syncLabel?: ReactNode;
+	speedLabel?: string;
+	volumeLabel?: string;
+	skipSilenceLabel?: string;
+	audioSource?: ReviewAudioSource;
+}
+
+/**
+ * Review-cockpit playback: the same <audio> element
+ * `ConsultationAudioPlayer` exposes, but fronted by the design-system
+ * `TranscriptPlayerBar` — play/pause, ±10s, scrubber, speed cycler and
+ * volume all write to the element while `useReviewAudioState` mirrors
+ * it back. Silence-skip and the persisted rate/skip prefs behave
+ * exactly like `ConsultationAudioPlayer`; the skip-silence toggle rides
+ * as a sibling strip below the bar (the bar owns its whole row).
+ */
+export function ReviewAudioPlayer({
+	src,
+	audioRef,
+	onTimeUpdate,
+	ariaLabel,
+	preload = "metadata",
+	segments,
+	playbackLabel,
+	syncLabel,
+	speedLabel,
+	volumeLabel,
+	skipSilenceLabel,
+	audioSource,
+}: ReviewAudioPlayerProps) {
+	const gaps = useMemo(() => silenceGaps(segments), [segments]);
+	const [skipSilence, setSkipSilence] = useState(true);
+	// State-backed ref: the element can mount after first render (the ZK
+	// object URL resolves async) — the hook re-subscribes on change.
+	const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
+	const hookRef = useMemo<RefObject<HTMLAudioElement | null>>(
+		() => ({ current: audioEl }),
+		[audioEl],
+	);
+	const { audio, handlers } = useReviewAudioState(hookRef);
+
+	const setRefs = (node: HTMLAudioElement | null) => {
+		setAudioEl(node);
+		if (audioRef) (audioRef as { current: HTMLAudioElement | null }).current = node;
+	};
+
+	// Persisted prefs — the same localStorage keys ConsultationAudioPlayer uses.
+	useEffect(() => {
+		const r = Number(readPref(RATE_PREF_KEY));
+		if (audioEl && PLAYBACK_RATES.includes(r)) audioEl.playbackRate = r;
+		const s = readPref(SKIP_PREF_KEY);
+		if (s !== null) setSkipSilence(s === "1");
+	}, [audioEl]);
+
+	const barHandlers: ReviewAudioHandlers = {
+		...handlers,
+		onSpeedChange: (rate) => {
+			writePref(RATE_PREF_KEY, String(rate));
+			handlers.onSpeedChange?.(rate);
+		},
+	};
+	const toggleSkip = () =>
+		setSkipSilence((on) => {
+			writePref(SKIP_PREF_KEY, on ? "0" : "1");
+			return !on;
+		});
+
+	return (
+		<div className="space-y-2">
+			<AudioPlayer className="w-full">
+				<AudioPlayerElement
+					src={src}
+					ref={setRefs}
+					preload={preload}
+					aria-label={ariaLabel}
+					onTimeUpdate={(e) => {
+						const a = e.currentTarget;
+						if (skipSilence && !a.paused) {
+							const t = a.currentTime;
+							for (const g of gaps) {
+								if (g.from > t) break;
+								if (t < g.to) {
+									a.currentTime = g.to;
+									break;
+								}
+							}
+						}
+						onTimeUpdate?.(a.currentTime);
+					}}
+				/>
+			</AudioPlayer>
+			<TranscriptPlayerBar
+				audio={audio}
+				handlers={barHandlers}
+				audioSource={audioSource}
+				playbackLabel={playbackLabel}
+				syncLabel={syncLabel}
+				speedLabel={speedLabel}
+				volumeLabel={volumeLabel}
+			/>
+			{/* TranscriptPlayerBar owns its whole row — the skip-silence
+			 * toggle rides as a sibling strip underneath. */}
+			{gaps.length > 0 ? (
+				<div className="flex justify-end">
+					<button
+						type="button"
+						onClick={toggleSkip}
+						aria-pressed={skipSilence}
+						title={skipSilenceLabel}
+						aria-label={skipSilenceLabel}
+						className={`px-1.5 ${skipSilence ? "text-foreground" : "text-muted-foreground/60"} hover:text-foreground`}
+					>
+						<FastForwardIcon className="size-3.5" />
+					</button>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/** ZK audio playback (T-147): the stored object is framed ciphertext —
+ * fetch it, unwrap the consultation DEK, decrypt in the browser and
+ * hand the <audio> element an object URL. Returns null while the DEK
+ * is locked or the fetch fails — callers must NOT fall back to the
+ * authenticated endpoint (that would stream ciphertext). */
+export function useZkAudioUrl(
+	zk: ConsultationZk | undefined,
+	consultation: { readonly id: number; readonly audioKey: string | null },
+): string | null {
+	const [url, setUrl] = useState<string | null>(null);
+	const id = consultation.id;
+	const audioKey = consultation.audioKey;
+	useEffect(() => {
+		if (!zk || !audioKey) return;
+		let live = true;
+		let objectUrl: string | null = null;
+		void (async () => {
+			const dek = await consultationDek(zk.keyring, zk.api, id);
+			if (!dek) return;
+			const res = await fetch(`/api/consultations/${id}/audio`);
+			if (!res.ok) return;
+			const plain = await decryptBlob(dek, new Uint8Array(await res.arrayBuffer()));
+			objectUrl = URL.createObjectURL(
+				// The recorded/uploaded type is not part of the detail
+				// wire shape — browsers sniff the decrypted bytes anyway.
+				new Blob([plain as Uint8Array<ArrayBuffer>], { type: "audio/webm" }),
+			);
+			if (live) setUrl(objectUrl);
+			else URL.revokeObjectURL(objectUrl);
+		})().catch(() => {});
+		return () => {
+			live = false;
+			if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+		};
+	}, [zk, id, audioKey]);
+	return url;
+}
+
+/** Renders one aligned word — ref struck on del/sub, hyp highlighted
+ * on ins/sub, plain on ok. */
+function DiffWord({ op }: { op: SentencePair["ops"][number] }) {
+	if (op.op === "sub") {
+		return (
+			<>
+				<del className="rounded bg-destructive/10 px-0.5 text-destructive/80">{op.ref}</del>{" "}
+				<ins className="rounded bg-success/15 px-0.5 text-success no-underline">{op.hyp}</ins>{" "}
+			</>
+		);
+	}
+	if (op.op === "del") {
+		return (
+			<>
+				<del className="rounded bg-destructive/10 px-0.5 text-destructive/80">{op.ref}</del>{" "}
+			</>
+		);
+	}
+	if (op.op === "ins") {
+		return (
+			<>
+				<ins className="rounded bg-success/15 px-0.5 text-success no-underline">{op.hyp}</ins>{" "}
+			</>
+		);
+	}
+	return <>{op.ref} </>;
+}
+
+/** "Only differences" view (T-225): the review audits what the LLM
+ * cleanup actually changed — unchanged sentences are filtered out,
+ * so a long transcript reduces to its real edit surface. */
+function ChangesView({
+	pairs,
+	emptyLabel,
+}: {
+	pairs: readonly SentencePair[];
+	emptyLabel: string;
+}) {
+	const changed = pairs.filter((p) => p.ops.some((o) => o.op !== "ok"));
+	if (changed.length === 0) {
+		return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
+	}
+	return (
+		<div className="space-y-3">
+			{changed.map((p, i) => (
+				<p key={i} className="text-sm leading-relaxed">
+					{p.ops.map((o, j) => (
+						<DiffWord key={j} op={o} />
+					))}
+				</p>
+			))}
+		</div>
 	);
 }
 
@@ -336,6 +939,8 @@ export function AudioTranscriptPanel({
 	highlight,
 	locale = "en",
 	segments,
+	audioRef: audioRefProp,
+	segmentEditing,
 }: {
 	consultationId: number | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -362,10 +967,25 @@ export function AudioTranscriptPanel({
 	 * a karaoke view — timestamped rows, live playhead highlight,
 	 * click-to-seek — instead of the prose blocks. */
 	segments?: readonly TranscriptSegment[];
+	/** External ref for the inner <audio> — callers that need to seek
+	 * programmatically (chapter index, review shortcuts) pass their own;
+	 * otherwise the panel owns one. */
+	audioRef?: RefObject<HTMLAudioElement | null>;
+	/** Inline segment editing (detail page, PL-023) — pencil per karaoke
+	 * row + textarea; each save lands in the Loro edit log via the
+	 * caller's `onSave`. */
+	segmentEditing?: SegmentEditing;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
-	const [tab, setTab] = useState<"corrected" | "original">("corrected");
-	const audioRef = useRef<HTMLAudioElement>(null);
+	// Speaker badges (P-118): SPEAKER_NN → localized "Speaker N";
+	// named speakers (Doctor/Médico…) keep their label as-is.
+	const speakerLabel = (speaker: string): string => {
+		const n = speakerNumber(speaker);
+		return n !== null ? t.transcriptPanel.speakerN(n) : speaker;
+	};
+	const [tab, setTab] = useState<"corrected" | "original" | "changes">("corrected");
+	const internalRef = useRef<HTMLAudioElement>(null);
+	const audioRef = audioRefProp ?? internalRef;
 	const [activeIdx, setActiveIdx] = useState(-1);
 	const karaoke = useMemo(() => (hasAudio === true ? (segments ?? []) : []), [hasAudio, segments]);
 	const seek = (i: number) => {
@@ -393,11 +1013,18 @@ export function AudioTranscriptPanel({
 		correctedView.text.trim() !== primaryOriginal.text.trim()
 			? { corrected: correctedView, original: primaryOriginal }
 			: null;
+	// "Changes" view — sentence-level diff of original vs corrected; only
+	// pairs containing a real op are rendered below, so the reviewer
+	// audits what the cleanup changed instead of re-reading everything.
+	const changes = useMemo(
+		() => (tabbed ? sentenceDiff(tabbed.original.text, tabbed.corrected.text) : []),
+		[tabbed?.original.text, tabbed?.corrected.text],
+	);
 
 	const active: TranscriptView | null = tabbed
-		? tab === "corrected"
-			? tabbed.corrected
-			: tabbed.original
+		? tab === "original"
+			? tabbed.original
+			: tabbed.corrected
 		: (correctedView ?? primaryOriginal);
 	const lastReported = useRef("");
 	useEffect(() => {
@@ -409,6 +1036,8 @@ export function AudioTranscriptPanel({
 	}, [active?.text, active?.source, onActiveText]);
 
 	const inFlight = IN_FLIGHT.has(status);
+	const statusBadge =
+		status === "failed" ? "failed" : inFlight ? "inflight" : correctedView ? "enhanced" : null;
 	// `undefined` audioSrc resolves the default endpoint; `null` means
 	// the caller knows playback is impossible (ZK locked) — no fallback.
 	const playSrc =
@@ -420,13 +1049,13 @@ export function AudioTranscriptPanel({
 
 	return (
 		<div className="space-y-3">
-			{status === "failed" || inFlight || correctedView ? (
+			{statusBadge ? (
 				<div className="flex flex-wrap items-center gap-2">
-					{status === "failed" ? (
+					{statusBadge === "failed" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.red}`}>
 							{t.transcriptPanel.enhancementFailed}
 						</Badge>
-					) : inFlight ? (
+					) : statusBadge === "inflight" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.blue}`}>
 							<span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-info" />
 							{status === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}
@@ -441,11 +1070,17 @@ export function AudioTranscriptPanel({
 				</div>
 			) : null}
 			{hasAudio && playSrc ? (
-				<ConsultationAudioPlayer
+				<ReviewAudioPlayer
 					src={playSrc}
 					audioRef={audioRef}
 					ariaLabel={t.transcriptPanel.audioLabel}
 					preload="none"
+					segments={segments}
+					playbackLabel={t.reviewUi.playback}
+					syncLabel={t.reviewUi.syncBadge}
+					speedLabel={t.transcriptPanel.playbackRate}
+					volumeLabel={t.reviewUi.volume}
+					skipSilenceLabel={t.transcriptPanel.skipSilence}
 					onTimeUpdate={(now) => {
 						setActiveIdx(karaoke.findIndex((s) => now >= s.start && now < s.end));
 					}}
@@ -453,21 +1088,52 @@ export function AudioTranscriptPanel({
 			) : null}
 
 			{karaoke.length > 0 ? (
-				<SegmentsKaraoke
-					segments={karaoke}
-					active={activeIdx}
-					highlight={highlight}
-					onSeek={seek}
-				/>
+				tabbed ? (
+					<Tabs
+						value={tab === "changes" ? "changes" : "transcript"}
+						onValueChange={(v) => setTab(v === "changes" ? "changes" : "corrected")}
+						className="w-full"
+					>
+						<TabsList className="text-xs">
+							<TabsTrigger value="transcript">{t.transcriptPanel.tabTranscript}</TabsTrigger>
+							<TabsTrigger value="changes">{t.transcriptPanel.tabChanges}</TabsTrigger>
+						</TabsList>
+						<TabsContent value="transcript" className="pt-2">
+							<SegmentsKaraoke
+								segments={karaoke}
+								active={activeIdx}
+								highlight={highlight}
+								onSeek={seek}
+								editing={segmentEditing}
+								speakerLabel={speakerLabel}
+								unknownSpeaker={t.transcriptPanel.speakerUnknown}
+							/>
+						</TabsContent>
+						<TabsContent value="changes" className="space-y-3 pt-2">
+							<ChangesView pairs={changes} emptyLabel={t.transcriptPanel.noChanges} />
+						</TabsContent>
+					</Tabs>
+				) : (
+					<SegmentsKaraoke
+						segments={karaoke}
+						active={activeIdx}
+						highlight={highlight}
+						onSeek={seek}
+						editing={segmentEditing}
+						speakerLabel={speakerLabel}
+						unknownSpeaker={t.transcriptPanel.speakerUnknown}
+					/>
+				)
 			) : tabbed ? (
 				<Tabs
 					value={tab}
-					onValueChange={(v) => setTab(v as "corrected" | "original")}
+					onValueChange={(v) => setTab(v as "corrected" | "original" | "changes")}
 					className="w-full"
 				>
 					<TabsList className="text-xs">
 						<TabsTrigger value="corrected">{t.transcriptPanel.tabCorrected}</TabsTrigger>
 						<TabsTrigger value="original">{t.transcriptPanel.tabOriginal}</TabsTrigger>
+						<TabsTrigger value="changes">{t.transcriptPanel.tabChanges}</TabsTrigger>
 					</TabsList>
 					<TabsContent value="corrected" className="pt-2">
 						<SourceBlock
@@ -485,6 +1151,9 @@ export function AudioTranscriptPanel({
 								highlight={highlight}
 							/>
 						))}
+					</TabsContent>
+					<TabsContent value="changes" className="space-y-3 pt-2">
+						<ChangesView pairs={changes} emptyLabel={t.transcriptPanel.noChanges} />
 					</TabsContent>
 				</Tabs>
 			) : originals.length ? (
