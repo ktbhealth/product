@@ -410,6 +410,73 @@ export interface ConsultationMessages {
 		readonly retry: string;
 		readonly dismiss: string;
 	};
+	/** Live-consultation flow: the pre-consultation "green room"
+	 * (PreconsultationRoom labels) and the live transcription screen
+	 * (LiveConsultation labels). `diarization*` copy is honest about
+	 * channel attribution — the transcriber has no live diarization. */
+	readonly liveFlow: {
+		readonly brandName: string;
+		readonly roomTitle: string;
+		readonly readyTitle: string;
+		readonly consentTitle: string;
+		readonly consentDescription: string;
+		readonly changePatient: string;
+		readonly testAudio: string;
+		readonly testingAudio: string;
+		readonly calibratedAudio: string;
+		readonly startSession: string;
+		readonly startingSession: string;
+		readonly secondaryAction: string;
+		readonly modalityInPerson: string;
+		readonly modalityTelemedicine: string;
+		readonly captureInPerson: string;
+		readonly captureTelemedicine: string;
+		readonly deviceInPerson: string;
+		readonly deviceTelemedicine: string;
+		readonly engineInPerson: string;
+		readonly engineTelemedicine: string;
+		readonly audioStatus: {
+			readonly ready: string;
+			readonly muted: string;
+			readonly testing: string;
+			readonly calibrated: string;
+		};
+		readonly networkStatus: string;
+		readonly encryption: string;
+		readonly connectionStable: string;
+		/** Close button on the patient picker shown from the room. */
+		readonly pickerDone: string;
+		readonly live: string;
+		readonly paused: string;
+		readonly ended: string;
+		readonly anamnesis: string;
+		readonly endConsultation: string;
+		readonly transcriptTitle: string;
+		readonly diarizationActive: string;
+		readonly diarizationPaused: string;
+		readonly diarizationEnded: string;
+		readonly copy: string;
+		readonly export: string;
+		readonly listening: string;
+		readonly pausedListening: string;
+		readonly endedListening: string;
+		readonly audioSourceInPerson: string;
+		readonly audioSourceTelemedicine: string;
+		readonly yearsOld: string;
+		readonly recordPrefix: string;
+	};
+	/** Review-cockpit chrome copy for the @ktbhealth/ui review blocks
+	 * (player bar, confidence banner, pending strip, homologation bar). */
+	readonly reviewUi: {
+		readonly playback: string;
+		readonly syncBadge: string;
+		readonly volume: string;
+		readonly confirming: string;
+		readonly flaggedTitle: (n: number) => string;
+		readonly flaggedHint: string;
+		readonly pendingTitle: string;
+		readonly approveHint: string;
+	};
 }
 
 const en: ConsultationMessages = {
@@ -811,6 +878,67 @@ const en: ConsultationMessages = {
 		failed: paramMessage("en", "Speech model unavailable: {message}", ["message"]),
 		retry: "Retry",
 		dismiss: "Dismiss",
+	},
+	liveFlow: {
+		brandName: "KTB Health",
+		roomTitle: "Consultation Room",
+		readyTitle: "Ready to start the consultation?",
+		consentTitle: "Informed patient consent",
+		consentDescription:
+			"I declare that the patient was duly informed and consented to automated medical recording and transcription (in compliance with LGPD and CFM regulations).",
+		changePatient: "Change",
+		testAudio: "Test audio (3s)",
+		testingAudio: "Testing audio…",
+		calibratedAudio: "Audio calibrated",
+		startSession: "Start Session",
+		startingSession: "Starting recording & transcription…",
+		secondaryAction: "Quick post-consultation dictation",
+		modalityInPerson: "In-person consult",
+		modalityTelemedicine: "Teleconsult",
+		captureInPerson: "Room microphone active",
+		captureTelemedicine: "Meeting tab audio capture",
+		deviceInPerson: "Room microphone",
+		deviceTelemedicine: "Meeting tab — audio only",
+		engineInPerson: "Local Whisper",
+		engineTelemedicine: "Tab capture · patient channel",
+		audioStatus: {
+			ready: "Audio ready",
+			muted: "Microphone muted",
+			testing: "Testing audio…",
+			calibrated: "Audio calibrated",
+		},
+		networkStatus: "Network status",
+		encryption: "End-to-end encrypted",
+		connectionStable: "Stable connection",
+		pickerDone: "Done",
+		live: "LIVE",
+		paused: "PAUSED",
+		ended: "ENDED",
+		anamnesis: "AI anamnesis",
+		endConsultation: "End Consultation",
+		transcriptTitle: "Live Consultation Transcript",
+		diarizationActive: "Channel attribution active",
+		diarizationPaused: "Channel attribution paused",
+		diarizationEnded: "Channel attribution ended",
+		copy: "Copy",
+		export: "Export",
+		listening: "Listening to the dialogue and transcribing in real time...",
+		pausedListening: "Transcription paused — audio keeps being captured.",
+		endedListening: "Consultation ended — transcription finalized.",
+		audioSourceInPerson: "Microphone — clinician channel",
+		audioSourceTelemedicine: "Meeting tab — patient channel",
+		yearsOld: "years old",
+		recordPrefix: "Record #",
+	},
+	reviewUi: {
+		playback: "Playback",
+		syncBadge: "Audio master sync",
+		volume: "Volume",
+		confirming: "Confirming…",
+		flaggedTitle: paramMessage("en", "{n} passages flagged", ["n"]),
+		flaggedHint: "Low-confidence passages — check each against the audio before confirming.",
+		pendingTitle: "Pending data",
+		approveHint: "Approve to stamp this anamnesis as reviewed.",
 	},
 };
 
@@ -1220,6 +1348,67 @@ const ptBR: ConsultationMessages = {
 		retry: "Tentar novamente",
 		dismiss: "Dispensar",
 	},
+	liveFlow: {
+		brandName: "KTB Health",
+		roomTitle: "Sala de Consulta",
+		readyTitle: "Pronto para iniciar a consulta?",
+		consentTitle: "Consentimento Informado do Paciente",
+		consentDescription:
+			"Declaro que o paciente foi devidamente informado e consentiu com a gravação e transcrição médica automatizada (em conformidade com a LGPD e o CFM).",
+		changePatient: "Trocar",
+		testAudio: "Testar áudio (3s)",
+		testingAudio: "Testando áudio…",
+		calibratedAudio: "Áudio calibrado",
+		startSession: "Iniciar Sessão",
+		startingSession: "Iniciando gravação e transcrição…",
+		secondaryAction: "Ditado rápido pós-consulta",
+		modalityInPerson: "Consulta presencial",
+		modalityTelemedicine: "Teleconsulta",
+		captureInPerson: "Microfone do consultório ativo",
+		captureTelemedicine: "Captura do áudio da aba da chamada",
+		deviceInPerson: "Microfone do consultório",
+		deviceTelemedicine: "Aba da chamada — somente áudio",
+		engineInPerson: "Whisper local",
+		engineTelemedicine: "Captura da aba · canal do paciente",
+		audioStatus: {
+			ready: "Áudio pronto",
+			muted: "Microfone mudo",
+			testing: "Testando áudio…",
+			calibrated: "Áudio calibrado",
+		},
+		networkStatus: "Status da rede",
+		encryption: "Criptografado de ponta a ponta",
+		connectionStable: "Conexão estável",
+		pickerDone: "Concluir",
+		live: "AO VIVO",
+		paused: "PAUSADA",
+		ended: "ENCERRADA",
+		anamnesis: "Anamnese IA",
+		endConsultation: "Encerrar Consulta",
+		transcriptTitle: "Transcrição da Consulta em Tempo Real",
+		diarizationActive: "Atribuição por canal ativa",
+		diarizationPaused: "Atribuição por canal pausada",
+		diarizationEnded: "Atribuição por canal encerrada",
+		copy: "Copiar",
+		export: "Exportar",
+		listening: "Ouvindo o diálogo e transcrevendo em tempo real...",
+		pausedListening: "Transcrição pausada — o áudio continua sendo capturado.",
+		endedListening: "Consulta encerrada — transcrição finalizada.",
+		audioSourceInPerson: "Microfone — canal do médico",
+		audioSourceTelemedicine: "Aba da chamada — canal do paciente",
+		yearsOld: "anos",
+		recordPrefix: "Prontuário #",
+	},
+	reviewUi: {
+		playback: "Reprodução",
+		syncBadge: "Sincronia mestre de áudio",
+		volume: "Volume",
+		confirming: "Confirmando…",
+		flaggedTitle: paramMessage("pt-BR", "{n} trechos sinalizados", ["n"]),
+		flaggedHint: "Trechos de baixa confiança — confira cada um no áudio antes de confirmar.",
+		pendingTitle: "Dados pendentes",
+		approveHint: "Aprove para carimbar esta anamnese como revisada.",
+	},
 };
 
 const es: ConsultationMessages = {
@@ -1628,6 +1817,67 @@ const es: ConsultationMessages = {
 		failed: paramMessage("es", "Modelo de voz no disponible: {message}", ["message"]),
 		retry: "Reintentar",
 		dismiss: "Descartar",
+	},
+	liveFlow: {
+		brandName: "KTB Health",
+		roomTitle: "Sala de Consulta",
+		readyTitle: "¿Listo para iniciar la consulta?",
+		consentTitle: "Consentimiento informado del paciente",
+		consentDescription:
+			"Declaro que el paciente fue debidamente informado y consintió la grabación y transcripción médica automatizada (en conformidad con la LGPD y el CFM).",
+		changePatient: "Cambiar",
+		testAudio: "Probar audio (3s)",
+		testingAudio: "Probando audio…",
+		calibratedAudio: "Audio calibrado",
+		startSession: "Iniciar sesión",
+		startingSession: "Iniciando grabación y transcripción…",
+		secondaryAction: "Dictado rápido posconsulta",
+		modalityInPerson: "Consulta presencial",
+		modalityTelemedicine: "Teleconsulta",
+		captureInPerson: "Micrófono del consultorio activo",
+		captureTelemedicine: "Captura del audio de la pestaña de la llamada",
+		deviceInPerson: "Micrófono del consultorio",
+		deviceTelemedicine: "Pestaña de la llamada — solo audio",
+		engineInPerson: "Whisper local",
+		engineTelemedicine: "Captura de pestaña · canal del paciente",
+		audioStatus: {
+			ready: "Audio listo",
+			muted: "Micrófono silenciado",
+			testing: "Probando audio…",
+			calibrated: "Audio calibrado",
+		},
+		networkStatus: "Estado de la red",
+		encryption: "Cifrado de extremo a extremo",
+		connectionStable: "Conexión estable",
+		pickerDone: "Listo",
+		live: "EN VIVO",
+		paused: "PAUSADA",
+		ended: "FINALIZADA",
+		anamnesis: "Anamnesis IA",
+		endConsultation: "Finalizar consulta",
+		transcriptTitle: "Transcripción de la consulta en tiempo real",
+		diarizationActive: "Atribución por canal activa",
+		diarizationPaused: "Atribución por canal pausada",
+		diarizationEnded: "Atribución por canal finalizada",
+		copy: "Copiar",
+		export: "Exportar",
+		listening: "Escuchando el diálogo y transcribiendo en tiempo real...",
+		pausedListening: "Transcripción pausada — el audio sigue captándose.",
+		endedListening: "Consulta finalizada — transcripción completada.",
+		audioSourceInPerson: "Micrófono — canal del clínico",
+		audioSourceTelemedicine: "Pestaña de la llamada — canal del paciente",
+		yearsOld: "años",
+		recordPrefix: "Ficha #",
+	},
+	reviewUi: {
+		playback: "Reproducción",
+		syncBadge: "Sincronización maestra de audio",
+		volume: "Volumen",
+		confirming: "Confirmando…",
+		flaggedTitle: paramMessage("es", "{n} pasajes señalados", ["n"]),
+		flaggedHint: "Pasajes de baja confianza — verifica cada uno con el audio antes de confirmar.",
+		pendingTitle: "Datos pendientes",
+		approveHint: "Aprueba para validar esta anamnesis como revisada.",
 	},
 };
 

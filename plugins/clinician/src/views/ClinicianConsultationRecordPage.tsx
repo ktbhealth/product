@@ -61,6 +61,7 @@ export function ClinicianConsultationRecordPage({
 					i18n={ctx.i18n}
 					locale={ctx.locale}
 					portalBase={base}
+					physician={ctx.user?.name ?? ctx.user?.email ?? undefined}
 				/>
 			);
 		case "detail":

@@ -5,11 +5,30 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import {
 	AudioTranscriptPanel,
 	ConsultationAudioPlayer,
+	ReviewAudioPlayer,
 	useConsultationAudio,
+	useReviewAudioState,
+	useZkAudioUrl,
 	type AudioPipelineInfo,
 	type SegmentEditing,
 } from "./-transcript.tsx";
+import { consultationDek } from "../zk.ts";
+import { decryptBlob } from "@ktb/crypto/stream";
+import type { ConsultationZk } from "../zk.ts";
 import type { TranscriptSegment } from "../segments.ts";
+
+vi.mock("../zk.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../zk.ts")>()),
+	consultationDek: vi.fn(),
+}));
+
+vi.mock("@ktb/crypto/stream", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/crypto/stream")>()),
+	decryptBlob: vi.fn(async () => new Uint8Array([1, 2, 3])),
+}));
+
+const dekMock = vi.mocked(consultationDek);
+const decryptMock = vi.mocked(decryptBlob);
 
 type Detail = AudioPipelineInfo;
 
@@ -793,5 +812,279 @@ describe("ConsultationAudioPlayer", () => {
 		} finally {
 			getItem.mockRestore();
 		}
+	});
+});
+
+describe("ReviewAudioPlayer", () => {
+	const GAPS: TranscriptSegment[] = [
+		{ start: 0, end: 2, text: "bom dia" },
+		{ start: 5, end: 8, text: "como está" }, // 3s silence at 2–5
+		{ start: 8.4, end: 10, text: "vou examinar" },
+	];
+
+	const renderReview = (props?: {
+		segments?: TranscriptSegment[];
+		audioRef?: { current: HTMLAudioElement | null };
+		onTimeUpdate?: (t: number) => void;
+	}) => {
+		render(
+			<ReviewAudioPlayer
+				src="/audio.wav"
+				{...(props?.audioRef ? { audioRef: props.audioRef } : {})}
+				segments={props?.segments}
+				playbackLabel="Playback"
+				syncLabel="Sync"
+				speedLabel="Playback speed"
+				volumeLabel="Volume"
+				skipSilenceLabel="Skip silence"
+				onTimeUpdate={props?.onTimeUpdate}
+			/>,
+		);
+		return document.querySelector("audio")!;
+	};
+
+	const playing = (audio: HTMLAudioElement, paused: boolean) =>
+		Object.defineProperty(audio, "paused", { value: paused, configurable: true });
+
+	it("forwards the audio element through audioRef and toggles play/pause", () => {
+		const ref = { current: null as HTMLAudioElement | null };
+		const audio = renderReview({ audioRef: ref });
+		expect(ref.current).toBe(audio);
+		audio.play = vi.fn(() => Promise.resolve());
+		audio.pause = vi.fn();
+		fireEvent.click(screen.getByRole("button", { name: "Play" }));
+		expect(audio.play).toHaveBeenCalled();
+		playing(audio, false);
+		fireEvent.play(audio);
+		expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+		expect(audio.pause).toHaveBeenCalled();
+	});
+
+	it("seeks ±10s with an unbounded end while duration is unknown", () => {
+		const audio = renderReview();
+		audio.currentTime = 30;
+		fireEvent.click(screen.getByRole("button", { name: "Back 10 seconds" }));
+		expect(audio.currentTime).toBe(20);
+		fireEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+		expect(audio.currentTime).toBe(30);
+	});
+
+	it("clamps the forward skip at the real duration", () => {
+		const audio = renderReview();
+		Object.defineProperty(audio, "duration", { value: 100, configurable: true });
+		audio.currentTime = 95;
+		fireEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+		expect(audio.currentTime).toBe(100);
+	});
+
+	it("cycles playback speed through the shared prefs", () => {
+		const audio = renderReview();
+		const btn = screen.getByRole("button", { name: "Playback speed" });
+		expect(btn.textContent).toBe("1×");
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.25);
+		expect(localStorage.getItem("ktb.audio.playbackRate")).toBe("1.25");
+		// jsdom does not fire ratechange — mirror the element event so the
+		// bar's speed state advances to the next entry.
+		act(() => audio.dispatchEvent(new Event("ratechange")));
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.5);
+		act(() => audio.dispatchEvent(new Event("ratechange")));
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(2);
+		act(() => audio.dispatchEvent(new Event("ratechange")));
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1);
+	});
+
+	it("restores persisted rate and skip prefs on mount", () => {
+		localStorage.setItem("ktb.audio.playbackRate", "1.5");
+		localStorage.setItem("ktb.audio.skipSilence", "1");
+		const audio = renderReview({ segments: GAPS });
+		expect(audio.playbackRate).toBe(1.5);
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap → jumps
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("ignores an out-of-range persisted rate", () => {
+		localStorage.setItem("ktb.audio.playbackRate", "9");
+		const audio = renderReview();
+		expect(audio.playbackRate).toBe(1);
+	});
+
+	it("drives volume and mute through the bar controls", () => {
+		const audio = renderReview();
+		const [muteBtn, volSlider] = screen.getAllByLabelText("Volume");
+		fireEvent.change(volSlider!, { target: { value: "50" } });
+		expect(audio.volume).toBe(0.5);
+		expect(audio.muted).toBe(false);
+		fireEvent.change(volSlider!, { target: { value: "0" } });
+		expect(audio.volume).toBe(0);
+		act(() => audio.dispatchEvent(new Event("volumechange")));
+		fireEvent.click(muteBtn!);
+		expect(audio.muted).toBe(true);
+		act(() => audio.dispatchEvent(new Event("volumechange")));
+		fireEvent.click(muteBtn!);
+		expect(audio.muted).toBe(false);
+	});
+
+	it("skips silence gaps while playing and reports the time", () => {
+		const onTimeUpdate = vi.fn();
+		const audio = renderReview({ segments: GAPS, onTimeUpdate });
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(5);
+	});
+
+	it("does not skip while paused or inside a segment", () => {
+		const onTimeUpdate = vi.fn();
+		const audio = renderReview({ segments: GAPS, onTimeUpdate });
+		playing(audio, true);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(3);
+		playing(audio, false);
+		audio.currentTime = 6; // inside the 5–8 segment
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(6);
+	});
+
+	it("honors the persisted skip-silence off pref", () => {
+		localStorage.setItem("ktb.audio.skipSilence", "0");
+		const audio = renderReview({ segments: GAPS });
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("toggles the skip-silence control and persists the pref", () => {
+		const audio = renderReview({ segments: GAPS });
+		const btn = screen.getByRole("button", { name: "Skip silence" });
+		fireEvent.click(btn); // off
+		fireEvent.click(btn); // on again
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("1");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("renders without audioRef or segments and hides the skip control", () => {
+		renderReview();
+		expect(document.querySelectorAll("audio").length).toBe(1);
+		expect(screen.queryByRole("button", { name: "Skip silence" })).toBeNull();
+	});
+});
+
+describe("useReviewAudioState", () => {
+	it("tolerates a null element — every handler is a no-op", () => {
+		const { result } = renderHook(() => useReviewAudioState({ current: null }));
+		act(() => {
+			result.current.handlers.onPlayPause?.();
+			result.current.handlers.onSeek?.(5);
+			result.current.handlers.onSkip?.(10);
+			result.current.handlers.onSpeedChange?.(2);
+			result.current.handlers.onVolumeChange?.(0.5);
+			result.current.handlers.onMutedChange?.(true);
+		});
+		expect(result.current.audio.playing).toBe(false);
+	});
+});
+
+describe("useZkAudioUrl", () => {
+	const zk = { keyring: {} as never, api: {} as never };
+	const consultation = { id: 42, audioKey: "audio/42.webm" };
+	let fetchMock: ReturnType<typeof vi.fn>;
+	let createUrl: ReturnType<typeof vi.fn>;
+	let revokeUrl: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		dekMock.mockReset();
+		decryptMock.mockClear();
+		fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		createUrl = vi.fn(() => "blob:audio");
+		revokeUrl = vi.fn();
+		URL.createObjectURL = createUrl as never;
+		URL.revokeObjectURL = revokeUrl as never;
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	const okResponse = () =>
+		({
+			ok: true,
+			arrayBuffer: async () => new Uint8Array([9, 9]).buffer,
+		}) as Response;
+
+	it("stays null without zk or without an audio key — never fetches", async () => {
+		const { result: noZk } = renderHook(() => useZkAudioUrl(undefined, consultation));
+		const { result: noKey } = renderHook(() => useZkAudioUrl(zk, { id: 42, audioKey: null }));
+		await act(async () => {});
+		expect(noZk.current).toBeNull();
+		expect(noKey.current).toBeNull();
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(dekMock).not.toHaveBeenCalled();
+	});
+
+	it("decrypts the ciphertext into an object URL", async () => {
+		dekMock.mockResolvedValue({} as CryptoKey);
+		fetchMock.mockResolvedValue(okResponse());
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBe("blob:audio");
+		expect(dekMock).toHaveBeenCalledWith(zk.keyring, zk.api, 42);
+		expect(fetchMock).toHaveBeenCalledWith("/api/consultations/42/audio");
+		expect(decryptMock).toHaveBeenCalled();
+		expect(createUrl).toHaveBeenCalled();
+	});
+
+	it("returns null when the DEK is locked — the endpoint is never hit", async () => {
+		dekMock.mockResolvedValue(null);
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBeNull();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("returns null when the audio fetch fails", async () => {
+		dekMock.mockResolvedValue({} as CryptoKey);
+		fetchMock.mockResolvedValue({ ok: false } as Response);
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBeNull();
+	});
+
+	it("swallows decrypt failures and stays null", async () => {
+		dekMock.mockRejectedValue(new Error("no grant"));
+		const { result } = renderHook(() => useZkAudioUrl(zk, consultation));
+		await act(async () => {});
+		expect(result.current).toBeNull();
+	});
+
+	it("revokes the object URL when the hook unmounts mid-decrypt", async () => {
+		let resolveDek!: (k: CryptoKey | null) => void;
+		dekMock.mockReturnValue(
+			new Promise<CryptoKey | null>((r) => {
+				resolveDek = r;
+			}),
+		);
+		fetchMock.mockResolvedValue(okResponse());
+		const { result, unmount } = renderHook(() => useZkAudioUrl(zk, consultation));
+		unmount();
+		await act(async () => {
+			resolveDek({} as CryptoKey);
+		});
+		expect(result.current).toBeNull();
+		expect(revokeUrl).toHaveBeenCalledWith("blob:audio");
 	});
 });

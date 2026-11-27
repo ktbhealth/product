@@ -146,6 +146,7 @@ vi.mock("@ktbhealth/ui/components/resizable", () => ({
 }));
 
 import { NewConsultationPage } from "./NewConsultationPage.tsx";
+import { liveConsultationTurns } from "./-live-turns.ts";
 
 const SECTION = { content: "", confidence: "baixa" as const, evidence: [] as string[] };
 const ANAMNESIS: Anamnesis = {
@@ -182,6 +183,8 @@ function renderPage(
 	initialPatientId?: number,
 	zk?: ConsultationZk,
 	portalBase?: string,
+	liveFlow = false,
+	physician?: string,
 ) {
 	return render(
 		<NewConsultationPage
@@ -191,6 +194,8 @@ function renderPage(
 			backend={backend}
 			zk={zk}
 			portalBase={portalBase}
+			liveFlow={liveFlow}
+			physician={physician}
 		/>,
 	);
 }
@@ -214,36 +219,49 @@ async function generateAnamnesis(user: ReturnType<typeof userEvent.setup>) {
 	await screen.findByText("high confidence");
 }
 
+// Shared per-test reset — top-level describes outside "NewConsultationPage"
+// must opt into these hooks explicitly (RTL cleanup is not automatic here).
+function resetPageTestDoubles() {
+	micSupported = true;
+	micCb = null;
+	tabCb = null;
+	micStatsFn = null;
+	micRecFn = null;
+	tabStatsFn = null;
+	tabRecFn = null;
+	statusImpl = () => ({ state: "idle", device: null });
+	engineSubs.clear();
+	draftMock.state.draft = null;
+	draftMock.store.load.mockClear();
+	draftMock.store.save.mockClear();
+	draftMock.store.clear.mockClear();
+	backendLoad.mockClear();
+	vi.stubGlobal("fetch", vi.fn());
+	// jsdom lacks dialog.showModal
+	HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+		this.setAttribute("open", "");
+	});
+	HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+		this.removeAttribute("open");
+	});
+	// Base UI's scroll lock is a module-level singleton whose lock/unlock
+	// is deferred through setTimeout(0) — a modal unmounted at test end can
+	// leak `overflow: hidden`/`scrollbar-gutter` onto <body>/<html> and
+	// poison later tests. Reset the inline styles it manages.
+	document.body.removeAttribute("style");
+	document.documentElement.removeAttribute("style");
+	document.documentElement.removeAttribute("data-base-ui-scroll-locked");
+}
+
+function teardownPageTest() {
+	cleanup();
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+}
+
 describe("NewConsultationPage", () => {
-	beforeEach(() => {
-		micSupported = true;
-		micCb = null;
-		tabCb = null;
-		micStatsFn = null;
-		micRecFn = null;
-		tabStatsFn = null;
-		tabRecFn = null;
-		statusImpl = () => ({ state: "idle", device: null });
-		engineSubs.clear();
-		backendLoad.mockClear();
-		draftMock.state.draft = null;
-		draftMock.store.load.mockClear();
-		draftMock.store.save.mockClear();
-		draftMock.store.clear.mockClear();
-		vi.stubGlobal("fetch", vi.fn());
-		// jsdom lacks dialog.showModal
-		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
-			this.setAttribute("open", "");
-		});
-		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
-			this.removeAttribute("open");
-		});
-	});
-	afterEach(() => {
-		cleanup();
-		vi.unstubAllGlobals();
-		vi.restoreAllMocks();
-	});
+	beforeEach(resetPageTestDoubles);
+	afterEach(teardownPageTest);
 
 	it("renders empty state and steps", async () => {
 		const user = userEvent.setup();
@@ -738,6 +756,7 @@ describe("NewConsultationPage", () => {
 				resumeConsultationId={42}
 				api={api}
 				backend={backend}
+				liveFlow={false}
 			/>,
 		);
 		await generateAnamnesis(user);
@@ -2046,7 +2065,13 @@ describe("NewConsultationPage", () => {
 			});
 			const user = userEvent.setup();
 			render(
-				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={api}
+					backend={backend}
+					zk={zk}
+					liveFlow={false}
+				/>,
 			);
 			await generateAnamnesis(user);
 			await user.click(screen.getByText("Save consultation"));
@@ -2078,6 +2103,7 @@ describe("NewConsultationPage", () => {
 					api={api}
 					backend={backend}
 					zk={zk}
+					liveFlow={false}
 				/>,
 			);
 			await generateAnamnesis(user);
@@ -2095,7 +2121,13 @@ describe("NewConsultationPage", () => {
 			});
 			const user = userEvent.setup();
 			render(
-				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={api}
+					backend={backend}
+					zk={zk}
+					liveFlow={false}
+				/>,
 			);
 			await generateAnamnesis(user);
 			await user.click(screen.getByText("Save consultation"));
@@ -2122,7 +2154,13 @@ describe("NewConsultationPage", () => {
 			});
 			const user = userEvent.setup();
 			render(
-				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={api}
+					backend={backend}
+					zk={zk}
+					liveFlow={false}
+				/>,
 			);
 			await generateAnamnesis(user);
 			await user.click(screen.getByText("Save consultation"));
@@ -2141,6 +2179,7 @@ describe("NewConsultationPage", () => {
 					api={makeApi()}
 					backend={backend}
 					zk={zk}
+					liveFlow={false}
 				/>,
 			);
 			await fillTranscript();
@@ -2163,6 +2202,7 @@ describe("NewConsultationPage", () => {
 					api={makeApi()}
 					backend={backend}
 					zk={zk}
+					liveFlow={false}
 				/>,
 			);
 			await consent(user);
@@ -2175,7 +2215,140 @@ describe("NewConsultationPage", () => {
 			expect(fetchMock).not.toHaveBeenCalledWith("/api/transcribe", expect.anything());
 		});
 	});
+
+	describe("live flow — pre-consultation room and live screen", () => {
+		const ROOM_CONSENT = /duly informed and consented/;
+
+		async function roomConsent(user: ReturnType<typeof userEvent.setup>) {
+			await user.click(await screen.findByText(ROOM_CONSENT));
+		}
+
+		it("shows the room, gates start on consent and reflects the patient", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 1, undefined, undefined, true, "Dr. House");
+			expect(screen.getByText("Ready to start the consultation?")).toBeTruthy();
+			expect(screen.getAllByText(/Dr\. House/).length).toBeGreaterThan(0);
+			expect(screen.getAllByText("Maria").length).toBeGreaterThan(0);
+			expect(screen.getByText("Start Session").closest("button")!.disabled).toBe(true);
+			await roomConsent(user);
+			// the CTA unmounts its disabled Tooltip wrapper once enabled —
+			// re-query instead of holding the old node
+			expect(screen.getByText("Start Session").closest("button")!.disabled).toBe(false);
+		});
+
+		it("in-person start begins mic capture and swaps to the live screen", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true, "Dr. House");
+			await roomConsent(user);
+			await user.click(screen.getByText("Start Session"));
+			expect(micCb).not.toBeNull();
+			expect(screen.queryByText("Ready to start the consultation?")).toBeNull();
+			expect(screen.getByText("Live Consultation Transcript")).toBeTruthy();
+			expect(screen.getByText("End Consultation")).toBeTruthy();
+
+			// mic finals render as clinician turns named after the physician
+			act(() => micCb!({ type: "final", text: "bom dia" }));
+			await screen.findByText("Dr. House");
+			act(() => micCb!({ type: "partial", text: "como" }));
+			await screen.findByText(/como/);
+
+			// ending returns to the workspace — the room does not reappear
+			await user.click(screen.getByText("End Consultation"));
+			expect(micStop).toHaveBeenCalled();
+			expect(screen.getByLabelText("Consultation text")).toBeTruthy();
+			expect(screen.queryByText("Ready to start the consultation?")).toBeNull();
+		});
+
+		it("telemedicine modality starts tab capture", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 2, undefined, undefined, true);
+			await roomConsent(user);
+			await user.click(screen.getByRole("radio", { name: "Teleconsult" }));
+			await user.click(screen.getByText("Start Session"));
+			expect(tabCb).not.toBeNull();
+			expect(micCb).toBeNull();
+			expect(screen.getByText("Live Consultation Transcript")).toBeTruthy();
+		});
+
+		it("the secondary action switches to dictation mode", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getByText("Quick post-consultation dictation"));
+			expect(screen.getByText("Start dictation")).toBeTruthy();
+			expect(screen.queryByText("Ready to start the consultation?")).toBeNull();
+		});
+
+		it("change patient reveals the picker and updates the room card", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 1, undefined, undefined, true);
+			await user.click(screen.getAllByText("Change")[0]!);
+			await screen.findByText("Done");
+			// The picker's Select is a Base UI combobox; in jsdom its trigger
+			// does not reliably open under user-event's full pointer sequence
+			// (pointer capture + focus), so drive the open with fireEvent.
+			const trigger = screen.getByLabelText("Patient");
+			fireEvent.pointerDown(trigger);
+			fireEvent.mouseDown(trigger);
+			fireEvent.mouseUp(trigger);
+			fireEvent.click(trigger);
+			await user.click(await screen.findByRole("option", { name: "João" }));
+			expect(screen.getAllByText("João").length).toBeGreaterThan(0);
+			await user.click(screen.getByText("Done"));
+			expect(screen.queryByLabelText("Patient")).toBeNull();
+		});
+
+		it("audio test warms the transcription engine", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getAllByText("Test audio (3s)")[0]!);
+			expect(backendLoad).toHaveBeenCalled();
+		});
+	});
+
+	describe("liveConsultationTurns", () => {
+		const opts = { doctor: "Doctor", patient: "Patient", doctorName: "Dr. House" };
+
+		it("groups consecutive rows into speaker turns", () => {
+			const turns = liveConsultationTurns(
+				[
+					{ speaker: "Doctor", name: "Doctor", text: "hi", time: "0:01" },
+					{ speaker: "Doctor", name: "Doctor", text: "there", time: "0:05" },
+					{ speaker: "Patient", name: "Maria", text: "hello", time: "0:09" },
+					{ speaker: "Patient", name: "Maria", text: "again" },
+					{ name: "Browser voice", text: "note" },
+				],
+				opts,
+			);
+			expect(turns).toHaveLength(3);
+			expect(turns[0]).toMatchObject({ speaker: 0, name: "Dr. House", role: "Doctor" });
+			expect(turns[0]!.paragraphs).toHaveLength(2);
+			expect(turns[1]).toMatchObject({ speaker: 1, name: "Maria", role: "Patient" });
+			expect(turns[2]).toMatchObject({ speaker: 2, name: "Browser voice" });
+			expect(turns[2]!.role).toBeUndefined();
+		});
+
+		it("does not merge non-consecutive rows from the same channel", () => {
+			const turns = liveConsultationTurns(
+				[
+					{ speaker: "Doctor", name: "Doctor", text: "a" },
+					{ speaker: "Patient", name: "P", text: "b" },
+					{ speaker: "Doctor", name: "Doctor", text: "c" },
+				],
+				opts,
+			);
+			expect(turns).toHaveLength(3);
+		});
+
+		it("falls back to the channel prefix without a physician name", () => {
+			const turns = liveConsultationTurns([{ speaker: "Doctor", name: "Doctor", text: "x" }], {
+				doctor: "Doctor",
+				patient: "Patient",
+			});
+			expect(turns[0]!.name).toBe("Doctor");
+		});
+	});
 });
+
 describe("ZK encrypted audio upload (T-147)", () => {
 	const zk = { keyring: { tag: "k" }, api: { tag: "a" } } as never;
 	const audioBlob = new Blob(["audio"], { type: "audio/webm" });
@@ -2216,7 +2389,15 @@ describe("ZK encrypted audio upload (T-147)", () => {
 			json: async () => ({ ok: true, audioStatus: "zk" }),
 		}));
 		vi.stubGlobal("fetch", fetchMock);
-		render(<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />);
+		render(
+			<NewConsultationPage
+				initialPatients={PATIENTS}
+				api={api}
+				backend={backend}
+				zk={zk}
+				liveFlow={false}
+			/>,
+		);
 		await consent(user);
 		await generateAnamnesis(user);
 		await user.click(screen.getByText("Save consultation"));
@@ -2238,7 +2419,15 @@ describe("ZK encrypted audio upload (T-147)", () => {
 		const api = makeApi();
 		const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
 		vi.stubGlobal("fetch", fetchMock);
-		render(<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />);
+		render(
+			<NewConsultationPage
+				initialPatients={PATIENTS}
+				api={api}
+				backend={backend}
+				zk={zk}
+				liveFlow={false}
+			/>,
+		);
 		await consent(user);
 		await generateAnamnesis(user);
 		zkMocks.consultationDek.mockResolvedValueOnce(null);

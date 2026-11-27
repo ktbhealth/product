@@ -30,10 +30,19 @@ import {
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
+import {
+	TranscriptPlayerBar,
+	type ReviewAudioHandlers,
+	type ReviewAudioSource,
+	type ReviewAudioState,
+} from "@ktbhealth/ui/components/transcript-review";
+
+import { decryptBlob } from "@ktb/crypto/stream";
 
 import { BADGE_TONES, speakerNumber, speakerTone } from "./-ui.ts";
 import { SpeakerChatRow } from "./-chat.tsx";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { consultationDek, type ConsultationZk } from "../zk.ts";
 import type { TranscriptSegment } from "../segments.ts";
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -606,6 +615,256 @@ export function ConsultationAudioPlayer({
 	);
 }
 
+/** Playback snapshot mirrored off a media element — the controlled
+ * `audio` + `handlers` pair `TranscriptPlayerBar` needs. Subscribes to
+ * the element's media events; handlers write straight to the element
+ * and the fired events feed the next snapshot back. */
+export function useReviewAudioState(audioRef: RefObject<HTMLAudioElement | null>): {
+	audio: ReviewAudioState;
+	handlers: ReviewAudioHandlers;
+} {
+	const [audio, setAudio] = useState<ReviewAudioState>({
+		playing: false,
+		positionSec: 0,
+		durationSec: 0,
+		speed: 1,
+		volume: 1,
+		muted: false,
+	});
+	useEffect(() => {
+		const el = audioRef.current;
+		if (!el) return;
+		const sync = () =>
+			setAudio({
+				playing: !el.paused,
+				positionSec: el.currentTime,
+				durationSec: Number.isFinite(el.duration) ? el.duration : 0,
+				speed: el.playbackRate,
+				volume: el.volume,
+				muted: el.muted,
+			});
+		const events = [
+			"play",
+			"pause",
+			"ended",
+			"timeupdate",
+			"durationchange",
+			"loadedmetadata",
+			"volumechange",
+			"ratechange",
+		] as const;
+		for (const e of events) el.addEventListener(e, sync);
+		sync();
+		return () => {
+			for (const e of events) el.removeEventListener(e, sync);
+		};
+	}, [audioRef]);
+
+	const current = () => audioRef.current;
+	const handlers: ReviewAudioHandlers = {
+		onPlayPause: () => {
+			const a = current();
+			if (!a) return;
+			if (a.paused) void a.play().catch(() => {});
+			else a.pause();
+		},
+		onSeek: (sec) => {
+			const a = current();
+			if (a) a.currentTime = sec;
+		},
+		onSkip: (delta) => {
+			const a = current();
+			if (!a) return;
+			const end =
+				Number.isFinite(a.duration) && a.duration > 0 ? a.duration : Number.POSITIVE_INFINITY;
+			a.currentTime = Math.min(Math.max(a.currentTime + delta, 0), end);
+		},
+		onSpeedChange: (rate) => {
+			const a = current();
+			if (a) a.playbackRate = rate;
+		},
+		onVolumeChange: (volume) => {
+			const a = current();
+			if (!a) return;
+			a.volume = volume;
+			if (volume > 0) a.muted = false;
+		},
+		onMutedChange: (muted) => {
+			const a = current();
+			if (a) a.muted = muted;
+		},
+	};
+	return { audio, handlers };
+}
+
+export interface ReviewAudioPlayerProps {
+	src: string;
+	/** Ref to the underlying <audio> — karaoke seek + keyboard flow. */
+	audioRef?: RefObject<HTMLAudioElement | null>;
+	onTimeUpdate?: (currentTime: number) => void;
+	ariaLabel?: string;
+	preload?: "none" | "metadata" | "auto";
+	/** Segment timestamps — enables the silence-skip jump. */
+	segments?: readonly TranscriptSegment[];
+	playbackLabel?: ReactNode;
+	syncLabel?: ReactNode;
+	speedLabel?: string;
+	volumeLabel?: string;
+	skipSilenceLabel?: string;
+	audioSource?: ReviewAudioSource;
+}
+
+/**
+ * Review-cockpit playback: the same <audio> element
+ * `ConsultationAudioPlayer` exposes, but fronted by the design-system
+ * `TranscriptPlayerBar` — play/pause, ±10s, scrubber, speed cycler and
+ * volume all write to the element while `useReviewAudioState` mirrors
+ * it back. Silence-skip and the persisted rate/skip prefs behave
+ * exactly like `ConsultationAudioPlayer`; the skip-silence toggle rides
+ * as a sibling strip below the bar (the bar owns its whole row).
+ */
+export function ReviewAudioPlayer({
+	src,
+	audioRef,
+	onTimeUpdate,
+	ariaLabel,
+	preload = "metadata",
+	segments,
+	playbackLabel,
+	syncLabel,
+	speedLabel,
+	volumeLabel,
+	skipSilenceLabel,
+	audioSource,
+}: ReviewAudioPlayerProps) {
+	const gaps = useMemo(() => silenceGaps(segments), [segments]);
+	const [skipSilence, setSkipSilence] = useState(true);
+	// State-backed ref: the element can mount after first render (the ZK
+	// object URL resolves async) — the hook re-subscribes on change.
+	const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
+	const hookRef = useMemo<RefObject<HTMLAudioElement | null>>(
+		() => ({ current: audioEl }),
+		[audioEl],
+	);
+	const { audio, handlers } = useReviewAudioState(hookRef);
+
+	const setRefs = (node: HTMLAudioElement | null) => {
+		setAudioEl(node);
+		if (audioRef) (audioRef as { current: HTMLAudioElement | null }).current = node;
+	};
+
+	// Persisted prefs — the same localStorage keys ConsultationAudioPlayer uses.
+	useEffect(() => {
+		const r = Number(readPref(RATE_PREF_KEY));
+		if (audioEl && PLAYBACK_RATES.includes(r)) audioEl.playbackRate = r;
+		const s = readPref(SKIP_PREF_KEY);
+		if (s !== null) setSkipSilence(s === "1");
+	}, [audioEl]);
+
+	const barHandlers: ReviewAudioHandlers = {
+		...handlers,
+		onSpeedChange: (rate) => {
+			writePref(RATE_PREF_KEY, String(rate));
+			handlers.onSpeedChange?.(rate);
+		},
+	};
+	const toggleSkip = () =>
+		setSkipSilence((on) => {
+			writePref(SKIP_PREF_KEY, on ? "0" : "1");
+			return !on;
+		});
+
+	return (
+		<div className="space-y-2">
+			<AudioPlayer className="w-full">
+				<AudioPlayerElement
+					src={src}
+					ref={setRefs}
+					preload={preload}
+					aria-label={ariaLabel}
+					onTimeUpdate={(e) => {
+						const a = e.currentTarget;
+						if (skipSilence && !a.paused) {
+							const t = a.currentTime;
+							for (const g of gaps) {
+								if (g.from > t) break;
+								if (t < g.to) {
+									a.currentTime = g.to;
+									break;
+								}
+							}
+						}
+						onTimeUpdate?.(a.currentTime);
+					}}
+				/>
+			</AudioPlayer>
+			<TranscriptPlayerBar
+				audio={audio}
+				handlers={barHandlers}
+				audioSource={audioSource}
+				playbackLabel={playbackLabel}
+				syncLabel={syncLabel}
+				speedLabel={speedLabel}
+				volumeLabel={volumeLabel}
+			/>
+			{/* TranscriptPlayerBar owns its whole row — the skip-silence
+			 * toggle rides as a sibling strip underneath. */}
+			{gaps.length > 0 ? (
+				<div className="flex justify-end">
+					<button
+						type="button"
+						onClick={toggleSkip}
+						aria-pressed={skipSilence}
+						title={skipSilenceLabel}
+						aria-label={skipSilenceLabel}
+						className={`px-1.5 ${skipSilence ? "text-foreground" : "text-muted-foreground/60"} hover:text-foreground`}
+					>
+						<FastForwardIcon className="size-3.5" />
+					</button>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/** ZK audio playback (T-147): the stored object is framed ciphertext —
+ * fetch it, unwrap the consultation DEK, decrypt in the browser and
+ * hand the <audio> element an object URL. Returns null while the DEK
+ * is locked or the fetch fails — callers must NOT fall back to the
+ * authenticated endpoint (that would stream ciphertext). */
+export function useZkAudioUrl(
+	zk: ConsultationZk | undefined,
+	consultation: { readonly id: number; readonly audioKey: string | null },
+): string | null {
+	const [url, setUrl] = useState<string | null>(null);
+	const id = consultation.id;
+	const audioKey = consultation.audioKey;
+	useEffect(() => {
+		if (!zk || !audioKey) return;
+		let live = true;
+		let objectUrl: string | null = null;
+		void (async () => {
+			const dek = await consultationDek(zk.keyring, zk.api, id);
+			if (!dek) return;
+			const res = await fetch(`/api/consultations/${id}/audio`);
+			if (!res.ok) return;
+			const plain = await decryptBlob(dek, new Uint8Array(await res.arrayBuffer()));
+			objectUrl = URL.createObjectURL(
+				// The recorded/uploaded type is not part of the detail
+				// wire shape — browsers sniff the decrypted bytes anyway.
+				new Blob([plain as Uint8Array<ArrayBuffer>], { type: "audio/webm" }),
+			);
+			if (live) setUrl(objectUrl);
+			else URL.revokeObjectURL(objectUrl);
+		})().catch(() => {});
+		return () => {
+			live = false;
+			if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+		};
+	}, [zk, id, audioKey]);
+	return url;
+}
+
 /** Renders one aligned word — ref struck on del/sub, hyp highlighted
  * on ins/sub, plain on ok. */
 function DiffWord({ op }: { op: SentencePair["ops"][number] }) {
@@ -811,13 +1070,16 @@ export function AudioTranscriptPanel({
 				</div>
 			) : null}
 			{hasAudio && playSrc ? (
-				<ConsultationAudioPlayer
+				<ReviewAudioPlayer
 					src={playSrc}
 					audioRef={audioRef}
 					ariaLabel={t.transcriptPanel.audioLabel}
 					preload="none"
 					segments={segments}
-					rateLabel={t.transcriptPanel.playbackRate}
+					playbackLabel={t.reviewUi.playback}
+					syncLabel={t.reviewUi.syncBadge}
+					speedLabel={t.transcriptPanel.playbackRate}
+					volumeLabel={t.reviewUi.volume}
 					skipSilenceLabel={t.transcriptPanel.skipSilence}
 					onTimeUpdate={(now) => {
 						setActiveIdx(karaoke.findIndex((s) => now >= s.start && now < s.end));

@@ -36,15 +36,14 @@ import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@ktbhealth/ui/components/popover";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
+import { AnamnesisSection } from "@ktbhealth/ui/components/anamnesis-review";
 
 import type { ConsultationIntegrityReport } from "../index.ts";
-import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
+import { BADGE_TONES } from "./-ui.ts";
 import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
-import { decryptBlob } from "@ktb/crypto/stream";
 import { LocalDateTime } from "@ktb/views/views";
 
 import {
-	consultationDek,
 	decryptConsultation,
 	decryptConsultations,
 	isEnvelope,
@@ -54,6 +53,7 @@ import {
 import {
 	AudioTranscriptPanel,
 	useConsultationAudio,
+	useZkAudioUrl,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
 import { EncryptionPill, PatientContextBar, TranscriptPanelHeader } from "./-chat.tsx";
@@ -161,6 +161,10 @@ export interface ConsultationDetailApi {
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
+
+/** Anamnesis confidence scale (alta/media/baixa) → the ui review
+ * blocks' high/medium/low. */
+const ANAMNESIS_CONFIDENCE = { alta: "high", media: "medium", baixa: "low" } as const;
 
 /** react-day-picker locales per app locale (PL-022 defer calendar). */
 const CALENDAR_LOCALES: Record<string, CalendarLocale> = {
@@ -376,34 +380,11 @@ export function ConsultationDetailPage({
 		};
 	}, [zk, historyRows]);
 	const history = zk ? decHistory : historyProp;
-	// ZK audio playback (T-147): the stored object is framed ciphertext —
-	// fetch it, unwrap the consultation DEK, decrypt in the browser and
-	// hand the <audio> element an object URL. Locked/missing grant → no
-	// player, exactly like the rest of the record.
-	const [zkAudioUrl, setZkAudioUrl] = useState<string | null>(null);
-	useEffect(() => {
-		if (!zk || !c.audioKey) return;
-		let live = true;
-		let url: string | null = null;
-		void (async () => {
-			const dek = await consultationDek(zk.keyring, zk.api, c.id);
-			if (!dek) return;
-			const res = await fetch(`/api/consultations/${c.id}/audio`);
-			if (!res.ok) return;
-			const plain = await decryptBlob(dek, new Uint8Array(await res.arrayBuffer()));
-			url = URL.createObjectURL(
-				// The recorded/uploaded type is not part of the detail
-				// wire shape — browsers sniff the decrypted bytes anyway.
-				new Blob([plain as Uint8Array<ArrayBuffer>], { type: "audio/webm" }),
-			);
-			if (live) setZkAudioUrl(url);
-			else URL.revokeObjectURL(url);
-		})().catch(() => {});
-		return () => {
-			live = false;
-			if (url !== null) URL.revokeObjectURL(url);
-		};
-	}, [zk, c]);
+	// ZK audio playback (T-147): shared hook — fetches the ciphertext,
+	// unwraps the consultation DEK, decrypts in the browser and hands
+	// the player an object URL. Locked/missing grant → null and the
+	// player must not fall back to the endpoint (ciphertext).
+	const zkAudioUrl = useZkAudioUrl(zk, c);
 	// Poll only when the loader data says the pipeline may still be
 	// running (or the LLM cleanup is pending); the hook stops itself
 	// once the job reaches a terminal state.
@@ -916,51 +897,52 @@ export function ConsultationDetailPage({
 									).map((key) => {
 										const sec = v.anamnesis?.[key];
 										if (!sec) return null;
-										const pending = sec.content.startsWith("A preencher pelo médico");
+										const pending =
+											sec.content.trim() === "" ||
+											sec.content.startsWith("A preencher pelo médico");
 										return (
-											<div key={key} className="py-4 first:pt-1 last:pb-1">
-												<div className="flex items-start justify-between gap-2">
-													<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
-													<div className="flex shrink-0 items-center gap-1.5">
-														{sec.evidence.length ? (
-															<Button
-																type="button"
-																variant="ghost"
-																size="sm"
-																className="aria-pressed:bg-info/10 aria-pressed:text-info"
-																aria-pressed={evidence?.section === key}
-																title={t.detail.evidenceTitle}
-																onClick={() =>
-																	setEvidence(
-																		evidence?.section === key
-																			? null
-																			: { section: key, sentences: sec.evidence },
-																	)
-																}
-															>
-																<QuoteIcon data-icon="inline-start" />
-																{evidence?.section === key
-																	? t.detail.hideEvidence
-																	: t.detail.showEvidence}
-															</Button>
-														) : null}
-														<Badge
-															variant="secondary"
-															className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+											<AnamnesisSection
+												key={key}
+												title={t.sections[key]}
+												confidence={ANAMNESIS_CONFIDENCE[sec.confidence]}
+												confidenceLabel={t.confidence[sec.confidence]}
+												edited={sec.edited}
+												editedLabel={t.review.editedTag}
+												className="py-4 first:pt-1 last:pb-1"
+											>
+												{sec.evidence.length ? (
+													<div>
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															className="aria-pressed:bg-info/10 aria-pressed:text-info"
+															aria-pressed={evidence?.section === key}
+															title={t.detail.evidenceTitle}
+															onClick={() =>
+																setEvidence(
+																	evidence?.section === key
+																		? null
+																		: { section: key, sentences: sec.evidence },
+																)
+															}
 														>
-															{t.confidence[sec.confidence]}
-														</Badge>
+															<QuoteIcon data-icon="inline-start" />
+															{evidence?.section === key
+																? t.detail.hideEvidence
+																: t.detail.showEvidence}
+														</Button>
 													</div>
-												</div>
+												) : null}
 												<p
-													className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
+													className={`text-sm leading-relaxed whitespace-pre-wrap ${
 														pending ? "text-muted-foreground italic" : "text-foreground"
 													}`}
 												>
 													{sec.content || t.detail.notReported}
 												</p>
 												{sec.evidence.length ? (
-													<details className="mt-2">
+													<details>
 														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
 															{t.detail.evidence(sec.evidence.length)}
 														</summary>
@@ -971,7 +953,7 @@ export function ConsultationDetailPage({
 														</ul>
 													</details>
 												) : null}
-											</div>
+											</AnamnesisSection>
 										);
 									})}
 								</div>

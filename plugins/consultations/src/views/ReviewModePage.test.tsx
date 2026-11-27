@@ -245,8 +245,9 @@ describe("ReviewModePage — transcript step", () => {
 			}),
 		);
 		// Same card always renders — contents swap chips for the note.
+		// The confidence banner repeats the title up top, so allow >1.
 		expect(screen.getByText("Passages to check")).toBeTruthy();
-		expect(screen.getByText("High-confidence transcript")).toBeTruthy();
+		expect(screen.getAllByText("High-confidence transcript").length).toBeGreaterThan(0);
 		expect(screen.queryByRole("button", { name: "Next uncertain" })).toBeNull();
 		expect(screen.queryByText(/of \d+ checked/)).toBeNull();
 	});
@@ -445,7 +446,8 @@ describe("ReviewModePage — anamnesis step", () => {
 describe("ReviewModePage — queue edge cases", () => {
 	it("item header and rail fall back to #id when patientName is null", () => {
 		renderPage({}, [item({ id: 11, patientName: null })], detail({ patientName: null }));
-		expect(screen.getByText("#10")).toBeTruthy();
+		// The review chip shows the #id fallback as both name and number.
+		expect(screen.getAllByText("#10").length).toBeGreaterThan(0);
 		expect(screen.getByText("#11")).toBeTruthy();
 	});
 
@@ -796,9 +798,9 @@ describe("ReviewModePage — anamnesis step extras", () => {
 		renderPage({}, [item({})], reviewed());
 		// Starts on anamnesis — transcript tab brings the segments back.
 		expect(screen.getByText("Chief complaint")).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "Transcript" }));
+		fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
 		expect(screen.getByText("Vou examinar agora.")).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "Anamnesis" }));
+		fireEvent.click(screen.getByRole("tab", { name: "Anamnesis" }));
 		expect(screen.getByText("Chief complaint")).toBeTruthy();
 	});
 

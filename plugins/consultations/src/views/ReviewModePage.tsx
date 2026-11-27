@@ -34,6 +34,17 @@ import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@ktbhealth/ui/components/popover";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
+import {
+	AnamnesisSection,
+	HomologationBar,
+	PendingDataStrip,
+} from "@ktbhealth/ui/components/anamnesis-review";
+import {
+	ConfidenceBanner,
+	ReviewFooter,
+	ReviewHeader,
+	ReviewStepTabs,
+} from "@ktbhealth/ui/components/transcript-review";
 
 import {
 	parseTranscriptSegments,
@@ -56,9 +67,9 @@ import {
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { isDeferred, reviewDone, type ConsultationListItem } from "./ConsultationsPage.tsx";
 import type { ConsultationDetail, ConsultationDetailApi } from "./ConsultationDetailPage.tsx";
-import { PatientContextBar, SpeakerAvatar } from "./-chat.tsx";
-import { AudioTranscriptPanel, ConsultationAudioPlayer } from "./-transcript.tsx";
-import { BADGE_TONES, CONF_STYLE, speakerNumber, speakerTone } from "./-ui.ts";
+import { SpeakerAvatar } from "./-chat.tsx";
+import { AudioTranscriptPanel, ReviewAudioPlayer, useZkAudioUrl } from "./-transcript.tsx";
+import { BADGE_TONES, speakerNumber, speakerTone } from "./-ui.ts";
 import { decryptConsultation, isEnvelope, parseAnamnesis, type ConsultationZk } from "../zk.ts";
 
 /** Whisper `avg_logprob` below this marks a segment as uncertain — the
@@ -217,19 +228,28 @@ export function ReviewModePage({
 	// no longer current) and the audio pipeline state.
 	const itemDeferred = c.deferredUntil != null && new Date(c.deferredUntil).getTime() > now;
 	const itemStale = c.anamnesisReviewedAt != null && c.anamnesisVersion != null && !anamnesisOk;
-	// `ConsultationDetail` carries no duration; the queue row does.
-	const audioDurationSec = queue.find((q) => q.id === c.id)?.audioDurationSec;
+	// `ConsultationDetail` carries no duration; the queue row does —
+	// fall back to the last segment end (ZK rows decrypt client-side,
+	// so the raw column may be an envelope the parser rejects → []).
+	const queueDuration = queue.find((q) => q.id === c.id)?.audioDurationSec;
+	const segmentDuration = (() => {
+		const segs = parseTranscriptSegments(c.transcriptSegments);
+		return segs.length > 0 ? segs[segs.length - 1]!.end : undefined;
+	})();
+	const audioDurationSec = queueDuration ?? segmentDuration;
 
 	return (
 		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
-			<PageHeader className="shrink-0" title={t.review.title} />
-			<PatientContextBar
-				name={c.patientName ?? `#${c.id}`}
-				meta={[
-					<LocalDateTime key="created" value={c.createdAt} />,
-					...(audioDurationSec != null ? [fmtTime(audioDurationSec)] : []),
-				]}
-				chips={
+			<ReviewHeader
+				className="shrink-0"
+				title={t.review.title}
+				patient={{
+					name: c.patientName ?? `#${c.id}`,
+					consultationNumber: `#${c.id}`,
+					consultedAt: <LocalDateTime value={c.createdAt} />,
+					durationSec: audioDurationSec,
+				}}
+				actions={
 					<>
 						{itemDeferred ? (
 							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.neutral}`}>
@@ -250,10 +270,6 @@ export function ReviewModePage({
 								{t.review.audioProcessingTag}
 							</Badge>
 						) : null}
-					</>
-				}
-				actions={
-					<>
 						{api?.deferConsultation ? (
 							<DeferControl
 								c={c}
@@ -308,6 +324,10 @@ export function ReviewModePage({
 }
 
 type Slice = ReturnType<typeof consultationMessages>;
+
+/** Anamnesis confidence scale (alta/media/baixa) → the ui review
+ * blocks' high/medium/low. */
+const ANAMNESIS_CONFIDENCE = { alta: "high", media: "medium", baixa: "low" } as const;
 
 const AUDIO_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
 
@@ -433,6 +453,9 @@ function ReviewItem({
 	// ZK overlay: decrypted ciphered fields (transcript, segments,
 	// edits). Non-ZK rows arrive plaintext and skip this entirely.
 	const [dec, setDec] = useState<Partial<ConsultationDetail>>({});
+	// ZK audio (T-147): ciphertext fetch + browser decrypt → object URL;
+	// null while locked — the player must not fall back to the endpoint.
+	const zkAudioUrl = useZkAudioUrl(zk, c);
 	useEffect(() => {
 		if (!zk) return;
 		let live = true;
@@ -477,25 +500,13 @@ function ReviewItem({
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
 			{/* Step tabs — order suggested, never gated. */}
-			<div className="flex w-fit shrink-0 items-center gap-1 rounded-lg border bg-card p-1">
-				{(["transcript", "anamnesis"] as const).map((s) => (
-					<button
-						key={s}
-						type="button"
-						onClick={() => setStep(s)}
-						className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
-							step === s
-								? "bg-primary/10 text-primary font-medium"
-								: "text-muted-foreground hover:text-foreground"
-						}`}
-					>
-						{(s === "transcript" ? confirmed : localAnamnesisOk) ? (
-							<CheckIcon className="size-3.5 text-success" />
-						) : null}
-						{s === "transcript" ? t.review.stepTranscript : t.review.stepAnamnesis}
-					</button>
-				))}
-			</div>
+			<ReviewStepTabs
+				value={step}
+				onValueChange={setStep}
+				transcriptLabel={t.review.stepTranscript}
+				anamnesisLabel={t.review.stepAnamnesis}
+				completed={{ transcript: confirmed, anamnesis: localAnamnesisOk }}
+			/>
 
 			{step === "transcript" ? (
 				<TranscriptStep
@@ -503,6 +514,7 @@ function ReviewItem({
 					api={api}
 					t={t}
 					author={author}
+					audioSrc={zk ? zkAudioUrl : undefined}
 					entries={entries}
 					base={base}
 					projected={projected}
@@ -525,6 +537,7 @@ function ReviewItem({
 					t={t}
 					i18n={i18n}
 					locale={locale}
+					audioSrc={zk ? zkAudioUrl : undefined}
 					editable={zk === undefined && api?.editAnamnesis !== undefined}
 					projected={projected}
 					segments={segments}
@@ -547,6 +560,7 @@ function TranscriptStep({
 	api,
 	t,
 	author,
+	audioSrc,
 	entries,
 	base,
 	projected,
@@ -559,6 +573,9 @@ function TranscriptStep({
 	api?: ConsultationDetailApi;
 	t: Slice;
 	author?: string | null;
+	/** `undefined` → authenticated endpoint; `null` → ZK ciphertext that
+	 * never unlocked (no fallback — same contract as AudioTranscriptPanel). */
+	audioSrc?: string | null;
 	entries: readonly TranscriptEditEntry[];
 	base: string;
 	projected: string;
@@ -580,6 +597,10 @@ function TranscriptStep({
 
 	const hasAudio = c.audioKey != null;
 	const rich = hasAudio && segments.length > 0;
+	// Same src contract as AudioTranscriptPanel: undefined resolves the
+	// authenticated endpoint, null means playback is impossible (ZK).
+	const playSrc =
+		audioSrc === undefined ? `/api/consultations/${c.id}/audio` : (audioSrc ?? undefined);
 	// Speaker headers (P-118): SPEAKER_NN → localized "Speaker N"; named
 	// speakers keep their label — mirrors `AudioTranscriptPanel`.
 	const speakerLabel = (speaker: string): string => {
@@ -602,6 +623,14 @@ function TranscriptStep({
 		[segments],
 	);
 	const uncertainSet = useMemo(() => new Set(uncertainIdxs), [uncertainIdxs]);
+	// Confidence banner metrics: no single ASR score exists — derive the
+	// share of segments NOT flagged uncertain; flagged count is the
+	// anomaly number the uncertain queue below itemizes.
+	const flaggedCount = uncertainIdxs.length;
+	const confidencePct =
+		segments.length === 0
+			? 100
+			: Math.round(((segments.length - flaggedCount) / segments.length) * 100);
 	// Triage state (PL-023): a passage counts as checked once the
 	// playhead actually reaches it or the doctor edits it — both mean
 	// it was heard. `unverify` reopens a chip checked by a stray seek.
@@ -749,13 +778,16 @@ function TranscriptStep({
 					</div>
 				</CardHeader>
 				<CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-					{rich || hasAudio ? (
-						<ConsultationAudioPlayer
-							src={`/api/consultations/${c.id}/audio`}
+					{(rich || hasAudio) && playSrc ? (
+						<ReviewAudioPlayer
+							src={playSrc}
 							audioRef={audioRef}
 							ariaLabel={t.transcriptPanel.audioLabel}
 							segments={segments}
-							rateLabel={t.transcriptPanel.playbackRate}
+							playbackLabel={t.reviewUi.playback}
+							syncLabel={t.reviewUi.syncBadge}
+							speedLabel={t.transcriptPanel.playbackRate}
+							volumeLabel={t.reviewUi.volume}
 							skipSilenceLabel={t.transcriptPanel.skipSilence}
 							onTimeUpdate={(now) => {
 								const idx = segments.findIndex((s) => now >= s.start && now < s.end);
@@ -769,6 +801,19 @@ function TranscriptStep({
 
 					{rich ? (
 						<>
+							<ConfidenceBanner
+								className="shrink-0"
+								confidence={confidencePct}
+								anomalies={flaggedCount}
+								tone={flaggedCount === 0 ? "success" : "warning"}
+								title={
+									flaggedCount === 0
+										? t.review.highConfTitle
+										: t.reviewUi.flaggedTitle(flaggedCount)
+								}
+								description={flaggedCount === 0 ? t.review.highConfHint : t.reviewUi.flaggedHint}
+								meta={`${confidencePct}%`}
+							/>
 							{/* One stable frame across items — the box is always
 							 * here, only its contents vary: chips to drain, or
 							 * the high-confidence note. */}
@@ -1009,15 +1054,22 @@ function TranscriptStep({
 					)}
 
 					{api?.reviewTranscript ? (
-						<div className="shrink-0 border-t pt-4">
-							<Button type="button" disabled={busy} onClick={confirm}>
-								<CheckIcon data-icon="inline-start" />
-								{t.review.confirmAndContinue}
-							</Button>
-						</div>
-					) : null}
-
-					<ShortcutLegend t={t} />
+						<ReviewFooter
+							className="shrink-0 border-t pt-4"
+							shortcuts={[
+								{ keys: [t.review.shortcutKeySpace], label: t.review.shortcutPlayPause },
+								{ keys: ["←"], label: t.review.shortcutSeekBack },
+								{ keys: ["→"], label: t.review.nextUncertain },
+								{ keys: ["C"], label: t.review.shortcutConfirm },
+							]}
+							confirmLabel={t.review.confirmAndContinue}
+							confirmingLabel={t.reviewUi.confirming}
+							confirming={busy}
+							onConfirm={confirm}
+						/>
+					) : (
+						<ShortcutLegend t={t} />
+					)}
 				</CardContent>
 			</Card>
 		</div>
@@ -1064,6 +1116,7 @@ function AnamnesisStep({
 	t,
 	i18n,
 	locale,
+	audioSrc,
 	editable,
 	projected,
 	segments,
@@ -1075,6 +1128,8 @@ function AnamnesisStep({
 	t: Slice;
 	i18n?: PageI18nSlice;
 	locale: string;
+	/** ZK object URL or null-while-locked — same contract as TranscriptStep. */
+	audioSrc?: string | null;
 	/** Non-ZK rows only — ZK re-encryption on edit is the BYOK path. */
 	editable: boolean;
 	projected: string;
@@ -1103,6 +1158,15 @@ function AnamnesisStep({
 	)
 		.filter((k) => doc?.[k])
 		.sort((a, b) => confRank(doc![a].confidence) - confRank(doc![b].confidence));
+	// Sections still awaiting physician input — summarized in the
+	// pending-data strip above the list.
+	const pendingKeys =
+		doc === null
+			? []
+			: sectionKeys.filter((k) => {
+					const content = doc[k].content;
+					return content.trim() === "" || content.startsWith("A preencher pelo médico");
+				});
 
 	// Chapter index — each section anchors to its first evidence
 	// sentence that resolves to a segment timestamp; chronological.
@@ -1227,6 +1291,7 @@ function AnamnesisStep({
 					<AudioTranscriptPanel
 						consultationId={c.id}
 						audioStatus={c.audioStatus}
+						audioSrc={audioSrc}
 						hasAudio={c.audioKey != null}
 						browserText={c.transcript}
 						serverText={c.serverTranscript}
@@ -1244,23 +1309,17 @@ function AnamnesisStep({
 				<CardHeader className="flex-row items-center justify-between gap-2">
 					<CardTitle className="text-base">{t.review.stepAnamnesis}</CardTitle>
 					{hasEdits ? (
-						<span className="flex items-center gap-2">
-							<span className="text-[11px] text-muted-foreground">{t.review.staleAnamnesis}</span>
-							{api?.generateAnamnesis ? (
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									disabled={busy}
-									onClick={regenerate}
-								>
-									{t.review.regenerateAnamnesis}
-								</Button>
-							) : null}
-						</span>
+						<span className="text-[11px] text-muted-foreground">{t.review.staleAnamnesis}</span>
 					) : null}
 				</CardHeader>
 				<CardContent>
+					{pendingKeys.length > 0 ? (
+						<PendingDataStrip
+							title={t.reviewUi.pendingTitle}
+							items={pendingKeys.map((k) => t.sections[k])}
+							className="mb-3"
+						/>
+					) : null}
 					<ScrollArea className="h-[58vh]">
 						<div className="divide-y divide-border pr-4">
 							{sectionKeys.map((key) => {
@@ -1268,49 +1327,37 @@ function AnamnesisStep({
 								const pending = sec.content.startsWith("A preencher pelo médico");
 								const active = evidence?.section === key;
 								return (
-									<div
+									<AnamnesisSection
 										key={key}
-										className={`cursor-pointer py-4 first:pt-1 last:pb-1 rounded-md px-2 -mx-2 transition-colors ${
+										title={t.sections[key]}
+										confidence={ANAMNESIS_CONFIDENCE[sec.confidence]}
+										confidenceLabel={t.confidence[sec.confidence]}
+										edited={sec.edited}
+										editedLabel={t.review.editedTag}
+										editLabel={t.review.editSection}
+										onEdit={
+											editable && editingKey !== key
+												? () => {
+														setEditingKey(key);
+														setEditDraft(sec.content);
+													}
+												: undefined
+										}
+										// Whole-section click toggles the evidence highlight —
+										// interactive descendants (edit pencil, editor
+										// buttons) keep their own behavior.
+										onClick={(e) => {
+											if ((e.target as HTMLElement).closest("button, textarea, input, select, a")) {
+												return;
+											}
+											setEvidence(active ? null : { section: key, sentences: sec.evidence });
+										}}
+										className={`cursor-pointer rounded-md px-2 -mx-2 py-4 first:pt-1 last:pb-1 transition-colors ${
 											active ? "bg-info/10" : "hover:bg-muted/50"
 										}`}
-										onClick={() =>
-											setEvidence(active ? null : { section: key, sentences: sec.evidence })
-										}
 									>
-										<div className="flex items-start justify-between gap-2">
-											<h3 className="text-sm font-semibold">
-												{t.sections[key]}
-												{sec.edited ? (
-													<span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-														({t.review.editedTag})
-													</span>
-												) : null}
-											</h3>
-											<span className="flex items-center gap-1.5">
-												{editable && editingKey !== key ? (
-													<button
-														type="button"
-														aria-label={t.review.editSection}
-														className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-														onClick={(e) => {
-															e.stopPropagation();
-															setEditingKey(key);
-															setEditDraft(sec.content);
-														}}
-													>
-														<PencilIcon className="size-3.5" />
-													</button>
-												) : null}
-												<Badge
-													variant="secondary"
-													className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
-												>
-													{t.confidence[sec.confidence]}
-												</Badge>
-											</span>
-										</div>
 										{editingKey === key ? (
-											<div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+											<div className="space-y-2">
 												<textarea
 													className="w-full rounded-md border bg-background px-2 py-1.5 text-sm leading-relaxed"
 													rows={Math.min(12, Math.max(3, editDraft.split("\n").length + 1))}
@@ -1333,8 +1380,10 @@ function AnamnesisStep({
 											</div>
 										) : (
 											<p
-												className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
-													pending ? "text-muted-foreground italic" : "text-foreground"
+												className={`text-sm leading-relaxed whitespace-pre-wrap ${
+													pending || sec.content.trim() === ""
+														? "text-muted-foreground italic"
+														: "text-foreground"
 												}`}
 											>
 												{sec.content || t.detail.notReported}
@@ -1346,18 +1395,23 @@ function AnamnesisStep({
 												{t.detail.evidence(sec.evidence.length)}
 											</p>
 										) : null}
-									</div>
+									</AnamnesisSection>
 								);
 							})}
 						</div>
 					</ScrollArea>
-					{api?.approveAnamnesis ? (
-						<div className="border-t pt-4">
-							<Button type="button" disabled={busy} onClick={approve}>
-								<CheckIcon data-icon="inline-start" />
-								{t.detail.approveAndNext}
-							</Button>
-						</div>
+					{api?.approveAnamnesis || (hasEdits && api?.generateAnamnesis) ? (
+						<HomologationBar
+							className="mt-4"
+							title={t.review.stepAnamnesis}
+							description={t.reviewUi.approveHint}
+							onApprove={api?.approveAnamnesis ? approve : undefined}
+							approveLabel={t.detail.approveAndNext}
+							approveDisabled={busy}
+							onRegenerate={hasEdits && api?.generateAnamnesis ? regenerate : undefined}
+							regenerateLabel={t.review.regenerateAnamnesis}
+							regenerateDisabled={busy}
+						/>
 					) : null}
 				</CardContent>
 			</Card>
