@@ -15,19 +15,21 @@ vi.mock("redis", () => ({ createClient: redisMock.createClient }));
 /** In-memory RedisLike: LPUSH/BRPOP semantics over a string list. */
 const fakeRedis = () => {
 	const list: string[] = [];
+	const timeouts: number[] = [];
 	const client: RedisLike = {
 		lPush: async (_key, value) => {
 			list.unshift(value);
 			return list.length;
 		},
-		brPop: async () => {
+		brPop: async (_key, timeoutSeconds) => {
+			timeouts.push(timeoutSeconds);
 			const v = list.pop();
 			return v === undefined ? null : (["ktb:jobs", v] as const);
 		},
 		lLen: async () => list.length,
 		quit: async () => "OK",
 	};
-	return { client, list };
+	return { client, list, timeouts };
 };
 
 const envelope = (id: string): JobEnvelope => ({
@@ -84,6 +86,26 @@ describe("createRedisJobsTransport", () => {
 		await t.send(envelope("b"));
 		const msgs = await t.receive(5);
 		expect(msgs).toHaveLength(2);
+		await t.close();
+	});
+
+	it("receive uses the short fill timeout once a message is in hand", async () => {
+		const { client, timeouts } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 5 });
+		await t.send(envelope("one"));
+		const msgs = await t.receive(5);
+		expect(msgs).toHaveLength(1);
+		// First pop may block for the full idle window; the batch-fill
+		// pops that drain the queue must not stall it again.
+		expect(timeouts).toEqual([5, 0.1]);
+		await t.close();
+	});
+
+	it("receive on an empty queue blocks with blockSeconds", async () => {
+		const { client, timeouts } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 3 });
+		expect(await t.receive(5)).toEqual([]);
+		expect(timeouts).toEqual([3]);
 		await t.close();
 	});
 
