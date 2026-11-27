@@ -243,6 +243,7 @@ describe("createRedisJobsTransport", () => {
 		const destroy = vi.fn();
 		const client: RedisLike = {
 			lPush: async () => 0,
+			rPush: async () => 0,
 			brPop: async () => null,
 			lLen: async () => 0,
 			// Simulates node-redis during reconnect: QUIT sits in the
