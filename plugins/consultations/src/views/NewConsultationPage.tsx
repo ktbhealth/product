@@ -1354,32 +1354,33 @@ export function NewConsultationPage({
 						 * like the catalog demo. The single header carries
 						 * source tabs + notices; patient, consent and the
 						 * audio test live inside the room itself. ---- */
-						<div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
-							{/* single stage header — title left, controls right;
-							 * notices wrap to a second row inside the same
-							 * header only when present */}
-							<header className="flex min-h-12 shrink-0 flex-wrap items-center gap-3 border-b px-4 py-1.5 lg:px-8">
-								<span className="text-sm font-semibold tracking-tight">{nc.title}</span>
-								<div className="ml-auto flex items-center gap-3">
-									{patientPickerOpen ? patientPicker : null}
-									{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
-									{sourceTabs}
+						<div className="fixed inset-0 z-50 overflow-hidden bg-background">
+							{/* floating chrome — the room itself stays full-bleed
+							 * exactly like the catalog demo */}
+							<Link
+								to={portalPath("/consultations")}
+								className={`${buttonVariants({ variant: "outline", size: "sm" })} absolute bottom-3 left-3 z-10 bg-background/80 backdrop-blur`}
+							>
+								<ArrowLeftIcon />
+								{t.detail.back}
+							</Link>
+							{patientPickerOpen ? (
+								<div className="absolute top-20 left-3 z-10 rounded-xl border bg-card p-3 shadow-lg">
+									{patientPicker}
 								</div>
-								<div className="flex min-w-0 flex-1 basis-full flex-col gap-2 empty:hidden">
+							) : null}
+							{draft || restoredUrl ? (
+								<div className="absolute top-20 right-3 z-10 flex w-80 flex-col gap-2">
 									{draftNotices}
 								</div>
-							</header>
-							<div className="flex shrink-0 items-center px-4 pt-1.5 lg:px-8">
-								<Link
-									to={portalPath("/consultations")}
-									className={buttonVariants({ variant: "outline", size: "sm" })}
-								>
-									<ArrowLeftIcon />
-									{t.detail.back}
-								</Link>
-							</div>
+							) : null}
+							{!supported ? (
+								<p className="absolute right-3 bottom-3 z-10 rounded-md bg-background/80 px-2 py-1 text-xs text-info backdrop-blur">
+									{nc.unsupportedBrowser}
+								</p>
+							) : null}
 							<PreconsultationRoom
-								className="min-h-0 flex-1"
+								className="h-full"
 								physician={{ name: physician ?? t.speakers.doctor }}
 								patient={{
 									name: selectedPatient?.name ?? nc.unlinked,
