@@ -1,13 +1,6 @@
 import * as Context from "effect/Context";
-import type { JsonObject } from "effect/Schema";
 
-import {
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind, type Plugin } from "@ktb/kernel";
 import { COLLECTION_NAME_RE, FORBIDDEN_PATH_SEGMENTS } from "@ktb/dsl";
 
 import type { Fields } from "./fields.ts";
@@ -28,14 +21,6 @@ import { checkValue } from "./validate.ts";
  * `DocumentCollections` service — the same injection pattern
  * `makePluginStatesLive(plugins)` uses in @ktb/app-host.
  */
-
-/** The registered contribution kind for document collections. */
-export const DOCUMENT_COLLECTION_KIND: ContributionKindDescriptor = {
-	id: "document.collection",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	consumers: ["app-host.server", "plugin-manager"],
-	ordering: "topo",
-};
 
 /** Declared secondary indexes — dotted field paths, ADVISORY ONLY
  * (T-129): stored in `schema_json` for tooling/future DB-side indexes.
@@ -381,6 +366,34 @@ const assertPermissionsBlock = (value: unknown, collectionName: string): void =>
 };
 
 /**
+ * The `document.collection` contribution pipeline — kind descriptor,
+ * contribution / to-def / collect builders — owned by `defineDefKind`
+ * (@ktb/kernel). Two deliberate deviations from the sibling `*.def`
+ * kinds: the manifest `version` mirrors the def's schema `version`
+ * (not `"1"`), and there is no `makeRegistry`/`ownerIndex` —
+ * collections are static composition data, not owner-gated defs:
+ * enablement gates dispatch (routes/CQRS of a disabled plugin never
+ * run), so a disabled plugin's collections simply go unused (see
+ * {@link collectDocumentCollections}). `defineCollection` also stays
+ * hand-rolled: it takes an options object with defaults rather than
+ * asserting an existing def.
+ */
+const documentCollectionKind = defineDefKind<DocumentCollection, "collections">({
+	id: "document.collection",
+	consumers: ["app-host.server", "plugin-manager"],
+	assert: assertCollectionDef,
+	defId: (def) => def.name,
+	noun: "document collection",
+	field: "collections",
+	version: (def) => String(def.version),
+	uniqueKey: (def) => def.name,
+	uniqueLabel: "document collection",
+});
+
+/** The registered contribution kind for document collections. */
+export const DOCUMENT_COLLECTION_KIND = documentCollectionKind.KIND;
+
+/**
  * Build the manifest entry a plugin adds to `contributions`:
  *
  * ```ts
@@ -389,30 +402,18 @@ const assertPermissionsBlock = (value: unknown, collectionName: string): void =>
  *
  * `meta` carries the whole definition (JSON data); `id`/`version`
  * mirror the def for tooling that reads them without decoding meta.
+ * Defs are pure JSON by construction (fields.ts keeps every
+ * descriptor JSON-shaped) — EXCEPT `migrations`, whose `migrate`
+ * functions are code: they ride `meta` in-process (same JS object,
+ * never serialized — the client registry uses separate client.ts
+ * modules) and are stripped from `schema_json` by ensureCollection.
  */
-export const documentCollectionContribution = (def: DocumentCollection): PluginContribution => ({
-	kind: DOCUMENT_COLLECTION_KIND.id,
-	id: def.name,
-	version: String(def.version),
-	// Defs are pure JSON by construction (fields.ts keeps every
-	// descriptor JSON-shaped) — EXCEPT `migrations`, whose `migrate`
-	// functions are code: they ride `meta` in-process (same JS object,
-	// never serialized — the client registry uses separate client.ts
-	// modules) and are stripped from `schema_json` by ensureCollection.
-	// The cast bridges the typed view onto the serializable contract.
-	meta: def as unknown as JsonObject,
-});
+export const documentCollectionContribution = documentCollectionKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * `toEvalContribution`. `owner` falls back to the contributing plugin id. */
-export const toDocumentCollection = (
-	entry: PluginContribution,
-	pluginId: string,
-): DocumentCollection => {
-	const def = assertCollectionDef(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toDocumentCollection = documentCollectionKind.toDef;
 
 /**
  * The ordered collection registry the composition root provides to
@@ -444,21 +445,7 @@ export class DocumentCollections extends Context.Service<
  */
 export const collectDocumentCollections = (
 	plugins: readonly Plugin[],
-): readonly DocumentCollection[] => {
-	const collected = collectKindContributions(plugins, DOCUMENT_COLLECTION_KIND).map((entry) =>
-		toDocumentCollection(entry.payload as PluginContribution, entry.plugin.id),
-	);
-	const seen = new Set<string>();
-	for (const def of collected) {
-		if (seen.has(def.name)) {
-			throw new Error(
-				`duplicate document collection "${def.name}" contributed by multiple plugins`,
-			);
-		}
-		seen.add(def.name);
-	}
-	return collected;
-};
+): readonly DocumentCollection[] => documentCollectionKind.collect(plugins);
 
 /** Build the `DocumentCollections` service value for a plugin graph —
  * the layer @ktb/app-host merges into `core` next to

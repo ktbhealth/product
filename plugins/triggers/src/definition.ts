@@ -1,15 +1,6 @@
 import * as Context from "effect/Context";
-import type { JsonObject } from "effect/Schema";
 
-import {
-	buildDefOwnerIndex,
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type DefOwnerIndex,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind, type DefOwnerIndex } from "@ktb/kernel";
 import {
 	assertCondition,
 	COLLECTION_NAME_RE,
@@ -43,17 +34,6 @@ import {
  * types land in ./runner.ts; the `hook` action id is the escape
  * hatch for domain logic.
  */
-
-/** The registered contribution kind for trigger definitions. */
-export const TRIGGER_DEF_KIND: ContributionKindDescriptor = {
-	id: "trigger.def",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	// app-host.server: the Triggers service resolves defs through
-	// TriggerDefinitions. plugin-manager: defs are JSON data tooling may
-	// enumerate via ctx.plugins.
-	consumers: ["app-host.server", "plugin-manager"],
-	ordering: "topo",
-};
 
 /** Trigger ids are diagnostic keys (logs, hook handles) — slug-safe. */
 export const TRIGGER_ID_PATTERN = SLUG_PATTERN;
@@ -214,12 +194,32 @@ export const assertTriggerDef = (value: unknown, context: string): TriggerDef =>
 };
 
 /**
+ * The `trigger.def` contribution pipeline — kind descriptor, define /
+ * contribution / to-def / collect / registry builders — owned by
+ * `defineDefKind` (@ktb/kernel). Trigger ids are the uniqueness key.
+ */
+const triggerDefKind = defineDefKind<TriggerDef, "triggers">({
+	id: "trigger.def",
+	// app-host.server: the Triggers service resolves defs through
+	// TriggerDefinitions. plugin-manager: defs are JSON data tooling may
+	// enumerate via ctx.plugins.
+	consumers: ["app-host.server", "plugin-manager"],
+	assert: assertTriggerDef,
+	defId: (def) => def.id,
+	noun: "trigger",
+	field: "triggers",
+	uniqueKey: (def) => def.id,
+});
+
+/** The registered contribution kind for trigger definitions. */
+export const TRIGGER_DEF_KIND = triggerDefKind.KIND;
+
+/**
  * Declare a trigger. Everything is data — the result is
  * JSON-serializable by construction so it can be dropped into
  * `PluginContribution.meta` unchanged.
  */
-export const defineTrigger = (def: TriggerDef): TriggerDef =>
-	assertTriggerDef(def, `trigger "${String((def as { id?: unknown }).id)}"`);
+export const defineTrigger = triggerDefKind.define;
 
 /**
  * Build the manifest entry a plugin adds to `contributions`:
@@ -230,21 +230,13 @@ export const defineTrigger = (def: TriggerDef): TriggerDef =>
  *
  * `meta` carries the whole definition (JSON data); `id` is the trigger id.
  */
-export const triggerDefContribution = (def: TriggerDef): PluginContribution => ({
-	kind: TRIGGER_DEF_KIND.id,
-	id: def.id,
-	version: "1",
-	meta: def as unknown as JsonObject,
-});
+export const triggerDefContribution = triggerDefKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * {@link assertTriggerDef}. `owner` falls back to the contributing
  * plugin id. */
-export const toTriggerDefinition = (entry: PluginContribution, pluginId: string): TriggerDef => {
-	const def = assertTriggerDef(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toTriggerDefinition = triggerDefKind.toDef;
 
 /**
  * Collect every `trigger.def` contribution across `plugins` (expected
@@ -252,19 +244,7 @@ export const toTriggerDefinition = (entry: PluginContribution, pluginId: string)
  * Duplicate trigger ids are a packaging bug — this throws rather than
  * letting the first contribution silently shadow the rest.
  */
-export const collectTriggerDefinitions = (plugins: readonly Plugin[]): readonly TriggerDef[] => {
-	const collected = collectKindContributions(plugins, TRIGGER_DEF_KIND).map(({ plugin, payload }) =>
-		toTriggerDefinition(payload as PluginContribution, plugin.id),
-	);
-	const seen = new Set<string>();
-	for (const def of collected) {
-		if (seen.has(def.id)) {
-			throw new Error(`duplicate trigger id "${def.id}" contributed by multiple plugins`);
-		}
-		seen.add(def.id);
-	}
-	return collected;
-};
+export const collectTriggerDefinitions = triggerDefKind.collect;
 
 /**
  * The ordered trigger registry the composition root provides to the
@@ -284,9 +264,4 @@ export class TriggerDefinitions extends Context.Service<
 >()("@ktb/triggers/TriggerDefinitions") {}
 
 /** Build the `TriggerDefinitions` service value for a plugin graph. */
-export const makeTriggerDefinitions = (
-	plugins: readonly Plugin[],
-): { readonly triggers: readonly TriggerDef[]; readonly ownerIndex: DefOwnerIndex } => ({
-	triggers: collectTriggerDefinitions(plugins),
-	ownerIndex: buildDefOwnerIndex(plugins),
-});
+export const makeTriggerDefinitions = triggerDefKind.makeRegistry;

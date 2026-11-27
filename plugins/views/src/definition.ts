@@ -1,15 +1,7 @@
 import * as Context from "effect/Context";
-import type { Json, JsonObject } from "effect/Schema";
+import type { Json } from "effect/Schema";
 
-import {
-	buildDefOwnerIndex,
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type DefOwnerIndex,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind, type DefOwnerIndex } from "@ktb/kernel";
 import { COLLECTION_NAME_RE, isFieldPath, isRecord, PERMISSION_RE, SLUG_PATTERN } from "@ktb/dsl";
 import {
 	QUERY_OPERATORS,
@@ -47,17 +39,6 @@ import {
  * is no `hook` escape hatch; new presentation needs a renderer in
  * @ktb/views or a bespoke page contribution.
  */
-
-/** The registered contribution kind for view definitions. */
-export const VIEW_DEF_KIND: ContributionKindDescriptor = {
-	id: "view.def",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	// app-host.server: the /v/* loader resolves defs through
-	// ViewDefinitions. app-host.client/plugin-manager: defs are JSON
-	// data other client surfaces may enumerate via ctx.plugins.
-	consumers: ["app-host.server", "app-host.client", "plugin-manager"],
-	ordering: "topo",
-};
 
 /** View ids double as URL segments — keep them slug-safe. */
 export const VIEW_ID_PATTERN = SLUG_PATTERN;
@@ -341,13 +322,45 @@ export const assertViewDef = (value: unknown, context: string): ViewDef => {
 	return checked;
 };
 
+/** The URL key a def mounts under: the custom `path` segment when
+ * present (`/v/reports` → "reports"), else the view id. */
+export const viewKey = (def: ViewDef): string =>
+	def.path === undefined ? def.id : def.path.slice(VIEW_PATH_PREFIX.length);
+
+/** Mount path for a key — the inverse of {@link viewKey} for links. */
+export const viewPathFor = (def: ViewDef): string => `${VIEW_PATH_PREFIX}${viewKey(def)}`;
+
+/**
+ * The `view.def` contribution pipeline — kind descriptor, define /
+ * contribution / to-def / collect / registry builders — owned by
+ * `defineDefKind` (@ktb/kernel). Uniqueness is checked on the URL key
+ * (`viewKey`), not the raw id: two defs may share an id only if their
+ * custom paths differ — in practice they don't, and the derived key is
+ * what the dispatcher resolves.
+ */
+const viewDefKind = defineDefKind<ViewDef, "views">({
+	id: "view.def",
+	// app-host.server: the /v/* loader resolves defs through
+	// ViewDefinitions. app-host.client/plugin-manager: defs are JSON
+	// data other client surfaces may enumerate via ctx.plugins.
+	consumers: ["app-host.server", "app-host.client", "plugin-manager"],
+	assert: assertViewDef,
+	defId: (def) => def.id,
+	noun: "view",
+	field: "views",
+	uniqueKey: viewKey,
+	uniqueLabel: "view key",
+});
+
+/** The registered contribution kind for view definitions. */
+export const VIEW_DEF_KIND = viewDefKind.KIND;
+
 /**
  * Declare a view. Everything is data — the result is JSON-serializable
  * by construction so it can be dropped into `PluginContribution.meta`
  * unchanged.
  */
-export const defineView = (def: ViewDef): ViewDef =>
-	assertViewDef(def, `view "${String((def as { id?: unknown }).id)}"`);
+export const defineView = viewDefKind.define;
 
 /**
  * Build the manifest entry a plugin adds to `contributions`:
@@ -358,29 +371,13 @@ export const defineView = (def: ViewDef): ViewDef =>
  *
  * `meta` carries the whole definition (JSON data); `id` is the view id.
  */
-export const viewDefContribution = (def: ViewDef): PluginContribution => ({
-	kind: VIEW_DEF_KIND.id,
-	id: def.id,
-	version: "1",
-	meta: def as unknown as JsonObject,
-});
-
-/** The URL key a def mounts under: the custom `path` segment when
- * present (`/v/reports` → "reports"), else the view id. */
-export const viewKey = (def: ViewDef): string =>
-	def.path === undefined ? def.id : def.path.slice(VIEW_PATH_PREFIX.length);
-
-/** Mount path for a key — the inverse of {@link viewKey} for links. */
-export const viewPathFor = (def: ViewDef): string => `${VIEW_PATH_PREFIX}${viewKey(def)}`;
+export const viewDefContribution = viewDefKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * {@link assertViewDef}. `owner` falls back to the contributing
  * plugin id. */
-export const toViewDefinition = (entry: PluginContribution, pluginId: string): ViewDef => {
-	const def = assertViewDef(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toViewDefinition = viewDefKind.toDef;
 
 /**
  * Collect every `view.def` contribution across `plugins` (expected in
@@ -388,20 +385,7 @@ export const toViewDefinition = (entry: PluginContribution, pluginId: string): V
  * Duplicate URL keys are a packaging bug — this throws rather than
  * letting the first contribution silently shadow the rest.
  */
-export const collectViewDefinitions = (plugins: readonly Plugin[]): readonly ViewDef[] => {
-	const collected = collectKindContributions(plugins, VIEW_DEF_KIND).map(({ plugin, payload }) =>
-		toViewDefinition(payload as PluginContribution, plugin.id),
-	);
-	const seen = new Set<string>();
-	for (const def of collected) {
-		const key = viewKey(def);
-		if (seen.has(key)) {
-			throw new Error(`duplicate view key "${key}" contributed by multiple plugins`);
-		}
-		seen.add(key);
-	}
-	return collected;
-};
+export const collectViewDefinitions = viewDefKind.collect;
 
 export interface ViewPathSegments {
 	/** The view's URL key (id or custom path segment). */
@@ -454,9 +438,4 @@ export class ViewDefinitions extends Context.Service<
 >()("@ktb/views/ViewDefinitions") {}
 
 /** Build the `ViewDefinitions` service value for a plugin graph. */
-export const makeViewDefinitions = (
-	plugins: readonly Plugin[],
-): { readonly views: readonly ViewDef[]; readonly ownerIndex: DefOwnerIndex } => ({
-	views: collectViewDefinitions(plugins),
-	ownerIndex: buildDefOwnerIndex(plugins),
-});
+export const makeViewDefinitions = viewDefKind.makeRegistry;

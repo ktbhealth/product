@@ -1,16 +1,7 @@
 import * as Context from "effect/Context";
-import type { JsonObject } from "effect/Schema";
 
 import { API_KEY_PATTERN, COLLECTION_NAME_RE, isRecord, PERMISSION_RE } from "@ktb/dsl";
-import {
-	buildDefOwnerIndex,
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type DefOwnerIndex,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind, type DefOwnerIndex } from "@ktb/kernel";
 
 /**
  * API exposures as DATA — the `api.expose` contribution kind.
@@ -39,17 +30,6 @@ import {
  * dispatch in ./service.ts is a fixed switch; there is no `hook`
  * escape hatch, custom verbs need a route contribution instead.
  */
-
-/** The registered contribution kind for API exposures. */
-export const API_EXPOSE_KIND: ContributionKindDescriptor = {
-	id: "api.expose",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	// app-host.server: the Api service resolves exposures through
-	// ApiExposures. plugin-manager: exposures are JSON data tooling may
-	// enumerate via ctx.plugins.
-	consumers: ["app-host.server", "plugin-manager"],
-	ordering: "topo",
-};
 
 /** The single mount subtree every exposure lives under. */
 export const API_BASE_PATH = "/api/documents";
@@ -181,12 +161,37 @@ export const assertApiExposure = (value: unknown, context: string): ApiExposure 
 };
 
 /**
+ * The `api.expose` contribution pipeline — kind descriptor, define /
+ * contribution / to-def / collect / registry builders — owned by
+ * `defineDefKind` (@ktb/kernel). Manifest ids and the duplicate guard
+ * key on the URL key (`exposureKey`), not the collection name; the
+ * contribution builder re-asserts the def so an untyped caller still
+ * gets a packaging-bug throw instead of a garbage key.
+ */
+const apiExposureKind = defineDefKind<ApiExposure, "exposures">({
+	id: "api.expose",
+	// app-host.server: the Api service resolves exposures through
+	// ApiExposures. plugin-manager: exposures are JSON data tooling may
+	// enumerate via ctx.plugins.
+	consumers: ["app-host.server", "plugin-manager"],
+	assert: assertApiExposure,
+	defId: (def) => def.collection,
+	noun: "api exposure",
+	field: "exposures",
+	contributionId: (def) => exposureKey(assertApiExposure(def, "apiExposureContribution")),
+	uniqueKey: exposureKey,
+	uniqueLabel: "api exposure key",
+});
+
+/** The registered contribution kind for API exposures. */
+export const API_EXPOSE_KIND = apiExposureKind.KIND;
+
+/**
  * Declare an exposure. Everything is data — the result is
  * JSON-serializable by construction so it can be dropped into
  * `PluginContribution.meta` unchanged.
  */
-export const defineApiExposure = (def: ApiExposure): ApiExposure =>
-	assertApiExposure(def, `api exposure "${String((def as { collection?: unknown }).collection)}"`);
+export const defineApiExposure = apiExposureKind.define;
 
 /**
  * Build the manifest entry a plugin adds to `contributions`:
@@ -197,21 +202,13 @@ export const defineApiExposure = (def: ApiExposure): ApiExposure =>
  *
  * `meta` carries the whole definition (JSON data); `id` is the URL key.
  */
-export const apiExposureContribution = (def: ApiExposure): PluginContribution => ({
-	kind: API_EXPOSE_KIND.id,
-	id: exposureKey(assertApiExposure(def, "apiExposureContribution")),
-	version: "1",
-	meta: def as unknown as JsonObject,
-});
+export const apiExposureContribution = apiExposureKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * {@link assertApiExposure}. `owner` falls back to the contributing
  * plugin id. */
-export const toApiExposure = (entry: PluginContribution, pluginId: string): ApiExposure => {
-	const def = assertApiExposure(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toApiExposure = apiExposureKind.toDef;
 
 /**
  * Collect every `api.expose` contribution across `plugins` (expected in
@@ -219,20 +216,7 @@ export const toApiExposure = (entry: PluginContribution, pluginId: string): ApiE
  * Duplicate URL keys are a packaging bug — this throws rather than
  * letting the first contribution silently shadow the rest.
  */
-export const collectApiExposures = (plugins: readonly Plugin[]): readonly ApiExposure[] => {
-	const collected = collectKindContributions(plugins, API_EXPOSE_KIND).map(({ plugin, payload }) =>
-		toApiExposure(payload as PluginContribution, plugin.id),
-	);
-	const seen = new Set<string>();
-	for (const def of collected) {
-		const key = exposureKey(def);
-		if (seen.has(key)) {
-			throw new Error(`duplicate api exposure key "${key}" contributed by multiple plugins`);
-		}
-		seen.add(key);
-	}
-	return collected;
-};
+export const collectApiExposures = apiExposureKind.collect;
 
 /**
  * The ordered exposure registry the composition root provides to the
@@ -254,9 +238,4 @@ export class ApiExposures extends Context.Service<
 >()("@ktb/api/ApiExposures") {}
 
 /** Build the `ApiExposures` service value for a plugin graph. */
-export const makeApiExposures = (
-	plugins: readonly Plugin[],
-): { readonly exposures: readonly ApiExposure[]; readonly ownerIndex: DefOwnerIndex } => ({
-	exposures: collectApiExposures(plugins),
-	ownerIndex: buildDefOwnerIndex(plugins),
-});
+export const makeApiExposures = apiExposureKind.makeRegistry;
