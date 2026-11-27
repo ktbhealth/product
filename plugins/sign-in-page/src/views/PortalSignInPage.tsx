@@ -42,7 +42,7 @@ export interface PortalSignInPageProps {
  * account — a doctor/secretary profile and no patient side — does not
  * satisfy the patient audience, so /portal would 404 it at the gate;
  * it routes through the same funnel as /login/doctor instead
- * (/doctors/select for multi-profile accounts, "/" otherwise). The
+ * (/portal/<instance> by profile role, "/" when nothing resolves). The
  * doctor cross-link follows the /login picker's rule (P-058/P-099):
  * no offer when the doctor sign-in tile is not live.
  */
@@ -105,8 +105,14 @@ export function PortalSignInPage({ data, ctx }: PortalSignInPageProps) {
 			const audiences = await portalAudiencesFn();
 			if (!audiences.includes(PORTAL_AUDIENCE.patient)) {
 				const context = await doctorContextFn();
-				const profiles = context?.profiles.length ?? 0;
-				window.location.assign(profiles > 1 ? "/doctors/select" : "/");
+				const profiles = context?.profiles ?? [];
+				window.location.assign(
+					profiles.length === 0
+						? "/"
+						: profiles.some((p) => p.role === "owner")
+							? "/portal/doctor"
+							: "/portal/secretary",
+				);
 				return;
 			}
 		} catch {
