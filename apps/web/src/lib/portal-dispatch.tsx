@@ -62,10 +62,15 @@ export const portalLoader = async ({
 	if (entry === undefined) throw notFound();
 	const pageEntry = findPage(portalPages, path);
 	if (pageEntry === undefined) throw notFound();
-	const [states, audiences, result, theme, tenant] = await Promise.all([
+	// Enablement resolves BEFORE the page-data server fn is invoked:
+	// the side-effect-free reads (states/audiences/theme/tenant) race,
+	// the package gate runs, and only a live entry reaches
+	// portalPageDataFn — the same ordering the server-side pageData
+	// middleware stages enforce, so a disabled plugin's loader work
+	// never starts.
+	const [states, audiences, theme, tenant] = await Promise.all([
 		pluginStatesFn(),
 		portalAudiencesFn(),
-		portalPageDataFn({ data: path }),
 		// Instance → tenant → platform fallback (P-082).
 		themeScopeFn({ data: { scope: "portal-instance", id: instanceId } }),
 		// Bound tenant for `when.minTenantRole` chrome gates.
@@ -78,6 +83,7 @@ export const portalLoader = async ({
 	if (!entryEnabled(plugins, enabled, pageEntry) || !entryEnabled(plugins, enabled, entry)) {
 		throw notFound();
 	}
+	const result = await portalPageDataFn({ data: path });
 	if (result.status === "notfound") throw notFound();
 	if (result.status === "redirect") throw redirect({ href: result.to });
 	return { path, instanceId, data: result.data, audiences, pluginStates: states, theme, tenant };
