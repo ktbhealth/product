@@ -7,11 +7,12 @@
  * contract the worker queue delivers in production.
  *
  * Delivery semantics: at-least-once. `ack()` is a no-op (the entry is
- * already popped); `retry()` re-pushes the envelope onto the tail of
- * the list (RPUSH) so BRPOP delivers it again on the next poll. There
- * is no broker-side attempt counter — poison jobs are bounded by the
- * job_runs projection and handler idempotency, same trust model as
- * the dev:node SQLite queue.
+ * already popped); `retry()` re-pushes the envelope via `RPUSH` so it
+ * is the next entry `BRPOP` delivers. The delivery count rides on the
+ * serialized envelope as an `attempts` field (ignored by the wire
+ * decoder) and is reported as `message.attempts`, so the consumer's
+ * `maxAttempts` ceiling actually binds — a poison job is acked as
+ * exhausted instead of looping forever.
  *
  * Adapter package — Node Redis client at the edge; ports and plugins
  * never import it (wired by apps/jobs-worker and dev composition).
@@ -92,13 +93,24 @@ export const createRedisJobsTransport = async (
 			const popped = await client.brPop(queue, timeout);
 			if (popped === null) break;
 			const body = popped[1];
+			const parsed = safeParse(body);
+			const attempts = deliveryAttempts(parsed);
 			messages.push({
-				body: safeParse(body),
+				body: parsed,
+				attempts,
 				// Already popped — ack is a no-op; retry re-queues at the
-				// tail so BRPOP delivers it on the next poll.
+				// tail so BRPOP picks it up next, with the delivery count
+				// incremented on the envelope itself.
 				ack: () => {},
 				retry: () => {
-					void client.rPush(queue, body).catch(() => {});
+					const requeue = isRecord(parsed)
+						? JSON.stringify({ ...parsed, attempts: attempts + 1 })
+						: body;
+					void client
+						.rPush(queue, requeue)
+						.catch((error: unknown) =>
+							console.warn("jobs transport: retry requeue failed", { error: String(error) }),
+						);
 				},
 			});
 		}
@@ -128,4 +140,15 @@ const safeParse = (raw: string): unknown => {
 	} catch {
 		return raw;
 	}
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Delivery count carried on the envelope's `attempts` field; absent or
+ * malformed counts as the first delivery. */
+const deliveryAttempts = (body: unknown): number => {
+	if (!isRecord(body)) return 1;
+	const n = body.attempts;
+	return typeof n === "number" && Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
 };
