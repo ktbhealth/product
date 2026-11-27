@@ -12,10 +12,18 @@ type DetailProps = ComponentProps<typeof ConsultationDetailPage>;
 type NewProps = ComponentProps<typeof NewConsultationPage>;
 
 /** Loader payload for <instance>/consultations/* — the wildcard
- * page resolves `new` and `<id>` subpaths server-side and tags the
+ * page resolves `new`, `<id>` and `<id>/record` subpaths server-side and tags the
  * result so the component picks the right domain view. */
 type ClinicianConsultationRecordData =
-	| { readonly view: "new"; readonly patients: NewProps["initialPatients"] }
+	| {
+			readonly view: "new";
+			readonly patients: NewProps["initialPatients"];
+			/** `<id>/record` on an agenda shell (T-257) — fill that record. */
+			readonly resume?: {
+				readonly consultationId: number;
+				readonly patientId: number | null;
+			};
+	  }
 	| {
 			readonly view: "detail";
 			readonly c: DetailProps["c"];
@@ -46,7 +54,8 @@ export function ClinicianConsultationRecordPage({
 			return (
 				<NewConsultationPage
 					initialPatients={d.patients}
-					initialPatientId={initialPatientId}
+					initialPatientId={d.resume?.patientId ?? initialPatientId}
+					resumeConsultationId={d.resume?.consultationId}
 					api={newConsultationApi}
 					backend={transcriptionBackend}
 					i18n={ctx.i18n}

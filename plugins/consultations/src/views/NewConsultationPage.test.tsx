@@ -703,6 +703,31 @@ describe("NewConsultationPage", () => {
 		expect(api["saveConsultation"]).not.toHaveBeenCalled();
 	});
 
+	it("resuming an agenda shell fills it with this browser's transcript (T-257)", async () => {
+		const user = userEvent.setup();
+		const api = makeApi();
+		render(
+			<NewConsultationPage
+				initialPatients={PATIENTS}
+				initialPatientId={1}
+				resumeConsultationId={42}
+				api={api}
+				backend={backend}
+			/>,
+		);
+		await generateAnamnesis(user);
+		await user.click(screen.getByText("Save consultation"));
+		await screen.findByText("Consultation updated");
+		expect(api["saveConsultation"]).not.toHaveBeenCalled();
+		expect(api["attachAnamnesis"]).toHaveBeenCalledWith({
+			data: expect.objectContaining({
+				consultationId: 42,
+				patientId: 1,
+				transcript: "paciente relata dor",
+			}),
+		});
+	});
+
 	it("updated save dialog shows consent note", async () => {
 		const user = userEvent.setup();
 		const api = makeApi({
@@ -1692,6 +1717,29 @@ describe("NewConsultationPage", () => {
 				}),
 			});
 			expect(api.attachAnamnesis).not.toHaveBeenCalled();
+		});
+
+		it("ignores an agenda shell to resume — it has no DEK to encrypt under", async () => {
+			const api = makeApi();
+			zkMocks.extractAnamnesisZk.mockResolvedValueOnce({
+				anamnesis: ANAMNESIS,
+				engine: "heuristic",
+			});
+			const user = userEvent.setup();
+			render(
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					resumeConsultationId={42}
+					api={api}
+					backend={backend}
+					zk={zk}
+				/>,
+			);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			expect(api["saveConsultation"]).toHaveBeenCalled();
+			expect(api["attachAnamnesis"]).not.toHaveBeenCalled();
 		});
 
 		it("encrypts only the anamnesis under the record DEK on update", async () => {

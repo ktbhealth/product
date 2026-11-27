@@ -80,6 +80,9 @@ const AttachInput = Schema.Struct({
 	consultationId: Schema.Number,
 	anamnesis: AnamnesisPayload,
 	engine: Schema.String,
+	// Absent keeps the stored transcript; present replaces it (T-257 —
+	// agenda-created shells receive the browser transcript on save).
+	transcript: Schema.optionalKey(Schema.String),
 	// Tri-state patientId: absent keeps the link, null clears it, a
 	// number re-links (ownership is enforced in the service).
 	patientId: Schema.optionalKey(Schema.NullishOr(Schema.Number)),

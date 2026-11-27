@@ -324,7 +324,9 @@ export function AgendaPage({
 														nativeButton={false}
 														variant="outline"
 														size="sm"
-														render={<Link to={`${portalBase}/consultations/${a.consultationId}`} />}
+														render={
+															<Link to={`${portalBase}/consultations/${a.consultationId}/record`} />
+														}
 													>
 														<PlayIcon /> {t.actions.started}
 													</Button>
@@ -617,7 +619,9 @@ export function AgendaPortalPage({ data, ctx }: { data: unknown; ctx: PageContex
 			portalBase={portalBase}
 			onChanged={() => void router.invalidate()}
 			onStarted={(consultationId) =>
-				void router.navigate({ to: `${portalBase}/consultations/${consultationId}` })
+				// `/record` opens the recording flow on the fresh shell; once
+				// saved the same URL falls back to the detail view (T-257).
+				void router.navigate({ to: `${portalBase}/consultations/${consultationId}/record` })
 			}
 		/>
 	);

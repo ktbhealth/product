@@ -720,6 +720,46 @@ describe("ConsultationsLive", () => {
 		);
 	});
 
+	it("attachAnamnesis fills an empty shell's transcript only when one is sent (T-257)", async () => {
+		const shell = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "", source: "agenda", status: "live" })),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: shell!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+					transcript: "browser transcript",
+				}),
+			),
+		);
+		const filled = await asUser(
+			"u1",
+			call((c) => c.get(shell!, "u1")),
+		);
+		expect(filled).toMatchObject({ transcript: "browser transcript", status: "done" });
+		// Absent transcript keeps the stored one (the bot-fed path).
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: shell!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e2",
+				}),
+			),
+		);
+		expect(
+			await asUser(
+				"u1",
+				call((c) => c.get(shell!, "u1")),
+			),
+		).toMatchObject({ transcript: "browser transcript", engine: "e2" });
+	});
+
 	it("audits owner mutations with ids/flags only (P-080)", async () => {
 		const id = await asUser(
 			"u1",

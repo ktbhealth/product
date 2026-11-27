@@ -284,6 +284,21 @@ describe("clinician.consultations.record guard", () => {
 		).resolves.toBe(true);
 	});
 
+	it("admits the /record subpath of an existing consultation only", async () => {
+		await expect(
+			run(g(`${CONSULTATIONS_PREFIX}/5/record`), { principal: DOCTOR, layer: withConsultation }),
+		).resolves.toBe(true);
+		await expect(
+			run(g(`${CONSULTATIONS_PREFIX}/5/record/x`), { principal: DOCTOR, layer: Layer.empty }),
+		).resolves.toBe(false);
+		await expect(
+			run(g(`${CONSULTATIONS_PREFIX}/5/record`), {
+				principal: DOCTOR,
+				layer: consultationsLayer(),
+			}),
+		).resolves.toBe(false);
+	});
+
 	it("rejects missing or forbidden consultations", async () => {
 		await expect(
 			run(g(`${CONSULTATIONS_PREFIX}/5`), { principal: DOCTOR, layer: consultationsLayer() }),
@@ -331,6 +346,7 @@ describe("clinician.consultations.record loader", () => {
 		for (const path of [
 			`${CONSULTATIONS_PREFIX}/new/x`,
 			`${CONSULTATIONS_PREFIX}/5/x`,
+			`${CONSULTATIONS_PREFIX}/5/record/x`,
 			`${CONSULTATIONS_PREFIX}/abc`,
 			`${CONSULTATIONS_PREFIX}/0`,
 		]) {
@@ -373,6 +389,49 @@ describe("clinician.consultations.record loader", () => {
 				layer: withConsultation,
 			}),
 		).resolves.toEqual({ view: "detail", c: consultation, history: null });
+	});
+
+	it("opens the recording flow on an agenda shell via /record (T-257)", async () => {
+		const shell = { id: 5, patientId: 7, status: "live", source: "agenda", anamnesis: null };
+		const patients = [{ id: 7, name: "Ana" }];
+		await expect(
+			run(l(`${CONSULTATIONS_PREFIX}/5/record`), {
+				principal: DOCTOR,
+				layer: Layer.mergeAll(
+					consultationsLayer({ get: () => Effect.succeed(shell) }),
+					patientsLayer({ list: () => Effect.succeed(patients) }),
+				),
+			}),
+		).resolves.toEqual({
+			view: "new",
+			patients,
+			resume: { consultationId: 5, patientId: 7 },
+		});
+		// A forbidden patient list still opens the flow, with an empty picker.
+		await expect(
+			run(l(`${CONSULTATIONS_PREFIX}/5/record`), {
+				principal: DOCTOR,
+				layer: Layer.mergeAll(
+					consultationsLayer({ get: () => Effect.succeed(shell) }),
+					patientsLayer({ list: forbidden }),
+				),
+			}),
+		).resolves.toMatchObject({ view: "new", patients: [] });
+	});
+
+	it("/record falls back to the detail once the record is no longer a fresh shell", async () => {
+		for (const c of [
+			{ id: 5, patientId: null, status: "done", source: "agenda", anamnesis: null },
+			{ id: 5, patientId: null, status: "live", source: "bot", anamnesis: null },
+			{ id: 5, patientId: null, status: "live", source: "agenda", anamnesis: { qp: {} } },
+		]) {
+			await expect(
+				run(l(`${CONSULTATIONS_PREFIX}/5/record`), {
+					principal: DOCTOR,
+					layer: consultationsLayer({ get: () => Effect.succeed(c) }),
+				}),
+			).resolves.toEqual({ view: "detail", c, history: null });
+		}
 	});
 });
 
