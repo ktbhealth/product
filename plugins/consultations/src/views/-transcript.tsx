@@ -431,11 +431,13 @@ export function AudioTranscriptPanel({
 							<span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-info" />
 							{status === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}
 						</Badge>
-					) : correctedView ? (
+					) : (
+						// Reaching this branch means correctedView is non-null
+						// (the outer guard requires it when nothing else matched).
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.green}`}>
 							{t.transcriptPanel.enhanced}
 						</Badge>
-					) : null}
+					)}
 				</div>
 			) : null}
 			{hasAudio && playSrc ? (

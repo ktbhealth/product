@@ -107,9 +107,7 @@ export const makeLocalAudioBucket = (dir: string) => {
 			const range = options?.range;
 			if (range) {
 				const offset =
-					range.suffix != null
-						? Math.max(0, bytes.byteLength - range.suffix)
-						: (range.offset ?? 0);
+					range.suffix != null ? Math.max(0, bytes.byteLength - range.suffix) : (range.offset ?? 0);
 				bytes = bytes.subarray(
 					offset,
 					range.length != null ? offset + range.length : bytes.byteLength,

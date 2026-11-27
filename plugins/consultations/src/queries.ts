@@ -218,6 +218,7 @@ export async function countPendingReview(db: DbClient, scope: SQL): Promise<numb
 		.select({ n: sql<number>`count(*)` })
 		.from(consultations)
 		.where(and(scope, reviewPending(), reviewNotParked()));
+	// v8 ignore next -- count(*) always yields one row.
 	return rows[0]?.n ?? 0;
 }
 

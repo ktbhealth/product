@@ -1173,6 +1173,131 @@ describe("ConsultationsLive", () => {
 			),
 		).toBe(0);
 	});
+
+	it("saveTranscriptEdits pins the projection base and skips no-op writes (PL-023)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		const editLog = JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]);
+		const cols = async () =>
+			(
+				await testDb
+					.select({
+						e: consultationsTable.transcriptEdits,
+						b: consultationsTable.transcriptEditsBase,
+					})
+					.from(consultationsTable)
+					.where(eq(consultationsTable.id, id!))
+			)[0]!;
+
+		// Non-owner denied; missing row no-ops.
+		await expect(
+			asUser(
+				"u2",
+				call((c) => c.saveTranscriptEdits(id!, "u2", editLog)),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(9999, "u1", editLog)),
+		);
+
+		// Empty/invalid plaintext over an absent column is a no-op —
+		// nothing to project anyway.
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "[]")),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "not json")),
+		);
+		expect(await cols()).toMatchObject({ e: null, b: null });
+
+		// First real write pins the base — a transcript-only row derives
+		// "transcript" (no corrected/server layers yet).
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", editLog)),
+		);
+		expect(await cols()).toMatchObject({ e: editLog, b: "transcript" });
+
+		// Once pinned, later base-layer arrivals do not move the base.
+		await testDb
+			.update(consultationsTable)
+			.set({ correctedTranscript: "c", serverTranscript: "s" })
+			.where(eq(consultationsTable.id, id!));
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", editLog)),
+		);
+		expect((await cols()).b).toBe("transcript");
+
+		// An empty log over a populated column is a legit clear.
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "[]")),
+		);
+		expect((await cols()).e).toBe("[]");
+	});
+
+	it("saveTranscriptEdits derives corrected/server bases on first write (PL-023)", async () => {
+		const make = async (over: Record<string, unknown>) => {
+			const id = await asUser(
+				"u1",
+				call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+			);
+			await testDb.update(consultationsTable).set(over).where(eq(consultationsTable.id, id!));
+			return id!;
+		};
+		const editLog = JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]);
+		const baseOf = async (cid: number) =>
+			(
+				await testDb
+					.select({ b: consultationsTable.transcriptEditsBase })
+					.from(consultationsTable)
+					.where(eq(consultationsTable.id, cid))
+			)[0]!.b;
+
+		const corrected = await make({ correctedTranscript: "c" });
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(corrected, "u1", editLog)),
+		);
+		expect(await baseOf(corrected)).toBe("corrected");
+
+		const serverOnly = await make({ serverTranscript: "s" });
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(serverOnly, "u1", editLog)),
+		);
+		expect(await baseOf(serverOnly)).toBe("server");
+	});
+
+	it("reviewTranscript stamps the current edit-log length (PL-023)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		const editLog = JSON.stringify([
+			{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" },
+			{ at: "2026-01-01T00:01:00Z", by: "u1", u: "BBBB" },
+		]);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", editLog)),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(id!, "u1")),
+		);
+		const rows = await testDb
+			.select({ e: consultationsTable.transcriptReviewedEdits })
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, id!));
+		expect(rows[0]!.e).toBe(2);
+	});
 });
 
 describe("anamnesis integrity versioning (T-138)", () => {
@@ -2884,6 +3009,44 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 		);
 		expect(detail?.anamnesisRaw).toBe(ENV2);
 		expect(detail?.anamnesis).toBeNull();
+	});
+
+	it("saveTranscriptEdits stores v1. envelopes under zk and rejects plaintext (PL-023)", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		// Plaintext edit log under ZK → the cipher gate fails closed.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) =>
+					c.saveTranscriptEdits(
+						saved.id,
+						"u1",
+						JSON.stringify([{ at: "2026-01-01T00:00:00Z", by: "u1", u: "AAAA" }]),
+					),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.update" });
+		// Envelope payloads are opaque — stored verbatim even though the
+		// log does not parse as plaintext entries.
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.saveTranscriptEdits(saved.id, "u1", "v1.bG9yby1sb2c")),
+		);
+		const stored = await testDb
+			.select({
+				e: consultationsTable.transcriptEdits,
+				b: consultationsTable.transcriptEditsBase,
+			})
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.e).toBe("v1.bG9yby1sb2c");
+		expect(stored[0]?.b).toBe("transcript");
 	});
 });
 

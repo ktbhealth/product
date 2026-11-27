@@ -306,6 +306,11 @@ const fakeBucket = {
 		});
 		return {};
 	},
+	head: async (key: string) => {
+		const object = bucketStore.get(key);
+		if (!object) return null;
+		return { size: object.data.byteLength, httpMetadata: { contentType: object.contentType } };
+	},
 	get: async (key: string) => {
 		const object = bucketStore.get(key);
 		if (!object) return null;

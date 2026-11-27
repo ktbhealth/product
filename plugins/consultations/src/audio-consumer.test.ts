@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { EventBus, type EventBusShape } from "@effect-server-utils/cqrs";
 
 import * as Effect from "effect/Effect";
+import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { makeEventBus } from "@effect-server-utils/cqrs";
 import { makeDb, Db, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { consultations, jobRuns } from "@ktb/db/schema";
@@ -188,6 +190,24 @@ describe("audio-consumer pure helpers", () => {
 		};
 		const result = await transcribeAudio(ai, new Uint8Array([65]), TEST_MODEL);
 		expect(result.segments).toEqual([{ start: 0, end: 0.5, text: "um" }]);
+	});
+
+	it("transcribeAudio surfaces verbose_json segments when the provider returns them", async () => {
+		const ai = {
+			run: async () => ({
+				text: "fala",
+				segments: [
+					{ start: 0, end: 1.25, text: "fala", avg_logprob: -0.3 },
+					{ start: 1.25, end: 2, text: "mundo" },
+				],
+			}),
+		};
+		const result = await transcribeAudio(ai, new Uint8Array([65]), TEST_MODEL);
+		expect(result.text).toBe("fala");
+		expect(result.segments).toEqual([
+			{ start: 0, end: 1.25, text: "fala", avgLogprob: -0.3 },
+			{ start: 1.25, end: 2, text: "mundo" },
+		]);
 	});
 });
 
@@ -468,6 +488,51 @@ describe("processAudioJob", () => {
 		expect(r?.audioStatus).toBe("done");
 		expect(r?.correctedTranscript).toBeNull();
 	});
+
+	it("persists ASR segments and calls regenerateAnamnesis with the corrected text", async () => {
+		const regenerateAnamnesis = vi.fn(async () => {});
+		const { db, deps } = makeDeps({
+			ai: {
+				run: async () => ({
+					text: "transcrição servidor",
+					segments: [{ start: 0, end: 2.5, text: "transcrição servidor" }],
+				}),
+			},
+			regenerateAnamnesis,
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		const r = await row(db, id);
+		expect(r?.audioStatus).toBe("done");
+		expect(JSON.parse(r!.transcriptSegments!)).toEqual([
+			{ start: 0, end: 2.5, text: "transcrição servidor" },
+		]);
+		expect(regenerateAnamnesis).toHaveBeenCalledWith(id, "transcrição servidor (corrigido)");
+	});
+
+	it("tolerates a failing anamnesis regeneration — corrected transcript still lands", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const { db, deps } = makeDeps({
+				regenerateAnamnesis: async () => {
+					throw new Error("engine down");
+				},
+			});
+			const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+			await processAudioJob(job(id), deps);
+			const r = await row(db, id);
+			expect(r?.audioStatus).toBe("done");
+			expect(r?.correctedTranscript).toBe("transcrição servidor (corrigido)");
+			expect(warn).toHaveBeenCalledWith(
+				"anamnesis regeneration failed; review can regenerate manually",
+				expect.objectContaining({ consultationId: id }),
+			);
+		} finally {
+			warn.mockRestore();
+		}
+	});
 });
 
 describe("transcription audit trail (P-080)", () => {
@@ -620,15 +685,18 @@ describe("handleAudioQueueBatch", () => {
 	// needed — deps carry it; EventBus-dependent side effects degrade
 	// to the same caught failures as a missing bus).
 	beforeAll(() => {
+		// A real EventBus layer so the default publish path dispatches
+		// ConsultationAudioUpdated instead of dying on the missing service.
+		const busRuntime = ManagedRuntime.make(makeEventBus());
 		setServerRuntime({
 			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
-				Effect.runPromise(effect as Effect.Effect<A, E, never>),
+				busRuntime.runPromise(effect as Effect.Effect<A, E, never>),
 			runAs: () => Promise.reject(new Error("unused")),
 			audioTranscribeModel: TEST_MODEL,
 			getLocale: () => "en",
 		} as unknown as ServerRuntime);
 	});
-	afterAll(() => {
+	afterAll(async () => {
 		resetServerRuntime();
 	});
 

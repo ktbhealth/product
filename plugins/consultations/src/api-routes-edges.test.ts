@@ -146,13 +146,8 @@ const fakeBucket = {
 		const range = options?.range;
 		if (range) {
 			const offset =
-				range.suffix != null
-					? Math.max(0, data.byteLength - range.suffix)
-					: (range.offset ?? 0);
-			data = data.subarray(
-				offset,
-				range.length != null ? offset + range.length : data.byteLength,
-			);
+				range.suffix != null ? Math.max(0, data.byteLength - range.suffix) : (range.offset ?? 0);
+			data = data.subarray(offset, range.length != null ? offset + range.length : data.byteLength);
 		}
 		const bytes = data.slice();
 		return {

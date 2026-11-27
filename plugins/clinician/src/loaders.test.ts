@@ -502,6 +502,15 @@ describe("review mode loaders (PL-023)", () => {
 		expect(result.author).toBe("u1");
 	});
 
+	it("queue overview collapses a forbidden list to an empty queue", async () => {
+		const result = (await run(loader("clinician.doctor.review")(reviewBase), {
+			principal: { userId: "u1" },
+			layer: consultationsLayer({ list: forbidden }),
+		})) as { view: string; queue: unknown[] };
+		expect(result.view).toBe("queue");
+		expect(result.queue).toEqual([]);
+	});
+
 	it("item view returns queue + record for a resolvable id", async () => {
 		const c = { id: 9 };
 		const result = (await run(loader("clinician.doctor.review.item")(`${reviewBase}/9`), {
@@ -549,5 +558,7 @@ describe("review mode loaders (PL-023)", () => {
 		);
 		// A bare trailing slash inside the wildcard is still the queue.
 		expect(await run(g(`${reviewBase}/`), { principal: { userId: "u1" }, layer })).toBe(true);
+		// Signed-out principals are rejected before the service lookup.
+		expect(await run(g(`${reviewBase}/9`), { principal: null, layer })).toBe(false);
 	});
 });

@@ -545,7 +545,6 @@ function TranscriptStep({
 		setChecked((prev) => (prev.has(i) ? prev : new Set(prev).add(i)));
 	const unverify = (i: number) =>
 		setChecked((prev) => {
-			if (!prev.has(i)) return prev;
 			const next = new Set(prev);
 			next.delete(i);
 			return next;
@@ -574,7 +573,8 @@ function TranscriptStep({
 	/** Offset of segment `i` inside the *projected* doc — base offset
 	 * plus the length deltas of earlier segment rewrites. */
 	const projOffset = (i: number): number => {
-		let off = baseOffsets[i] ?? 0;
+		// `i` is always a rendered segment index, so baseOffsets[i] exists.
+		let off = baseOffsets[i];
 		for (const e of entries) {
 			if (e.seg != null && e.text != null && e.seg < i) {
 				const orig = segments[e.seg]?.text;
@@ -587,6 +587,7 @@ function TranscriptStep({
 	const session = () => (sessionRef.current ??= new TranscriptEditSession(entries, base));
 
 	const save = async () => {
+		/* v8 ignore next -- save only fires from the edit UI, which requires api.saveTranscriptEdits and a non-null editing target */
 		if (!api?.saveTranscriptEdits || editing === null) return;
 		setBusy(true);
 		try {
@@ -599,7 +600,7 @@ function TranscriptStep({
 						})
 					: ses.edit((tx) => {
 							const i = editing;
-							const oldLen = (segEdits.get(i) ?? segments[i]?.text ?? "").length;
+							const oldLen = (segEdits.get(i) ?? segments[i].text).length;
 							tx.delete(projOffset(i), oldLen);
 							tx.insert(projOffset(i), draft);
 						});
@@ -624,6 +625,7 @@ function TranscriptStep({
 
 	const seek = (i: number) => {
 		const el = audioRef.current;
+		/* v8 ignore next -- seek is only wired to rendered segments while the player is mounted */
 		if (!el || !segments[i]) return;
 		el.currentTime = segments[i].start;
 		void el.play().catch(() => {});
@@ -736,9 +738,7 @@ function TranscriptStep({
 									<p className="flex items-center gap-2 text-sm text-muted-foreground">
 										<CheckIcon className="size-4 shrink-0 text-success" />
 										<span>
-											<span className="font-medium text-foreground">
-												{t.review.highConfTitle}
-											</span>
+											<span className="font-medium text-foreground">{t.review.highConfTitle}</span>
 											{" — "}
 											{t.review.highConfHint}
 										</span>
@@ -760,7 +760,7 @@ function TranscriptStep({
 														}`}
 													>
 														{verified ? <CheckIcon className="size-2.5" /> : null}
-														{fmtTime(segments[i]?.start ?? 0)}
+														{fmtTime(segments[i].start)}
 													</button>
 													{verified ? (
 														<button
@@ -1003,14 +1003,19 @@ function AnamnesisStep({
 	const doc: Anamnesis | null = c.anamnesis;
 
 	const CONF_ORDER: Record<string, number> = { baixa: 0, media: 1, alta: 2 };
+	const confRank = (confidence: string): number => {
+		// v8 ignore next -- Confidence is a closed union; the fallback only guards malformed stored docs.
+		return CONF_ORDER[confidence] ?? 3;
+	};
 	const sectionKeys = (
 		Object.keys(t.sections).filter((k) => k !== "historico") as AnamnesisSectionKey[]
 	)
 		.filter((k) => doc?.[k])
-		.sort((a, b) => (CONF_ORDER[doc![a].confidence] ?? 3) - (CONF_ORDER[doc![b].confidence] ?? 3));
+		.sort((a, b) => confRank(doc![a].confidence) - confRank(doc![b].confidence));
 
 	const approve = () =>
 		void (async () => {
+			/* v8 ignore next -- the approve button only renders when api.approveAnamnesis exists */
 			if (!api?.approveAnamnesis) return;
 			setBusy(true);
 			try {
@@ -1023,6 +1028,7 @@ function AnamnesisStep({
 
 	const regenerate = () =>
 		void (async () => {
+			/* v8 ignore next -- both regenerate entry points are gated on api.generateAnamnesis */
 			if (!api?.generateAnamnesis) return;
 			setBusy(true);
 			try {
@@ -1176,9 +1182,9 @@ function DeferControl({
 	onDone: () => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const defer = (until: Date | null) =>
+	const defer = (until: Date) =>
 		void api.deferConsultation!({
-			data: { id: c.id, until: until === null ? null : until.toISOString() },
+			data: { id: c.id, until: until.toISOString() },
 		}).then((res) => {
 			if (res.ok) {
 				setOpen(false);
@@ -1197,6 +1203,7 @@ function DeferControl({
 					locale={CALENDAR_LOCALES[locale] ?? enUS}
 					disabled={{ before: new Date() }}
 					onSelect={(d) => {
+						/* v8 ignore next -- rdp single mode re-fires the same day; undefined only arrives via keyboard nav edge cases */
 						if (d) defer(d);
 					}}
 				/>

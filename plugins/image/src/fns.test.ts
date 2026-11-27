@@ -71,6 +71,7 @@ describe("image fns", () => {
 	// cleanup resolves through ServerRuntime.images.
 	const deletedKeys: string[] = [];
 	const fakeBucket = {
+		head: async () => null,
 		get: async () => null,
 		put: async () => ({}),
 		delete: async (keys: string[]) => {
@@ -207,6 +208,7 @@ describe("image fns", () => {
 		const rows = await insertImage(db, { storageKey: "images/stuck.png" }).returning();
 		const created = rows[0]!;
 		const failingBucket = {
+			head: async () => null,
 			get: async () => null,
 			put: async () => ({}),
 			delete: async () => {

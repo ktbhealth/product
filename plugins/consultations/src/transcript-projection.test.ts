@@ -25,6 +25,30 @@ describe("transcript projection (PL-023)", () => {
 		expect(projectTranscript("sem edições", [])).toBe("sem edições");
 	});
 
+	it("falls back to the base when edits erase the whole text", () => {
+		const base = "tudo apagado";
+		const log = [entry(genesisUpdate(base))];
+		const session = new TranscriptEditSession(log);
+		log.push(
+			entry(
+				session.edit((t) => {
+					t.delete(0, session.text().length);
+				}),
+			),
+		);
+		expect(projectTranscript(base, log)).toBe(base);
+	});
+
+	it("seeds a session from base alone — the first edit exports the genesis", () => {
+		const session = new TranscriptEditSession([], "texto base");
+		expect(session.text()).toBe("texto base");
+		const delta = session.edit((t) => {
+			t.insert(session.text().length, "!");
+		});
+		// The first update carries base + delta so peers converge.
+		expect(projectTranscript("texto base", [entry(delta)])).toBe("texto base!");
+	});
+
 	it("projects genesis-only logs as the base text", () => {
 		const base = "O paciente relata dor.";
 		expect(projectTranscript(base, [entry(genesisUpdate(base))])).toBe(base);

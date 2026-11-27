@@ -252,18 +252,14 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 							detail: {
 								patientId: detail.patientId,
 								via: "audio-download",
-								...(range
-									? { range: `${range.offset}-${range.offset + range.length - 1}` }
-									: {}),
+								...(range ? { range: `${range.offset}-${range.offset + range.length - 1}` } : {}),
 							},
 						});
 					}),
 				);
 
-				const object = await audioBucket.get(
-					detail.audioKey,
-					range ? { range } : undefined,
-				);
+				const object = await audioBucket.get(detail.audioKey, range ? { range } : undefined);
+				// v8 ignore next -- head() already proved the object exists; this only fires if it is deleted between the two reads.
 				if (!object) return Response.json({ error: "not found" }, { status: 404 });
 
 				// `accept-ranges` on every response is what lets the browser

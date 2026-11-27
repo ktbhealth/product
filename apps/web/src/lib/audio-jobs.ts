@@ -66,12 +66,20 @@ const regenerateAnamnesis = async (consultationId: number, corrected: string): P
 			const history =
 				detail.patientId === null
 					? null
-					: yield* consultations
-							.history(detail.patientId, userId)
-							.pipe(Effect.catch(() => Effect.succeed(null)));
+					: yield* consultations.history(detail.patientId, userId).pipe(
+							/* v8 ignore next -- history already reports an invisible
+							 * patient as null; this only guards a hard Forbidden
+							 * (e.g. Permissions port absent). */
+							Effect.catch(() => Effect.succeed(null)),
+						);
 			const draft = yield* engine
 				.extract({ transcript: corrected, history: history ?? undefined })
-				.pipe(Effect.catch(() => Effect.succeed(null)));
+				.pipe(
+					/* v8 ignore next -- extract's error channel is `never`:
+					 * engines degrade to the heuristic extractor internally. */
+					Effect.catch(() => Effect.succeed(null)),
+				);
+			// v8 ignore next -- unreachable while extract cannot fail.
 			if (draft === null) return;
 			yield* consultations.attachAnamnesis(userId, {
 				consultationId,

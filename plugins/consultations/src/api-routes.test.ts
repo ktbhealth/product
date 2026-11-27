@@ -161,13 +161,8 @@ const fakeBucket = {
 		const range = options?.range;
 		if (range) {
 			const offset =
-				range.suffix != null
-					? Math.max(0, data.byteLength - range.suffix)
-					: (range.offset ?? 0);
-			data = data.subarray(
-				offset,
-				range.length != null ? offset + range.length : data.byteLength,
-			);
+				range.suffix != null ? Math.max(0, data.byteLength - range.suffix) : (range.offset ?? 0);
+			data = data.subarray(offset, range.length != null ? offset + range.length : data.byteLength);
 		}
 		const bytes = data.slice();
 		return {
@@ -579,6 +574,26 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 		const over = await get(id, { range: "bytes=99-" });
 		expect(over.status).toBe(416);
 		expect(over.headers.get("content-range")).toBe("bytes */5");
+	});
+
+	it("ignores malformed and inverted Range headers — full-body 200", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
+		const bytes = new Uint8Array([10, 20, 30, 40, 50]);
+		await post(id, bytes, "audio/wav");
+
+		for (const range of [
+			"items=0-1", // not a bytes unit
+			"bytes=1-2,4-5", // multi-range — spec allows ignoring
+			"bytes=-", // empty suffix
+			"bytes=-0", // zero-length suffix
+			"bytes=3-1", // inverted: end before offset
+		]) {
+			const res = await get(id, { range });
+			expect(res.status).toBe(200);
+			expect(res.headers.get("content-length")).toBe("5");
+			expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+		}
 	});
 });
 
