@@ -961,7 +961,6 @@
     "plugins/audit": {
       "name": "@ktb/audit",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1208,7 +1207,6 @@
     "plugins/doctors": {
       "name": "@ktb/doctors",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1822,7 +1820,6 @@
       "name": "@ktb/patient-access",
       "dependencies": {
         "@ktb/audit": "workspace:*",
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -2131,7 +2128,6 @@
     "plugins/secretaries": {
       "name": "@ktb/secretaries",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/auth-plugin": "workspace:*",
         "@ktb/authz": "workspace:*",
