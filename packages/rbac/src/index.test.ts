@@ -742,9 +742,18 @@ describe("vocabulary", () => {
 		expect(splitPermission("patient.read")).toEqual({ resource: "patient", action: "read" });
 		expect(splitPermission("nodot")).toEqual({ resource: "nodot", action: "" });
 		expect(permissionKey("patient", "read")).toBe("patient.read");
-		expect(isKnownPermission("patient", "read")).toBe(true);
-		expect(isKnownPermission("patient", "fly")).toBe(false);
-		expect(isKnownPermission("billing", "manage")).toBe(true);
+	});
+
+	it("isKnownPermission checks membership against an injected catalog", () => {
+		const known = isKnownPermission(["patient.read", "billing.manage"]);
+		expect(known("patient", "read")).toBe(true);
+		expect(known("patient", "fly")).toBe(false);
+		expect(known("billing", "manage")).toBe(true);
+		// The engine is domain-blind: catalogs are caller-supplied, so
+		// a different deployment's vocabulary resolves independently.
+		const other = isKnownPermission(["widget.spin"]);
+		expect(other("widget", "spin")).toBe(true);
+		expect(other("patient", "read")).toBe(false);
 	});
 
 	it("grantKey separates resource and action unambiguously", () => {

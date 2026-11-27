@@ -7,8 +7,9 @@ import { AUDIT_TEST_DDL, adminAudit } from "@ktb/audit";
 import { makeDb } from "@ktb/db";
 import { relationTuples } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
-import { buildPermissions, PERMISSION_CATALOG, readEpoch, roles, splitPermission } from "@ktb/rbac";
+import { buildPermissions, readEpoch, roles, splitPermission } from "@ktb/rbac";
 
+import { PERMISSION_CATALOG } from "./catalog.ts";
 import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";
 
 const DDL = `
