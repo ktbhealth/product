@@ -221,6 +221,12 @@ export default defineConfig({
 				//   into the deploy target; registry.ts re-exports the
 				//   client-registry collections (page maps, chrome/enabled
 				//   helpers) so routes and server fns share one import path.
+				// - fns.ts / middleware.ts / enabled-ids.ts / app-dispatch.tsx /
+				//   dispatch-target.ts are the page-dispatch composition seam
+				//   (E.17): they bind @ktb/app-host/server's generic
+				//   dispatchPage + middleware runner and @ktb/app-host/client's
+				//   dispatchers to this app's registries, server fns and
+				//   runtime — the same role platform.ts plays for createApp.
 				// - node-cloudflare-workers.ts is the KTB_DEV_NODE env shim —
 				//   it is the composition root for the plain-Node dev target
 				//   and wires @ktb/db-sqlite as AppEnv.DB.
@@ -244,6 +250,11 @@ export default defineConfig({
 				files: [
 					"apps/web/src/lib/platform.ts",
 					"apps/web/src/lib/registry.ts",
+					"apps/web/src/lib/fns.ts",
+					"apps/web/src/lib/middleware.ts",
+					"apps/web/src/lib/enabled-ids.ts",
+					"apps/web/src/lib/app-dispatch.tsx",
+					"apps/web/src/lib/dispatch-target.ts",
 					"apps/web/src/lib/node-cloudflare-workers.ts",
 					"apps/web/src/plugins.ts",
 					"apps/web/src/routes/__root.tsx",
