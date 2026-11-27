@@ -7,6 +7,7 @@
 	},
 	"dependencies": {
 		"@ktb/db": "workspace:*",
+		"@ktb/tenant": "workspace:*",
 		"croner": "^9.0.0",
 		"drizzle-orm": "^0.45.1"
 	}

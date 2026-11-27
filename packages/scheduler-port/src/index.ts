@@ -1,8 +1,9 @@
 import { Cron } from "croner";
-import { and, asc, eq, isNull, lt, lte, or } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { scheduledJobs } from "@ktb/db/schema";
+import { tenantStorageId, type TenantId } from "@ktb/tenant";
 
 /**
  * @ktb/scheduler-port — the runtime scheduler: DB-backed schedule
@@ -38,7 +39,9 @@ export interface ScheduledJob {
 	readonly claimedUntil: number | null;
 	readonly lastRunAt: number | null;
 	readonly status: ScheduledJobStatus;
-	readonly tenantId: number | null;
+	/** Owning tenant (@ktb/tenant TenantId) — stored normalized to the
+	 * integer `tenant_id` column form; null = global scope. */
+	readonly tenantId: TenantId | null;
 	readonly createdBy: string | null;
 	readonly createdAt: number;
 	readonly updatedAt: number;
@@ -53,7 +56,7 @@ export interface ScheduledJobWrite {
 	readonly cronExpr?: string | null;
 	readonly runAt?: number | null;
 	readonly status?: ScheduledJobStatus;
-	readonly tenantId?: number | null;
+	readonly tenantId?: TenantId | null;
 	readonly createdBy?: string | null;
 }
 
@@ -68,7 +71,10 @@ export interface ScheduledJobPatch {
 export interface ScheduledJobFilter {
 	readonly status?: ScheduledJobStatus;
 	readonly kind?: string;
-	readonly tenantId?: number | null;
+	/** undefined = any scope; null = global scope only; a TenantId =
+	 * that tenant (normalized to the integer column form; a non-numeric
+	 * string can never match a stored row). */
+	readonly tenantId?: TenantId | null;
 	readonly limit?: number;
 }
 
@@ -173,7 +179,10 @@ export const insertScheduledJob = async (
 		runAt,
 		nextRunAt,
 		status,
-		tenantId: write.tenantId ?? null,
+		// tenant_id is an integer column — the wire TenantId normalizes
+		// to its storage form (numeric strings → number, non-numeric →
+		// null/global, matching tenantScopeId's stamping contract).
+		tenantId: tenantStorageId(write.tenantId ?? null),
 		createdBy: write.createdBy ?? null,
 		createdAt: now,
 		updatedAt: now,
@@ -188,7 +197,7 @@ export const insertScheduledJob = async (
 		claimedUntil: null,
 		lastRunAt: null,
 		status,
-		tenantId: write.tenantId ?? null,
+		tenantId: tenantStorageId(write.tenantId ?? null),
 		createdBy: write.createdBy ?? null,
 		createdAt: now,
 		updatedAt: now,
@@ -211,11 +220,15 @@ export const listScheduledJobs = async (
 	if (filter.status !== undefined) conditions.push(eq(scheduledJobs.status, filter.status));
 	if (filter.kind !== undefined) conditions.push(eq(scheduledJobs.kind, filter.kind));
 	if (filter.tenantId !== undefined) {
-		conditions.push(
-			filter.tenantId === null
-				? isNull(scheduledJobs.tenantId)
-				: eq(scheduledJobs.tenantId, filter.tenantId),
-		);
+		if (filter.tenantId === null) {
+			conditions.push(isNull(scheduledJobs.tenantId));
+		} else {
+			const stored = tenantStorageId(filter.tenantId);
+			// A non-numeric tenant id has no integer storage form — it
+			// can never equal a stored tenant_id, so match nothing
+			// rather than collapsing onto the global-scope NULLs.
+			conditions.push(stored === null ? sql`1 = 0` : eq(scheduledJobs.tenantId, stored));
+		}
 	}
 	const rows = await db
 		.select()

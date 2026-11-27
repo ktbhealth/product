@@ -12,7 +12,7 @@ import { insertScheduledJob } from "@ktb/scheduler-port";
 
 const hoisted = vi.hoisted(() => ({
 	upsertFails: false,
-	handled: [] as { kind: string; payload: unknown; tenantId: number | null }[],
+	handled: [] as { kind: string; payload: unknown; tenantId: string | number | null }[],
 }));
 
 vi.mock("@ktb/jobs-port", async (importOriginal) => {
@@ -46,7 +46,7 @@ const dueJob = (
 
 describe("platform scheduler-heartbeat dispatch", () => {
 	it("enqueues due jobs through the bound queue", { timeout: 30_000 }, async () => {
-		const sent: { kind: string; payload: unknown; tenantId?: number | null }[] = [];
+		const sent: { kind: string; payload: unknown; tenantId?: string | number | null }[] = [];
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = {
 				send: async (body: unknown) => {

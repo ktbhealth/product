@@ -49,7 +49,9 @@ const CreateScheduleInput = Schema.Struct({
 	params: Schema.optionalKey(Schema.Unknown),
 	cronExpr: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	runAt: Schema.optionalKey(Schema.NullOr(Schema.Number)),
-	tenantId: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+	// TenantId is string | number (@ktb/tenant) — wire input may carry
+	// either form; the scheduler port normalizes to the integer column.
+	tenantId: Schema.optionalKey(Schema.NullOr(Schema.Union([Schema.Number, Schema.String]))),
 });
 const decodeCreateScheduleInput = Schema.decodeUnknownSync(CreateScheduleInput);
 

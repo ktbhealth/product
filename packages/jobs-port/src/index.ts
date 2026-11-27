@@ -1,10 +1,11 @@
 import { Schema } from "effect";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
-import { and, desc, eq, isNull, like, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, like, sql, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { jobRuns } from "@ktb/db/schema";
+import { tenantStorageId, type TenantId } from "@ktb/tenant";
 
 /**
  * @ktb/jobs-port — the generic job backbone (PL-007): an enqueue port,
@@ -21,6 +22,16 @@ export const JobStatusSchema = Schema.Literals(["queued", "processing", "done", 
 export type JobStatus = typeof JobStatusSchema.Type;
 
 /**
+ * Tenant id on the wire — `string | number` per @ktb/tenant's
+ * TenantId (selector transport and some directories render ids as
+ * text). Numeric strings are valid tenant ids; the `job_runs`
+ * projection stores the normalized integer form via
+ * `tenantStorageId` (non-numeric strings cannot be stamped and
+ * project as personal scope, same contract as `tenantScopeId`).
+ */
+const TenantIdWireSchema = Schema.Union([Schema.Number, Schema.String]);
+
+/**
  * Wire envelope every queued job message must satisfy at the consumer
  * edge — the same trust boundary the old AudioJobMessageSchema sat on.
  * `payload` stays `unknown` here; each kind's registration validates it
@@ -32,7 +43,7 @@ export const JobEnvelopeSchema = Schema.Struct({
 	payload: Schema.optionalKey(Schema.Unknown),
 	// Optional + nullable: pre-tenancy messages carry no tenant_id and
 	// decode as personal scope (same convention as AudioJobMessage).
-	tenantId: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+	tenantId: Schema.optionalKey(Schema.NullOr(TenantIdWireSchema)),
 });
 export type JobEnvelope = typeof JobEnvelopeSchema.Type;
 
@@ -43,7 +54,7 @@ export const JobRecordSchema = Schema.Struct({
 	status: JobStatusSchema,
 	payloadRef: Schema.NullOr(Schema.String),
 	error: Schema.NullOr(Schema.String),
-	tenantId: Schema.NullOr(Schema.Number),
+	tenantId: Schema.NullOr(TenantIdWireSchema),
 	createdAt: Schema.Number,
 	updatedAt: Schema.Number,
 });
@@ -51,8 +62,12 @@ export type JobRecord = typeof JobRecordSchema.Type;
 
 /** Options accepted by the enqueue port. */
 export interface EnqueueJobOptions {
-	/** Owning tenant (`groups.id`) or null/absent for personal scope. */
-	readonly tenantId?: number | null;
+	/** Owning tenant (@ktb/tenant TenantId) or null/absent for personal
+	 * scope. The wire envelope carries the id verbatim; the job_runs
+	 * projection stores `tenantStorageId(id)` — numeric strings
+	 * normalize to the integer column form, non-numeric strings
+	 * project as personal scope. */
+	readonly tenantId?: TenantId | null;
 	/** Optional pointer to where the payload lives — never PHI/blob inline. */
 	readonly payloadRef?: string | null;
 }
@@ -76,7 +91,7 @@ export interface JobRunWrite {
 	readonly status: JobStatus;
 	readonly payloadRef?: string | null;
 	readonly error?: string | null;
-	readonly tenantId?: number | null;
+	readonly tenantId?: TenantId | null;
 }
 
 const runValues = (run: JobRunWrite, now: number) => ({
@@ -85,7 +100,10 @@ const runValues = (run: JobRunWrite, now: number) => ({
 	status: run.status,
 	payloadRef: run.payloadRef ?? null,
 	error: run.error ?? null,
-	tenantId: run.tenantId ?? null,
+	// tenant_id is an integer column — the wire TenantId normalizes to
+	// its storage form here (numeric strings → number, non-numeric →
+	// null/personal, matching tenantScopeId's stamping contract).
+	tenantId: tenantStorageId(run.tenantId ?? null),
 	createdAt: now,
 	updatedAt: now,
 });
@@ -144,8 +162,10 @@ export interface JobRunFilter {
 	 * constant, wildcard-free prefixes (never user input). */
 	readonly kindPrefix?: string;
 	readonly status?: JobStatus;
-	/** undefined = any scope; null = personal scope only; number = that tenant. */
-	readonly tenantId?: number | null;
+	/** undefined = any scope; null = personal scope only; a TenantId =
+	 * that tenant (normalized to the integer column form; a non-numeric
+	 * string can never match a stored row). */
+	readonly tenantId?: TenantId | null;
 	readonly limit?: number;
 }
 
@@ -159,9 +179,15 @@ export const listJobRuns = async (
 	if (filter.kindPrefix !== undefined) conditions.push(like(jobRuns.kind, `${filter.kindPrefix}%`));
 	if (filter.status !== undefined) conditions.push(eq(jobRuns.status, filter.status));
 	if (filter.tenantId !== undefined) {
-		conditions.push(
-			filter.tenantId === null ? isNull(jobRuns.tenantId) : eq(jobRuns.tenantId, filter.tenantId),
-		);
+		if (filter.tenantId === null) {
+			conditions.push(isNull(jobRuns.tenantId));
+		} else {
+			const stored = tenantStorageId(filter.tenantId);
+			// A non-numeric tenant id has no integer storage form — it
+			// can never equal a stored tenant_id, so match nothing
+			// rather than collapsing onto the personal-scope NULLs.
+			conditions.push(stored === null ? sql`1 = 0` : eq(jobRuns.tenantId, stored));
+		}
 	}
 	const rows = await db
 		.select()
@@ -262,7 +288,7 @@ export interface NormalizedJob {
 	readonly kind: string;
 	readonly payload: unknown;
 	readonly id?: string;
-	readonly tenantId?: number | null;
+	readonly tenantId?: TenantId | null;
 }
 
 export type JobNormalizer = (body: unknown) => NormalizedJob | null;

@@ -139,6 +139,29 @@ describe("insert/get/list", () => {
 		expect((await listScheduledJobs(db, { tenantId: 7 })).map((j) => j.kind)).toEqual(["t"]);
 	});
 
+	it("normalizes TenantId strings to the integer tenant_id storage form", async () => {
+		const db = makeTestDb();
+		// Numeric strings store as the integer column value; non-numeric
+		// strings cannot be stamped and project as global scope
+		// (tenantStorageId contract — same as tenantScopeId).
+		const numeric = await insertScheduledJob(
+			db,
+			{ kind: "n", runAt: T0 + 1000, tenantId: "7" },
+			T0,
+		);
+		const opaque = await insertScheduledJob(
+			db,
+			{ kind: "s", runAt: T0 + 1000, tenantId: "clinic-9" },
+			T0,
+		);
+		expect(numeric.tenantId).toBe(7);
+		expect(opaque.tenantId).toBeNull();
+		// Filters normalize the same way; a non-numeric id matches
+		// nothing rather than collapsing onto the global-scope NULLs.
+		expect((await listScheduledJobs(db, { tenantId: "7" })).map((j) => j.id)).toEqual([numeric.id]);
+		expect(await listScheduledJobs(db, { tenantId: "clinic-9" })).toEqual([]);
+	});
+
 	it("reads corrupt params JSON as null rather than throwing", async () => {
 		const db = makeTestDb();
 		await db.insert(scheduledJobs).values({
