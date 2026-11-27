@@ -1470,14 +1470,18 @@ export function NewConsultationPage({
 				</DropdownMenuLabel>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
-					<DropdownMenuItem render={<Link to={portalPath("")} />}>Portal home</DropdownMenuItem>
-					<DropdownMenuItem render={<Link to={portalPath("/patients")} />}>
+					{/* Full navigations like the shell user menu — the room
+					 * stage is portaled, so plain links are unreliable here. */}
+					<DropdownMenuItem onClick={() => window.location.assign(portalPath(""))}>
+						Portal home
+					</DropdownMenuItem>
+					<DropdownMenuItem onClick={() => window.location.assign(portalPath("/patients"))}>
 						Patients
 					</DropdownMenuItem>
-					<DropdownMenuItem render={<Link to={portalPath("/consultations")} />}>
+					<DropdownMenuItem onClick={() => window.location.assign(portalPath("/consultations"))}>
 						Consultations
 					</DropdownMenuItem>
-					<DropdownMenuItem render={<Link to={portalPath("/review")} />}>
+					<DropdownMenuItem onClick={() => window.location.assign(portalPath("/review"))}>
 						Review queue
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
