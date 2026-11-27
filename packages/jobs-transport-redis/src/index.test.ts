@@ -21,6 +21,10 @@ const fakeRedis = () => {
 			list.unshift(value);
 			return list.length;
 		},
+		rPush: async (_key, value) => {
+			list.push(value);
+			return list.length;
+		},
 		brPop: async (_key, timeoutSeconds) => {
 			timeouts.push(timeoutSeconds);
 			const v = list.pop();
@@ -67,6 +71,23 @@ describe("createRedisJobsTransport", () => {
 		expect(list).toHaveLength(1);
 		const [again] = await t.receive();
 		expect(again?.body).toEqual(envelope("j2"));
+		await t.close();
+	});
+
+	it("retry() re-queues ahead of the backlog — delivered on the next poll", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("first"));
+		await t.send(envelope("second"));
+		await t.send(envelope("third"));
+		const [msg] = await t.receive();
+		expect(msg?.body).toEqual(envelope("first"));
+		msg?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		const [again] = await t.receive();
+		expect(again?.body).toEqual(envelope("first"));
+		const [next] = await t.receive();
+		expect(next?.body).toEqual(envelope("second"));
 		await t.close();
 	});
 
@@ -139,6 +160,9 @@ describe("createRedisJobsTransport", () => {
 			lPush: async () => {
 				throw new Error("redis down");
 			},
+			rPush: async () => {
+				throw new Error("redis down");
+			},
 			brPop: async () => (entries.length === 0 ? null : (["ktb:jobs", entries.pop()!] as const)),
 			lLen: async () => entries.length,
 			quit: async () => "OK",
@@ -146,7 +170,7 @@ describe("createRedisJobsTransport", () => {
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		const [msg] = await t.receive();
 		msg?.retry();
-		// Let the fire-and-forget lPush rejection settle through .catch.
+		// Let the fire-and-forget requeue rejection settle through .catch.
 		await new Promise((r) => setTimeout(r, 0));
 		await t.close();
 	});
