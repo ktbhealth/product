@@ -18,6 +18,7 @@ const portalPageDataFn = vi.fn(
 		data: null,
 	}),
 );
+const boundTenantFn = vi.fn(async () => null as { id: number; role: string } | null);
 const signOut = vi.fn(async () => {});
 
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: () => signOut() } }));
@@ -27,6 +28,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
+	boundTenantFn: () => boundTenantFn(),
 	appPageDataFn: vi.fn(),
 	platformAdminFn: vi.fn(async () => true),
 	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
@@ -145,6 +147,7 @@ const baseLoaderData = {
 	audiences: [] as string[],
 	pluginStates: ALL_ENABLED,
 	theme: null,
+	tenant: null,
 };
 
 const shell = (overrides: Record<string, unknown> = {}) =>
@@ -162,6 +165,7 @@ afterEach(() => {
 	pluginStatesFn.mockReset().mockResolvedValue(ALL_ENABLED);
 	portalAudiencesFn.mockReset().mockResolvedValue([]);
 	portalPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
+	boundTenantFn.mockReset().mockResolvedValue(null);
 	rootData = {
 		user: { id: "u1", email: "doc@x.com", name: "Dra" },
 		pluginStates: ALL_ENABLED,
@@ -312,6 +316,7 @@ describe("portalLoader", () => {
 				audiences: ["doctor"],
 				pluginStates: { enabled: ["clinician.portal", "clinician.pages"] },
 				theme: null,
+				tenant: null,
 			});
 			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/doctor/test");
 		} finally {
@@ -400,6 +405,24 @@ describe("PortalInstanceShell", () => {
 			expect(screen.getAllByText("Test Page").length).toBeGreaterThan(0);
 			expect(screen.getAllByText("Care").length).toBeGreaterThan(0);
 			expect(screen.getByText("HDR-ACTION")).toBeTruthy();
+		} finally {
+			unregister();
+		}
+	});
+
+	it("shows tenant-admin sidebar entries only for admin+ bound tenants", () => {
+		const unregister = registerPage();
+		try {
+			// The real vault.chrome contribution carries
+			// `when.minTenantRole: "admin"` — personal scope hides it.
+			const { unmount } = render(shell({ tenant: null }));
+			expect(screen.queryByText("Vault")).toBeNull();
+			unmount();
+			const member = render(shell({ tenant: { id: 1, role: "member" } }));
+			expect(member.queryByText("Vault")).toBeNull();
+			member.unmount();
+			render(shell({ tenant: { id: 1, role: "admin" } }));
+			expect(screen.getAllByText("Vault").length).toBeGreaterThan(0);
 		} finally {
 			unregister();
 		}

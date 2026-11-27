@@ -8,8 +8,9 @@ import { portalAdmits } from "@ktb/portal/rules";
 import { themeScopeFn } from "@ktb/theme/fns";
 import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
+import type { TenantRole } from "@ktb/tenant";
 
-import { pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
+import { boundTenantFn, pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
 import { portalChromeProps } from "#/lib/chrome-props.ts";
 import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
@@ -61,12 +62,14 @@ export const portalLoader = async ({
 	if (entry === undefined) throw notFound();
 	const pageEntry = findPage(portalPages, path);
 	if (pageEntry === undefined) throw notFound();
-	const [states, audiences, result, theme] = await Promise.all([
+	const [states, audiences, result, theme, tenant] = await Promise.all([
 		pluginStatesFn(),
 		portalAudiencesFn(),
 		portalPageDataFn({ data: path }),
 		// Instance → tenant → platform fallback (P-082).
 		themeScopeFn({ data: { scope: "portal-instance", id: instanceId } }),
+		// Bound tenant for `when.minTenantRole` chrome gates.
+		boundTenantFn(),
 	]);
 	const enabled = enabledIdSet(states);
 	// Package-granular gates (P-058): both the page's package and the
@@ -77,7 +80,7 @@ export const portalLoader = async ({
 	}
 	if (result.status === "notfound") throw notFound();
 	if (result.status === "redirect") throw redirect({ href: result.to });
-	return { path, instanceId, data: result.data, audiences, pluginStates: states, theme };
+	return { path, instanceId, data: result.data, audiences, pluginStates: states, theme, tenant };
 };
 
 export interface PortalLoaderData {
@@ -87,10 +90,13 @@ export interface PortalLoaderData {
 	audiences: readonly string[];
 	pluginStates: { enabled: readonly string[] };
 	theme: ResolvedTheme | null;
+	/** Bound tenant ({ id, role }) or null in personal scope — feeds
+	 * `when.minTenantRole` chrome gates. */
+	tenant: { readonly id: string | number; readonly role: TenantRole } | null;
 }
 
 export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderData }) {
-	const { path, instanceId, data, audiences, pluginStates, theme } = loaderData;
+	const { path, instanceId, data, audiences, pluginStates, theme, tenant } = loaderData;
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const { user, i18n } = rootApi.useLoaderData();
 	const locale = i18n?.locale ?? "en";
@@ -99,12 +105,16 @@ export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderDa
 	if (entry === undefined || pageEntry === undefined) return null;
 	const instance = entry.instance;
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
+	// Chrome user gains the bound tenant role so `when.minTenantRole`
+	// gates evaluate; unresolved tenant → null → those gates fail closed.
+	const chromeUser =
+		user === null || user === undefined ? user : { ...user, tenantRole: tenant?.role ?? null };
 	const items = collectChrome(
 		visiblePlugins,
 		"portal.sidebar",
 		pathname,
 		instance.id,
-		user,
+		chromeUser,
 	).flatMap((chromeEntry) =>
 		chromeEntry.content.kind === "sidebarItem"
 			? [

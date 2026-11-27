@@ -33,6 +33,8 @@ export const vaultChromePlugin = definePlugin({
 		id: `vault.${instance}.nav`,
 		region: "portal.sidebar" as const,
 		portal: instance,
+		// Mirrors index.ts — tenant admins only.
+		when: { minTenantRole: "admin" as const },
 		content: {
 			kind: "sidebarItem" as const,
 			item: {

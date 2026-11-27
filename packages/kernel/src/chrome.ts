@@ -20,9 +20,10 @@ const pathMatches = (pattern: string, pathname: string): boolean => {
 };
 
 /** Whether a contribution's `when` rules admit `pathname` under the
- * session `user` (when clinical conditions apply). `minDoctorProfiles`
- * fails closed: no resolved user or no resolved count hides the
- * contribution — clinical chrome never leaks to unknown accounts. */
+ * session `user` (when clinical/tenant conditions apply).
+ * `minDoctorProfiles` and `minTenantRole` fail closed: no resolved
+ * user/count/role hides the contribution — gated chrome never leaks
+ * to unknown accounts. */
 export const chromeWhenMatches = (
 	when: ChromeContribution["when"],
 	pathname: string,
@@ -34,6 +35,13 @@ export const chromeWhenMatches = (
 		// Stryker disable next-line ConditionalExpression: `count < undefined` is always false, so replacing `!== undefined` with `true` cannot change the outcome
 		when.minDoctorProfiles !== undefined &&
 		(user?.doctorProfiles ?? 0) < when.minDoctorProfiles
+	) {
+		return false;
+	}
+	if (
+		when.minTenantRole !== undefined &&
+		(user?.tenantRole == null ||
+			TENANT_ROLE_RANK[user.tenantRole] < TENANT_ROLE_RANK[when.minTenantRole])
 	) {
 		return false;
 	}
@@ -50,6 +58,15 @@ interface Ranked {
 /** The portal instance chrome contributions belong to when they don't
  * say otherwise (P-081): the platform console is the default portal. */
 export const DEFAULT_PORTAL_ID = "platform";
+
+/** Tenant-role ranking for `when.minTenantRole` — mirrors
+ * `TENANT_ROLE_RANK` in @ktb/tenant; the kernel stays dependency-free
+ * so the order is restated here (the strings are the contract). */
+const TENANT_ROLE_RANK: Record<"member" | "admin" | "owner", number> = {
+	member: 0,
+	admin: 1,
+	owner: 2,
+};
 
 /** The instance an entry renders in: its explicit `portal` tag, else
  * the default instance. Only `portal.*` regions consult this. */

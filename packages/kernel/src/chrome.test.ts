@@ -84,6 +84,23 @@ describe("chromeWhenMatches", () => {
 		expect(chromeWhenMatches(both, "/portal/doctor", duo)).toBe(true);
 		expect(chromeWhenMatches(both, "/elsewhere", duo)).toBe(false);
 	});
+
+	it("gates on minTenantRole against the bound tenant role", () => {
+		const when = { minTenantRole: "admin" as const };
+		const base = { id: "u", email: "u@x" };
+		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: "owner" })).toBe(true);
+		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: "admin" })).toBe(true);
+		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: "member" })).toBe(false);
+		// "member" admits every role.
+		expect(
+			chromeWhenMatches({ minTenantRole: "member" }, "/x", { ...base, tenantRole: "member" }),
+		).toBe(true);
+		// Fails closed: unresolved/absent role or no user hides it.
+		expect(chromeWhenMatches(when, "/x", base)).toBe(false);
+		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: null })).toBe(false);
+		expect(chromeWhenMatches(when, "/x", null)).toBe(false);
+		expect(chromeWhenMatches(when, "/x")).toBe(false);
+	});
 });
 
 describe("collectChrome", () => {

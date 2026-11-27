@@ -323,11 +323,16 @@ export interface LandingFooterBlock {
  * page". `minDoctorProfiles` is the clinical request-state condition:
  * the contribution only renders when the session account's doctor-
  * profile directory holds at least that many entries — fails closed
- * (hidden) when the host resolves no user or no count. */
+ * (hidden) when the host resolves no user or no count.
+ * `minTenantRole` is the tenant-membership condition: the contribution
+ * only renders when the session's role in the request's bound tenant
+ * ranks at/above it ("owner" > "admin" > "member") — fails closed
+ * (hidden) when the host resolves no tenant role. */
 export interface ChromeWhen {
 	readonly paths?: readonly string[];
 	readonly exceptPaths?: readonly string[];
 	readonly minDoctorProfiles?: number;
+	readonly minTenantRole?: "member" | "admin" | "owner";
 }
 
 /** A named portal instance (P-081): a sidebar-shell surface scoped to
@@ -398,6 +403,14 @@ export interface ChromeUser {
 	 * open.
 	 */
 	readonly patientProfiles?: number;
+	/**
+	 * The account's role in the tenant bound to the current request
+	 * ("owner" > "admin" > "member"). Portal shells resolve it per
+	 * navigation from the same TenantResolver pipeline page loaders
+	 * use; hosts that do not resolve a bound tenant leave it
+	 * undefined, which `when.minTenantRole` treats as failing closed.
+	 */
+	readonly tenantRole?: "owner" | "admin" | "member" | null;
 }
 
 /** Everything the host injects into a chrome `component` contribution —

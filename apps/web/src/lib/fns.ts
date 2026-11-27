@@ -31,7 +31,7 @@ import {
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
 import { PortalAudience } from "@ktb/portal";
-import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
+import { Tenant, TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import type { MiddlewareContext, Page, PanelPage } from "@ktb/kernel";
@@ -463,6 +463,23 @@ export const portalPageDataFn = createServerFn({ method: "GET" })
 	// boundary; the wire type is whatever each page's loader returns
 	// (serializable rows — same shape the retired per-page fns sent).
 	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "portal"));
+
+/**
+ * The tenant bound to this request — selector headers → directory →
+ * single-membership default, the same resolution `runAs` applies to
+ * page loaders — as `{ id, role }`, or null in personal scope /
+ * anonymous. Portal shells feed `role` into chrome `when.minTenantRole`
+ * gates so tenant-admin surfaces (e.g. the clinic vault) stay hidden
+ * from members, secretaries and patient accounts.
+ */
+export const boundTenantFn = createServerFn({ method: "GET" }).handler(async () => {
+	const user = await getSessionUser();
+	if (user === null) return null;
+	return runAs(
+		user,
+		Effect.map(Tenant, (tenant) => (tenant === null ? null : { id: tenant.id, role: tenant.role })),
+	);
+});
 
 /**
  * Audience rule ids the session user satisfies (P-081) — feeds the
