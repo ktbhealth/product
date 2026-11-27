@@ -94,27 +94,29 @@ export interface ImageUploadMeta {
 	readonly height?: number | null;
 }
 
-export class Images extends Context.Service<
-	Images,
-	{
-		/** Every image, newest first. */
-		readonly adminList: () => Effect.Effect<readonly ImageRecord[], Forbidden>;
-		/** One image by id; null when missing. */
-		readonly adminGet: (id: number) => Effect.Effect<ImageRecord | null, ImageError>;
-		/** Record an uploaded object; `InvalidImageInput` on bad meta. */
-		readonly adminCreate: (input: ImageUploadMeta) => Effect.Effect<ImageRecord, ImageError>;
-		/** Update title and/or alt; `ImageNotFound` when missing. */
-		readonly adminUpdate: (
-			id: number,
-			input: { readonly title?: string; readonly alt?: string },
-		) => Effect.Effect<ImageRecord, ImageError>;
-		/** Delete the row by id; `ImageNotFound` when missing. The caller
-		 * owns object cleanup — `adminGet`/`getById` exposes `storageKey`. */
-		readonly adminRemove: (id: number) => Effect.Effect<void, ImageError>;
-		/** Public read by id (no admin gate); null when missing. */
-		readonly getById: (id: number) => Effect.Effect<ImageRecord | null>;
-	}
->()("@ktb/image/Images") {}
+/** The `Images` service shape — exported so client-safe modules (the
+ * `"image"` element-kind declaration in ./kind.tsx) can type the
+ * services record via `import type` without pulling the server graph. */
+export interface ImagesShape {
+	/** Every image, newest first. */
+	readonly adminList: () => Effect.Effect<readonly ImageRecord[], Forbidden>;
+	/** One image by id; null when missing. */
+	readonly adminGet: (id: number) => Effect.Effect<ImageRecord | null, ImageError>;
+	/** Record an uploaded object; `InvalidImageInput` on bad meta. */
+	readonly adminCreate: (input: ImageUploadMeta) => Effect.Effect<ImageRecord, ImageError>;
+	/** Update title and/or alt; `ImageNotFound` when missing. */
+	readonly adminUpdate: (
+		id: number,
+		input: { readonly title?: string; readonly alt?: string },
+	) => Effect.Effect<ImageRecord, ImageError>;
+	/** Delete the row by id; `ImageNotFound` when missing. The caller
+	 * owns object cleanup — `adminGet`/`getById` exposes `storageKey`. */
+	readonly adminRemove: (id: number) => Effect.Effect<void, ImageError>;
+	/** Public read by id (no admin gate); null when missing. */
+	readonly getById: (id: number) => Effect.Effect<ImageRecord | null>;
+}
+
+export class Images extends Context.Service<Images, ImagesShape>()("@ktb/image/Images") {}
 
 export const ImagesLive = Layer.effect(
 	Images,

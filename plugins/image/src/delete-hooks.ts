@@ -53,22 +53,26 @@ export interface ImageDeleteHook {
 	readonly cleanup: (imageId: number, actionId: string) => Effect.Effect<void, unknown>;
 }
 
-export class ImageDeleteHooks extends Context.Service<
-	ImageDeleteHooks,
-	{
-		/** Register a hook; re-registering the same `id` replaces the
-		 * previous entry (layer rebuilds stay idempotent). */
-		readonly register: (hook: ImageDeleteHook) => Effect.Effect<void>;
-		/** Referencers grouped by hook id — owners with zero items are
-		 * omitted. Hook failures propagate (a hidden referencer is
-		 * worse than a failed dialog). */
-		readonly usage: (imageId: number) => Effect.Effect<readonly ImageUsageOwner[], unknown>;
-		/** Run every registered hook's `cleanup` for `actionId`,
-		 * sequentially; the first failure aborts so the caller never
-		 * deletes a half-cleaned image. */
-		readonly cleanup: (imageId: number, actionId: string) => Effect.Effect<void, unknown>;
-	}
->()("@ktb/image/ImageDeleteHooks") {}
+/** The `ImageDeleteHooks` service shape — exported so client-safe
+ * modules (the `"image"` element-kind declaration in ./kind.tsx) can
+ * type the services record via `import type`. */
+export interface ImageDeleteHooksShape {
+	/** Register a hook; re-registering the same `id` replaces the
+	 * previous entry (layer rebuilds stay idempotent). */
+	readonly register: (hook: ImageDeleteHook) => Effect.Effect<void>;
+	/** Referencers grouped by hook id — owners with zero items are
+	 * omitted. Hook failures propagate (a hidden referencer is
+	 * worse than a failed dialog). */
+	readonly usage: (imageId: number) => Effect.Effect<readonly ImageUsageOwner[], unknown>;
+	/** Run every registered hook's `cleanup` for `actionId`,
+	 * sequentially; the first failure aborts so the caller never
+	 * deletes a half-cleaned image. */
+	readonly cleanup: (imageId: number, actionId: string) => Effect.Effect<void, unknown>;
+}
+
+export class ImageDeleteHooks extends Context.Service<ImageDeleteHooks, ImageDeleteHooksShape>()(
+	"@ktb/image/ImageDeleteHooks",
+) {}
 
 export const ImageDeleteHooksLive = Layer.effect(
 	ImageDeleteHooks,
