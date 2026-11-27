@@ -66,32 +66,36 @@ const toDoc = (row: RichText): RichTextDoc => ({
 	content: parseRichTextValue(row.value),
 });
 
-export class RichTexts extends Context.Service<
-	RichTexts,
-	{
-		/** Every document, most recently updated first — meta only. */
-		readonly adminList: () => Effect.Effect<readonly RichTextMeta[], Forbidden>;
-		/** One document by id (parsed content); null when missing. */
-		readonly adminGet: (id: number) => Effect.Effect<RichTextDoc | null, RichTextError>;
-		/** Insert a document seeded with the canonical empty value;
-		 * `null` when the insert returning comes back empty. */
-		readonly adminCreate: (input: {
-			readonly title?: string;
-		}) => Effect.Effect<RichTextDoc | null, RichTextError>;
-		/** Update title and/or value by id; `InvalidRichTextValue` when a
-		 * supplied `value` is not a non-empty JSON array, `RichTextNotFound`
-		 * when the row is missing. */
-		readonly adminUpdate: (
-			id: number,
-			input: { readonly title?: string; readonly value?: string },
-		) => Effect.Effect<RichTextDoc, RichTextError>;
-		/** Delete a document by id; `RichTextNotFound` when missing. */
-		readonly adminRemove: (id: number) => Effect.Effect<void, RichTextError>;
-		/** Public read by id — no admin gate (anonymous consumers render
-		 * stored documents); null when missing. */
-		readonly getById: (id: number) => Effect.Effect<RichTextDoc | null>;
-	}
->()("@ktb/rich-text/RichTexts") {}
+/** The service shape — exported so the element-kind declaration
+ * (./kind.tsx) can type its services record via `import type` without
+ * pulling this server module into the client bundle. */
+export interface RichTextsShape {
+	/** Every document, most recently updated first — meta only. */
+	readonly adminList: () => Effect.Effect<readonly RichTextMeta[], Forbidden>;
+	/** One document by id (parsed content); null when missing. */
+	readonly adminGet: (id: number) => Effect.Effect<RichTextDoc | null, RichTextError>;
+	/** Insert a document seeded with the canonical empty value;
+	 * `null` when the insert returning comes back empty. */
+	readonly adminCreate: (input: {
+		readonly title?: string;
+	}) => Effect.Effect<RichTextDoc | null, RichTextError>;
+	/** Update title and/or value by id; `InvalidRichTextValue` when a
+	 * supplied `value` is not a non-empty JSON array, `RichTextNotFound`
+	 * when the row is missing. */
+	readonly adminUpdate: (
+		id: number,
+		input: { readonly title?: string; readonly value?: string },
+	) => Effect.Effect<RichTextDoc, RichTextError>;
+	/** Delete a document by id; `RichTextNotFound` when missing. */
+	readonly adminRemove: (id: number) => Effect.Effect<void, RichTextError>;
+	/** Public read by id — no admin gate (anonymous consumers render
+	 * stored documents); null when missing. */
+	readonly getById: (id: number) => Effect.Effect<RichTextDoc | null>;
+}
+
+export class RichTexts extends Context.Service<RichTexts, RichTextsShape>()(
+	"@ktb/rich-text/RichTexts",
+) {}
 
 export const RichTextsLive = Layer.effect(
 	RichTexts,
