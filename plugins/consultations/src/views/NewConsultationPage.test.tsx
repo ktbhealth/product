@@ -74,6 +74,7 @@ const backend: TranscriptionBackend = {
 	load: backendLoad,
 };
 
+const navigateMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -83,7 +84,7 @@ vi.mock("@tanstack/react-router", async () => {
 				{ href: typeof props.to === "string" ? props.to : "#", ...props },
 				props.children as never,
 			),
-		useNavigate: () => vi.fn(async () => {}),
+		useNavigate: () => navigateMock,
 	};
 });
 const zkMocks = vi.hoisted(() => ({
@@ -186,6 +187,7 @@ function renderPage(
 	portalBase?: string,
 	liveFlow = false,
 	physician?: string,
+	user?: { name?: string | null; email: string } | null,
 ) {
 	return render(
 		<NewConsultationPage
@@ -197,6 +199,7 @@ function renderPage(
 			portalBase={portalBase}
 			liveFlow={liveFlow}
 			physician={physician}
+			user={user}
 		/>,
 	);
 }
@@ -237,6 +240,7 @@ function resetPageTestDoubles() {
 	draftMock.store.save.mockClear();
 	draftMock.store.clear.mockClear();
 	backendLoad.mockClear();
+	navigateMock.mockClear();
 	vi.stubGlobal("fetch", vi.fn());
 	// jsdom lacks dialog.showModal
 	HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
@@ -2299,6 +2303,20 @@ describe("NewConsultationPage", () => {
 				const popup = document.querySelector('[data-slot="dialog-content"]');
 				expect(popup === null || popup.hasAttribute("data-closed")).toBe(true);
 			});
+		});
+
+		it("user menu opens and items navigate inside the portal", async () => {
+			renderPage(makeApi(), PATIENTS, undefined, undefined, "/portal/doctor", true, "Dr. House", {
+				name: "Admin",
+				email: "admin@ktb.health",
+			});
+			// fireEvent over user-event: Base UI menus are timing-sensitive
+			// in jsdom under full-suite load; the regression this guards is
+			// the MenuGroupLabel crash on open, not pointer fidelity.
+			fireEvent.click(screen.getByText("Admin"));
+			expect(await screen.findByText("admin@ktb.health", {}, { timeout: 3000 })).toBeTruthy();
+			fireEvent.click(await screen.findByText("Patients", {}, { timeout: 3000 }));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/patients" });
 		});
 
 		it("audio settings gear opens the device dialog", async () => {

@@ -1518,12 +1518,16 @@ export function NewConsultationPage({
 				<span className="max-w-32 truncate">{user.name ?? user.email}</span>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-56">
-				<DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
-					<span className="text-sm font-medium text-foreground">{user.name ?? user.email}</span>
-					{user.name ? (
-						<span className="truncate text-xs text-muted-foreground">{user.email}</span>
-					) : null}
-				</DropdownMenuLabel>
+				{/* Base UI requires group parts (label/items) inside a
+				 * DropdownMenuGroup — a bare label crashes the menu. */}
+				<DropdownMenuGroup>
+					<DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
+						<span className="text-sm font-medium text-foreground">{user.name ?? user.email}</span>
+						{user.name ? (
+							<span className="truncate text-xs text-muted-foreground">{user.email}</span>
+						) : null}
+					</DropdownMenuLabel>
+				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
 					<DropdownMenuItem onClick={() => void navigate({ to: portalPath("") })}>
