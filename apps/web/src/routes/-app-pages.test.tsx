@@ -244,9 +244,31 @@ describe("/$ app page dispatcher (P-059)", () => {
 		});
 	});
 
+	it("404s before the page beforeLoad hook when the owning plugin is disabled (P-058)", async () => {
+		const beforeLoad = vi.fn(async () => ({ theme: "x" }));
+		entry("/about", "plugin-a", { beforeLoad });
+		mocks.pluginStatesFn.mockResolvedValue({ enabled: [] });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).rejects.toMatchObject({
+			isNotFound: true,
+		});
+		// The enablement gate runs before any client-observable page
+		// hook — same contract as appLoader and the server pageData.
+		expect(beforeLoad).not.toHaveBeenCalled();
+		expect(mocks.appPageDataFn).not.toHaveBeenCalled();
+	});
+
+	it("runs the page beforeLoad hook when the owning plugin is enabled", async () => {
+		const beforeLoad = vi.fn(async () => ({ theme: "x" }));
+		entry("/about", "plugin-a", { beforeLoad });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toEqual({ theme: "x" });
+		expect(beforeLoad).toHaveBeenCalledOnce();
+	});
+
 	it("no-ops beforeLoad when the page declares no hook", async () => {
 		entry("/about");
 		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
+		// No hook → no enablement fetch either; the loader owns the gate.
+		expect(mocks.pluginStatesFn).not.toHaveBeenCalled();
 	});
 
 	it("treats a missing splat as the root path", async () => {

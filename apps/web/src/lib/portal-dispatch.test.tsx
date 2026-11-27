@@ -224,6 +224,9 @@ describe("portalLoader", () => {
 			await expect(
 				portalLoader({ params: { _splat: "portal/doctor/test" }, instanceId: "doctor" }),
 			).rejects.toMatchObject({ isNotFound: true });
+			// The enablement gate runs before the page-data server fn —
+			// a disabled package's loader work never starts.
+			expect(portalPageDataFn).not.toHaveBeenCalled();
 		} finally {
 			unregister();
 		}

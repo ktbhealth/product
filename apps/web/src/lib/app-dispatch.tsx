@@ -58,7 +58,16 @@ export const appBeforeLoad = async ({ params, search, location, context }: AppBe
 	const path = pagePath(params._splat);
 	const entry = findPage(appPages, path);
 	const hook = entry?.page.beforeLoad;
-	if (hook === undefined) return;
+	if (entry === undefined || hook === undefined) return;
+	// Enablement gate (P-058) runs BEFORE the page hook — the same
+	// contract appLoader and the server-side pageData middleware
+	// stages enforce: a disabled plugin's beforeLoad (redirects,
+	// notFound, side effects) must not execute. pluginStatesFn is a
+	// GET server fn whose handler is TTL-cached server-side
+	// (fns.ts ROUTE_CACHE_TTL_MS), so the repeat call in appLoader —
+	// and the root loader's — stays cheap.
+	const states = await pluginStatesFn();
+	if (!entryEnabled(plugins, enabledIdSet(states), entry)) throw notFound();
 	const result = await hook({
 		path,
 		params: hookParams(params),
