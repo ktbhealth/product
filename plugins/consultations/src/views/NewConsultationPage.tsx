@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useMemo, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import {
 	ArrowLeftIcon,
 	BrainIcon,
@@ -1091,6 +1092,12 @@ export function NewConsultationPage({
 	const showRoom = liveFlowEnabled && recordSource && !live && !roomDone;
 	const liveScreen = liveFlowEnabled && recordSource && live;
 
+	// The room stage portals to document.body: any ancestor transform or
+	// containing-block quirk would otherwise clip the fixed overlay and
+	// leak the page chrome (sidebar/footer) underneath it.
+	const [stageReady, setStageReady] = useState(false);
+	useEffect(() => setStageReady(true), []);
+
 	const roomLabels: Partial<PreconsultationRoomLabels> = {
 		brandName: lf.brandName,
 		roomTitle: lf.roomTitle,
@@ -1340,50 +1347,60 @@ export function NewConsultationPage({
 			) : null}
 
 			{showRoom ? (
-				/* ---- pre-consultation room: standalone fullscreen stage —
-				 * covers the portal chrome like the catalog demo. The slim
-				 * header carries navigation + capture-source tabs; patient,
-				 * consent and the audio test live inside the room itself. ---- */
-				<div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
-					{/* single stage header — source tabs, notices, picker and
-					 * the unsupported-browser note all live here */}
-					<header className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 lg:px-8">
-						{sourceTabs}
-						{patientPickerOpen ? patientPicker : null}
-						{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
-						<div className="ml-auto flex min-w-0 flex-1 basis-full flex-col gap-2 empty:hidden">
-							{draftNotices}
-						</div>
-					</header>
-					<div className="flex shrink-0 items-center px-4 pt-1.5 lg:px-8">
-						<Link
-							to={portalPath("/consultations")}
-							className={buttonVariants({ variant: "outline", size: "sm" })}
-						>
-							<ArrowLeftIcon />
-							{t.detail.back}
-						</Link>
-					</div>
-					<PreconsultationRoom
-						className="min-h-0 flex-1"
-						physician={{ name: physician ?? t.speakers.doctor }}
-						patient={{
-							name: selectedPatient?.name ?? nc.unlinked,
-							...(selectedPatientAge !== undefined ? { age: selectedPatientAge } : {}),
-							...(selectedPatient ? { recordNumber: selectedPatient.id } : {}),
-						}}
-						modality={modality}
-						onModalityChange={setModality}
-						consentChecked={consented}
-						onConsentChange={(checked) => setConsented(checked)}
-						onStart={startFromRoom}
-						onPostpone={() => setMode("dictation")}
-						onChangePatient={() => setPatientPickerOpen(true)}
-						onAudioTest={() => backend.load()}
-						telemetry={{ encryptionLabel: lf.encryption }}
-						labels={roomLabels}
-					/>
-				</div>
+				stageReady ? (
+					createPortal(
+						/* ---- pre-consultation room: standalone fullscreen
+						 * stage portaled to <body> — covers the portal chrome
+						 * like the catalog demo. The single header carries
+						 * source tabs + notices; patient, consent and the
+						 * audio test live inside the room itself. ---- */
+						<div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
+							{/* single stage header — title left, controls right;
+							 * notices wrap to a second row inside the same
+							 * header only when present */}
+							<header className="flex min-h-12 shrink-0 flex-wrap items-center gap-3 border-b px-4 py-1.5 lg:px-8">
+								<span className="text-sm font-semibold tracking-tight">{nc.title}</span>
+								<div className="ml-auto flex items-center gap-3">
+									{patientPickerOpen ? patientPicker : null}
+									{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
+									{sourceTabs}
+								</div>
+								<div className="flex min-w-0 flex-1 basis-full flex-col gap-2 empty:hidden">
+									{draftNotices}
+								</div>
+							</header>
+							<div className="flex shrink-0 items-center px-4 pt-1.5 lg:px-8">
+								<Link
+									to={portalPath("/consultations")}
+									className={buttonVariants({ variant: "outline", size: "sm" })}
+								>
+									<ArrowLeftIcon />
+									{t.detail.back}
+								</Link>
+							</div>
+							<PreconsultationRoom
+								className="min-h-0 flex-1"
+								physician={{ name: physician ?? t.speakers.doctor }}
+								patient={{
+									name: selectedPatient?.name ?? nc.unlinked,
+									...(selectedPatientAge !== undefined ? { age: selectedPatientAge } : {}),
+									...(selectedPatient ? { recordNumber: selectedPatient.id } : {}),
+								}}
+								modality={modality}
+								onModalityChange={setModality}
+								consentChecked={consented}
+								onConsentChange={(checked) => setConsented(checked)}
+								onStart={startFromRoom}
+								onPostpone={() => setMode("dictation")}
+								onChangePatient={() => setPatientPickerOpen(true)}
+								onAudioTest={() => backend.load()}
+								telemetry={{ encryptionLabel: lf.encryption }}
+								labels={roomLabels}
+							/>
+						</div>,
+						document.body,
+					)
+				) : null
 			) : liveScreen ? (
 				/* ---- live consultation screen: leaf composition of the ui
 				 * LiveConsultation blocks — header, diarized-turn transcript
