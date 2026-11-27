@@ -18,7 +18,7 @@ import {
 	PlatformLlm,
 	PortError,
 	type RunRecord,
-} from "@ktb/eval-consultation";
+} from "@ktb/eval-core";
 
 import {
 	ENV_CORRECTOR_KEY,
