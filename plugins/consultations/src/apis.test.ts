@@ -279,3 +279,31 @@ describe("newConsultationLoader", () => {
 		expect(mocks.listPatientsFn).toHaveBeenCalledWith();
 	});
 });
+
+describe("consultationDetailApi.generateAnamnesis", () => {
+	const run = () =>
+		consultationDetailApi.generateAnamnesis!({
+			data: { consultationId: 42, transcript: "t", patientId: 7 },
+		});
+
+	it("returns ok:false when extraction yields no draft (ZK client-side path)", async () => {
+		const fns = await import("./fns.ts");
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue(null as never);
+		await expect(run()).resolves.toEqual({ ok: false });
+		expect(fns.extractAnamnesisFn).toHaveBeenCalledWith({
+			data: { transcript: "t", patientId: 7 },
+		});
+		expect(fns.attachAnamnesisFn).not.toHaveBeenCalled();
+	});
+
+	it("attaches the extracted draft to the consultation", async () => {
+		const fns = await import("./fns.ts");
+		const draft = { anamnesis: { queixa_principal: {} }, engine: "e" };
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue(draft as never);
+		vi.mocked(fns.attachAnamnesisFn).mockResolvedValue({ id: 42 } as never);
+		await expect(run()).resolves.toEqual({ id: 42 });
+		expect(fns.attachAnamnesisFn).toHaveBeenCalledWith({
+			data: { consultationId: 42, anamnesis: draft.anamnesis, engine: "e" },
+		});
+	});
+});

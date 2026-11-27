@@ -7,6 +7,7 @@ import {
 	ConsultationAudioPlayer,
 	useConsultationAudio,
 	type AudioPipelineInfo,
+	type SegmentEditing,
 } from "./-transcript.tsx";
 import type { TranscriptSegment } from "../segments.ts";
 
@@ -309,6 +310,165 @@ describe("AudioTranscriptPanel", () => {
 		expect(screen.getByText("Doctor")).toBeTruthy();
 		expect(screen.getByText("bom dia")).toBeTruthy();
 		expect(screen.getByText("sem rótulo")).toBeTruthy();
+	});
+
+	it("karaoke rows seek playback and the playhead marks the active row", () => {
+		HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+		Element.prototype.scrollIntoView = vi.fn();
+		const ref = { current: null as HTMLAudioElement | null };
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[
+					{ start: 0, end: 2, text: "Primeira fala." },
+					{ start: 2, end: 4, text: "Segunda fala." },
+				]}
+				audioRef={ref}
+			/>,
+		);
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("Segunda fala."));
+		expect(audio.currentTime).toBe(2);
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+		// Playhead inside the second segment activates its row.
+		audio.currentTime = 2.5;
+		fireEvent.timeUpdate(audio);
+	});
+
+	it("karaoke seek is a no-op when playback is unavailable", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				audioSrc={null}
+				segments={[{ start: 0, end: 2, text: "Primeira fala." }]}
+			/>,
+		);
+		// No <audio> is mounted (explicitly locked ZK ciphertext) — the
+		// seek early-returns instead of throwing.
+		expect(document.querySelector("audio")).toBeNull();
+		fireEvent.click(screen.getByText("Primeira fala."));
+	});
+
+	it("segment editing swaps a row for a textarea and reports edits", () => {
+		HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+		Element.prototype.scrollIntoView = vi.fn();
+		const onStart = vi.fn();
+		const onDraft = vi.fn();
+		const onSave = vi.fn();
+		const onCancel = vi.fn();
+		const editing: SegmentEditing = {
+			segEdits: new Map([[0, "versão final"]]),
+			editing: 1,
+			draft: "rascunho",
+			labels: { edit: "Editar", save: "Salvar", cancel: "Cancelar", editedTag: "editado" },
+			onStart,
+			onDraft,
+			onSave,
+			onCancel,
+		};
+		const ref = { current: null as HTMLAudioElement | null };
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				correctedText="y"
+				highlight={["texto"]}
+				segments={[
+					{ start: 0, end: 2, text: "Primeira fala." },
+					{ start: 2, end: 4, text: "Segunda fala.", speaker: "SPEAKER_00" },
+					{ start: 6, end: 8, text: "Terceira fala.", speaker: "Dr. House" },
+				]}
+				segmentEditing={editing}
+				audioRef={ref}
+			/>,
+		);
+		// Row 0: edited tag + pencil; row 1: textarea with save/cancel.
+		expect(screen.getByText("editado")).toBeTruthy();
+		expect(document.querySelector("textarea")).toBeTruthy();
+		// Named speakers bypass the SPEAKER_NN formatter.
+		expect(screen.getByText("Dr. House")).toBeTruthy();
+		expect(screen.getByText("Speaker 1")).toBeTruthy();
+
+		fireEvent.change(document.querySelector("textarea")!, {
+			target: { value: "novo rascunho" },
+		});
+		expect(onDraft).toHaveBeenCalledWith("novo rascunho");
+		fireEvent.click(screen.getByText("Salvar"));
+		expect(onSave).toHaveBeenCalled();
+		fireEvent.click(screen.getByText("Cancelar"));
+		expect(onCancel).toHaveBeenCalled();
+
+		// Timestamp buttons and row spans both seek; the pencil starts an edit.
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("0:02"));
+		expect(audio.currentTime).toBe(2);
+		fireEvent.click(screen.getAllByTitle("Editar")[0]!);
+		expect(onStart).toHaveBeenCalledWith(0);
+		fireEvent.click(screen.getByText("versão final"));
+		expect(audio.currentTime).toBe(0);
+
+		// Playhead inside the editing row swaps its ref target.
+		audio.currentTime = 2.5;
+		fireEvent.timeUpdate(audio);
+	});
+
+	it("segment editing renders plain text when no highlight is given", () => {
+		const editing: SegmentEditing = {
+			segEdits: new Map(),
+			editing: null,
+			draft: "",
+			labels: { edit: "Editar", save: "Salvar", cancel: "Cancelar", editedTag: "editado" },
+			onStart: vi.fn(),
+			onDraft: vi.fn(),
+			onSave: vi.fn(),
+			onCancel: vi.fn(),
+		};
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[{ start: 0, end: 2, text: "Fala simples." }]}
+				segmentEditing={editing}
+			/>,
+		);
+		expect(screen.getByText("Fala simples.")).toBeTruthy();
+		expect(document.querySelector("mark")).toBeNull();
+	});
+
+	it("changes view shows a pure deletion and an empty state for token-identical diffs", () => {
+		const { unmount } = render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Vou examinar o paciente agora."
+				correctedText="Vou examinar paciente agora."
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		// Word dropped with no replacement → del only, no ins.
+		expect(document.querySelector("del")?.textContent).toBe("o");
+		expect(document.querySelectorAll("ins")).toHaveLength(0);
+		unmount();
+
+		// Same tokens, different spacing → every pair is "ok" → empty label.
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				serverText="Oi.  Tudo bem?"
+				correctedText="Oi. Tudo bem?"
+			/>,
+		);
+		fireEvent.click(screen.getByText("Changes"));
+		expect(screen.getByText("No differences between original and corrected.")).toBeTruthy();
 	});
 
 	it("renders diarized speaker badges on karaoke rows (P-118)", () => {

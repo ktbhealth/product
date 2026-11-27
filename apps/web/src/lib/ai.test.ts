@@ -114,6 +114,14 @@ describe("createLocalAi", () => {
 		expect(fetchImpl.mock.calls[0]![1]?.headers).toEqual({});
 	});
 
+	it("throws on a failed diarization request", async () => {
+		const failing = vi.fn<typeof fetch>(async () => new Response("nope", { status: 502 }));
+		const ai = createLocalAi("http://localhost:8080", failing);
+		await expect(ai.run("diarization", { audio: [1], diarize: true })).rejects.toThrow(
+			"local AI diarization failed: HTTP 502",
+		);
+	});
+
 	it("accepts number[] audio payloads", async () => {
 		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
 		const ai = createLocalAi("http://localhost:8080", fetchImpl);

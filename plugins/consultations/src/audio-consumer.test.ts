@@ -1031,3 +1031,41 @@ describe("handleAudioQueueBatch", () => {
 		}
 	});
 });
+
+describe("processAudioJob anamnesis regeneration", () => {
+	it("chains regenerateAnamnesis after cleanup and survives its failure", async () => {
+		const regen = vi.fn(async () => {});
+		const { db, deps } = makeDeps({ regenerateAnamnesis: regen });
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+		expect(regen).toHaveBeenCalledWith(id, "transcrição servidor (corrigido)");
+		expect((await row(db, id))?.audioStatus).toBe("done");
+
+		// A throwing regen only logs — the job stays done.
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		regen.mockRejectedValueOnce(new Error("regen boom"));
+		const id2 = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id2, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id2), deps);
+		expect(warn).toHaveBeenCalledWith(
+			"anamnesis regeneration failed; review can regenerate manually",
+			expect.objectContaining({ consultationId: id2 }),
+		);
+		expect((await row(db, id2))?.audioStatus).toBe("done");
+		warn.mockRestore();
+	});
+
+	it("skips regeneration when cleanup produces no correction", async () => {
+		const regen = vi.fn(async () => {});
+		const { db, deps } = makeDeps({
+			correctTranscript: async () => null,
+			regenerateAnamnesis: regen,
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect(regen).not.toHaveBeenCalled();
+	});
+});

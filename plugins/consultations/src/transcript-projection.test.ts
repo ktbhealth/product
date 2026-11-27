@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
 	b64ToBytes,
 	bytesToB64,
+	editsBaseText,
 	genesisUpdate,
 	projectTranscript,
+	segBaseOffsets,
+	segProjOffset,
 	TranscriptEditSession,
 } from "./transcript-projection.ts";
 import type { TranscriptEditEntry } from "./transcript-edits.ts";
@@ -93,5 +96,73 @@ describe("transcript projection (PL-023)", () => {
 		a.importRemote([entry(db, "b")]);
 		b.importRemote([entry(da, "a")]);
 		expect(a.text()).toBe(b.text());
+	});
+});
+
+describe("editsBaseText / segment offsets (PL-023)", () => {
+	it("returns base when the projected doc ends up empty", () => {
+		const base = "x";
+		const genesis = entry(genesisUpdate(base));
+		const session = new TranscriptEditSession([genesis]);
+		const delta = session.edit((t) => {
+			t.delete(0, session.text().length);
+		});
+		expect(projectTranscript("fallback", [genesis, entry(delta)])).toBe("fallback");
+	});
+
+	it("picks the pinned base column with null-tolerant fallbacks", () => {
+		const c = {
+			correctedTranscript: "corr",
+			serverTranscript: "srv",
+			transcript: "raw",
+		};
+		expect(editsBaseText({ ...c, transcriptEditsBase: "corrected" })).toBe("corr");
+		expect(
+			editsBaseText({ ...c, correctedTranscript: null, transcriptEditsBase: "corrected" }),
+		).toBe("srv");
+		expect(
+			editsBaseText({
+				correctedTranscript: null,
+				serverTranscript: null,
+				transcript: "raw",
+				transcriptEditsBase: "corrected",
+			}),
+		).toBe("raw");
+		expect(
+			editsBaseText({ correctedTranscript: null, serverTranscript: null, transcript: null }),
+		).toBe("");
+		expect(editsBaseText({ ...c, transcriptEditsBase: "server" })).toBe("srv");
+		expect(editsBaseText({ ...c, serverTranscript: null, transcriptEditsBase: "server" })).toBe(
+			"raw",
+		);
+		expect(
+			editsBaseText({ serverTranscript: null, transcript: null, transcriptEditsBase: "server" }),
+		).toBe("");
+		expect(editsBaseText({ ...c, transcriptEditsBase: "transcript" })).toBe("raw");
+		expect(editsBaseText({ transcriptEditsBase: "transcript" })).toBe("");
+		// Unpinned rows fall back through corrected → server → transcript.
+		expect(editsBaseText(c)).toBe("corr");
+		expect(editsBaseText({ serverTranscript: "srv", transcript: "raw" })).toBe("srv");
+		expect(editsBaseText({ transcript: "raw" })).toBe("raw");
+		expect(editsBaseText({})).toBe("");
+	});
+
+	it("maps segment offsets into base and projected text", () => {
+		const segments = [{ text: "alpha" }, { text: "beta gamma" }, { text: "missing" }];
+		const base = "xx alpha yy beta gamma zz";
+		const baseOffsets = segBaseOffsets(segments, base);
+		expect(baseOffsets).toEqual([3, 12, 22]);
+		// "missing" is not found → offset stays at the running position.
+		expect(segBaseOffsets([{ text: "nope" }], "abc")).toEqual([0]);
+
+		const edits: TranscriptEditEntry[] = [
+			{ at: "t", by: "u", u: "", seg: 0, text: "a" },
+			{ at: "t", by: "u", u: "", seg: 0 },
+			{ at: "t", by: "u", u: "", seg: 5, text: "ignored" },
+			{ at: "t", by: "u", u: "" },
+		];
+		// seg 0 rewrite shrinks by 4 chars; out-of-range index → 0 base.
+		expect(segProjOffset(segments, baseOffsets, edits, 1)).toBe(12 - 4);
+		expect(segProjOffset(segments, baseOffsets, edits, 9)).toBe(-4);
 	});
 });

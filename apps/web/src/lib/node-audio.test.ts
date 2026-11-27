@@ -121,6 +121,32 @@ describe("makeLocalAudioBucket", () => {
 		]);
 	});
 
+	it("head() reports size and content type, null when missing", async () => {
+		const bucket = makeLocalAudioBucket(bucketDir());
+		expect(await bucket.head("missing.bin")).toBeNull();
+		await bucket.put("h.bin", new Uint8Array([1, 2, 3, 4]), {
+			httpMetadata: { contentType: "audio/wav" },
+		});
+		expect(await bucket.head("h.bin")).toEqual({
+			size: 4,
+			httpMetadata: { contentType: "audio/wav" },
+		});
+		// Non-ENOENT stat errors propagate (ENOTDIR via a file-as-dir).
+		writeFileSync(join(bucketDir(), "blocked"), "not a dir");
+		await expect(bucket.head("blocked/x.bin")).rejects.toThrow(/ENOTDIR|not a directory/);
+	});
+
+	it("get() honours R2 range semantics (offset+length, suffix, offset-only)", async () => {
+		const bucket = makeLocalAudioBucket(bucketDir());
+		await bucket.put("r.bin", new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
+		const slice = async (range: { offset?: number; length?: number; suffix?: number }) =>
+			new Uint8Array(await (await bucket.get("r.bin", { range }))!.arrayBuffer());
+		expect(await slice({ offset: 2, length: 3 })).toEqual(new Uint8Array([2, 3, 4]));
+		expect(await slice({ suffix: 4 })).toEqual(new Uint8Array([6, 7, 8, 9]));
+		expect(await slice({ offset: 7 })).toEqual(new Uint8Array([7, 8, 9]));
+		expect(await slice({ length: 2 })).toEqual(new Uint8Array([0, 1]));
+	});
+
 	it("list() tolerates a missing store dir as zero objects", async () => {
 		const bucket = makeLocalAudioBucket(join(bucketDir(), "does-not-exist"));
 		expect(await bucket.list()).toEqual({ objects: [], truncated: false });

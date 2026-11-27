@@ -1298,6 +1298,59 @@ describe("ConsultationsLive", () => {
 			.where(eq(consultationsTable.id, id!));
 		expect(rows[0]!.e).toBe(2);
 	});
+
+	it("saveTranscriptEdits validates entry shapes and rejects principal mismatch (PL-023)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		const stored = async () =>
+			(
+				await testDb
+					.select({ e: consultationsTable.transcriptEdits })
+					.from(consultationsTable)
+					.where(eq(consultationsTable.id, id!))
+			)[0]!.e;
+
+		// Malformed entry shapes each fail isEntry at a different clause —
+		// every() short-circuits, so one payload per position.
+		for (const bad of [
+			"[null]",
+			'["x"]',
+			"[{}]",
+			'[{"at":"t"}]',
+			'[{"at":"t","by":"u"}]',
+			'[{"at":"t","by":"u","u":1}]',
+		]) {
+			await asUser(
+				"u1",
+				call((c) => c.saveTranscriptEdits(id!, "u1", bad)),
+			);
+		}
+		expect(await stored()).toBeNull();
+
+		// Once a log exists, a non-log JSON payload parses to [] and lands
+		// as a legit clear-path write.
+		const good = JSON.stringify([{ at: "t", by: "u1", u: "QUJD" }]);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", good)),
+		);
+		expect(await stored()).toBe(good);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "{}")),
+		);
+		expect(await stored()).toBe("{}");
+
+		// A userId that does not match the acting principal is Forbidden.
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.saveTranscriptEdits(id!, "u2", "[]")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
 });
 
 describe("anamnesis integrity versioning (T-138)", () => {
@@ -2863,6 +2916,37 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 			call((c) => c.create({ userId: "u1", source: "browser", status: "live" })),
 		);
 		expect(live).not.toBeNull();
+	});
+
+	it("saveTranscriptEdits under zk takes envelopes only and skips the empty-log gate", async () => {
+		const id = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.create({ userId: "u1", source: "browser" })),
+		);
+		// Plaintext over a ZK tenant fails the cipher gate.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.saveTranscriptEdits(id!, "u1", "[]")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.update" });
+		// A v1. envelope passes; the prefix bypasses the empty-log skip
+		// and the pinned base derives from the (empty) transcript.
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.saveTranscriptEdits(id!, "u1", "v1.c2VjcmV0")),
+		);
+		const rows = await testDb
+			.select({
+				e: consultationsTable.transcriptEdits,
+				b: consultationsTable.transcriptEditsBase,
+			})
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, id!));
+		expect(rows[0]).toEqual({ e: "v1.c2VjcmV0", b: "transcript" });
 	});
 
 	it("attachAnamnesis under zk stores envelopes with the client signature and rejects plaintext", async () => {

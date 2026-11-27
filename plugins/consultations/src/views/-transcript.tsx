@@ -308,8 +308,8 @@ function SegmentsKaraoke({
 	highlight?: readonly string[];
 	onSeek: (index: number) => void;
 	editing?: SegmentEditing;
-	/** Formats `speaker` for the badge (P-118) — omitted = raw label. */
-	speakerLabel?: (speaker: string) => string;
+	/** Formats `speaker` for the badge (P-118). */
+	speakerLabel: (speaker: string) => string;
 }) {
 	const markRe = evidenceRegex(highlight);
 	const activeRef = useRef<HTMLButtonElement>(null);
@@ -346,7 +346,7 @@ function SegmentsKaraoke({
 									variant="secondary"
 									className={`shrink-0 text-[9px] ring-1 ${speakerTone(s.speaker)}`}
 								>
-									{speakerLabel ? speakerLabel(s.speaker) : s.speaker}
+									{speakerLabel(s.speaker)}
 								</Badge>
 							) : null}
 							{editing.editing === i ? (
@@ -423,7 +423,7 @@ function SegmentsKaraoke({
 							variant="secondary"
 							className={`shrink-0 text-[9px] ring-1 ${speakerTone(s.speaker)}`}
 						>
-							{speakerLabel ? speakerLabel(s.speaker) : s.speaker}
+							{speakerLabel(s.speaker)}
 						</Badge>
 					) : null}
 					<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
@@ -751,7 +751,7 @@ export function AudioTranscriptPanel({
 	// pairs containing a real op are rendered below, so the reviewer
 	// audits what the cleanup changed instead of re-reading everything.
 	const changes = useMemo(
-		() => (tabbed ? sentenceDiff(tabbed.original.text, tabbed.corrected.text) : null),
+		() => (tabbed ? sentenceDiff(tabbed.original.text, tabbed.corrected.text) : []),
 		[tabbed?.original.text, tabbed?.corrected.text],
 	);
 
@@ -817,7 +817,7 @@ export function AudioTranscriptPanel({
 			) : null}
 
 			{karaoke.length > 0 ? (
-				changes ? (
+				tabbed ? (
 					<Tabs
 						value={tab === "changes" ? "changes" : "transcript"}
 						onValueChange={(v) => setTab(v === "changes" ? "changes" : "corrected")}
@@ -880,7 +880,7 @@ export function AudioTranscriptPanel({
 						))}
 					</TabsContent>
 					<TabsContent value="changes" className="space-y-3 pt-2">
-						<ChangesView pairs={changes ?? []} emptyLabel={t.transcriptPanel.noChanges} />
+						<ChangesView pairs={changes} emptyLabel={t.transcriptPanel.noChanges} />
 					</TabsContent>
 				</Tabs>
 			) : originals.length ? (

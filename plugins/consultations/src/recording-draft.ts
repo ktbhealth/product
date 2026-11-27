@@ -59,6 +59,9 @@ const draftsDb = (): DraftsDb => {
  */
 export const dexieDraftStore = (): RecordingDraftStore => {
 	const db = draftsDb();
+	// `sync.sync` runs synchronously inside `createCollection`
+	// (`startSync: true`), so the channel is assigned before any caller
+	// can reach `resync` through `utils.refetch` or the mutation hooks.
 	let channel: {
 		begin(): void;
 		truncate(): void;
@@ -66,9 +69,8 @@ export const dexieDraftStore = (): RecordingDraftStore => {
 		commit(): void;
 		markReady(): void;
 		fail(err: unknown): void;
-	} | null = null;
+	};
 	const resync = async () => {
-		if (!channel) return;
 		const rows = await db.drafts.toArray();
 		channel.begin();
 		channel.truncate();
@@ -83,8 +85,8 @@ export const dexieDraftStore = (): RecordingDraftStore => {
 			sync: (params) => {
 				channel = params;
 				void resync().then(
-					() => channel?.markReady(),
-					(err) => channel?.fail(err),
+					() => channel.markReady(),
+					(err) => channel.fail(err),
 				);
 			},
 		},

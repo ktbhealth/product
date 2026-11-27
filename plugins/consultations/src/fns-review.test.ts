@@ -40,6 +40,7 @@ import {
 	editAnamnesisFn,
 	countPendingReviewFn,
 	deferConsultationFn,
+	saveTranscriptEditsFn,
 	nextPendingReviewFn,
 	saveTranscriptEditsFn,
 	reviewTranscriptFn,

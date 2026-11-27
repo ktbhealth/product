@@ -73,6 +73,21 @@ describe("recording-draft store", () => {
 		});
 	});
 
+	it("clear on an empty store is a no-op", async () => {
+		await withFakeIdb(new IDBFactory(), async () => {
+			const store = dexieDraftStore();
+			await store.clear();
+			expect(await store.load()).toBeNull();
+		});
+	});
+
+	it("dexie store fails the sync channel when IndexedDB is unavailable", async () => {
+		await withFakeIdb(undefined, async () => {
+			const store = dexieDraftStore();
+			await expect(store.load()).rejects.toThrow();
+		});
+	});
+
 	it("default picks dexie when present, memory otherwise", async () => {
 		const global = globalThis as { indexedDB?: unknown; IDBKeyRange?: unknown };
 		const previousDb = global.indexedDB;

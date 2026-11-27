@@ -74,6 +74,14 @@ describe("sentenceDiff", () => {
 		expect(ins?.ops.every((o) => o.op === "ins")).toBe(true);
 	});
 
+	it("treats tokenless sentences as unpaired instead of dividing by zero", () => {
+		// "!!!" / "???" fold to empty token sets — overlap must return 0,
+		// so both sides render as del + ins rather than pairing.
+		const pairs = sentenceDiff("!!!", "???");
+		expect(pairs.some((p) => p.ref === "!!!" && p.hyp === "")).toBe(true);
+		expect(pairs.some((p) => p.ref === "" && p.hyp === "???")).toBe(true);
+	});
+
 	it("handles empty inputs", () => {
 		expect(sentenceDiff("", "")).toEqual([]);
 		expect(sentenceDiff("", "texto")).toEqual([expect.objectContaining({ ref: "", hyp: "texto" })]);
