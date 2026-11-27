@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
 import { Data } from "effect";
 
-import { Auth, DoctorProfiles, type AuthShape, type DoctorProfile, type Session } from "@ktb/auth";
+import { Auth, type AuthShape, type Session } from "@ktb/auth";
 import { Forbidden } from "@ktb/authz";
 
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
@@ -11,6 +11,7 @@ vi.mock("@tanstack/react-start/server", () => ({
 	getRequestHeaders: () => requestHeaders.current,
 }));
 
+import { DoctorProfiles, type DoctorProfile } from "./profiles.ts";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "./runtime.ts";
 import {
 	doctorHandler,
