@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Forbidden, Principal } from "@ktb/authz";
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { definePlugin, type PanelPage, type Plugin } from "@ktb/kernel";
 import {
 	eventTopicContribution,
 	jobKindContribution,
@@ -101,6 +101,49 @@ export const makePlatformAdminGate = (
 			),
 	};
 };
+
+/** Boolean form of `PlatformAdminShape.requireAdmin` for callers that
+ * already hold the gate shape (CQRS checks, composite page guards):
+ * `true` when the bound principal is admin, `false` on `Forbidden` —
+ * never fails. */
+export const platformAdminAdmits = (admin: PlatformAdminShape): Effect.Effect<boolean> =>
+	admin.requireAdmin().pipe(
+		Effect.as(true),
+		Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+	);
+
+/** Page `guard` shared by every /platform console page: resolves the
+ * `PlatformAdmin` service and applies `platformAdminAdmits` — `false`
+ * makes the host render not-found, the same hard-404 contract the
+ * /platform gate produces. Assign directly (`guard: platformAdminGuard`)
+ * or via `adminConsolePage`; the request path is ignored. */
+export const platformAdminGuard = (
+	_path?: string,
+): Effect.Effect<boolean, never, PlatformAdmin> =>
+	Effect.gen(function* () {
+		const platformAdmin = yield* PlatformAdmin;
+		return yield* platformAdminAdmits(platformAdmin);
+	});
+
+/** `panel.pages` descriptor factory: spreads the page fields and
+ * defaults `guard` to `platformAdminGuard` — the hard-404 admin gate
+ * every console page shares. Generic over the page literal so `loader`
+ * keeps its precise signature; the returned `guard` is the concrete
+ * zero-arg `platformAdminGuard` type. Pass `guard` explicitly (second
+ * overload) for permission-scoped or composite gates (wildcard path
+ * resolution, rbac-OR-admin checks); pages intentionally relying on the
+ * host's /platform gate alone should stay plain object literals. */
+export function adminConsolePage<
+	P extends Omit<PanelPage, "guard">,
+>(page: P): P & {
+	readonly guard: (_path?: string) => Effect.Effect<boolean, never, PlatformAdmin>;
+};
+export function adminConsolePage(page: PanelPage): PanelPage;
+export function adminConsolePage(
+	page: Omit<PanelPage, "guard"> & { readonly guard?: PanelPage["guard"] },
+): PanelPage {
+	return { ...page, guard: page.guard ?? platformAdminGuard };
+}
 
 /** Marker plugin for the env-composed admin gate — see PlatformAdmin. */
 export const platformAdminPlugin = definePlugin({

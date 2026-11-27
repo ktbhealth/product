@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 import { MiddlewareStages } from "@ktb/platform/middleware";
 
 import { MiddlewarePage } from "./middleware-page.tsx";
@@ -24,20 +24,12 @@ export const middlewarePanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "middleware.stages",
 				path: "/platform/middleware",
 				component: MiddlewarePage,
 				// Hard 404 for non-admins — same contract as the /platform
 				// layout guard.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: () =>
 					Effect.gen(function* () {
 						const stages = yield* Effect.serviceOption(MiddlewareStages);
@@ -59,7 +51,7 @@ export const middlewarePanelPlugin = definePlugin({
 							routes: routeRows === null ? null : [...routeRows],
 						};
 					}),
-			},
+			}),
 		],
 	},
 });

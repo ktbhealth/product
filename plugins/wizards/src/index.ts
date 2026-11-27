@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import type { Json } from "effect/Schema";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import type { WizardDefWire } from "./fns.ts";
@@ -128,20 +128,12 @@ export const wizardsPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, wizardsServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "wizards.admin",
 				path: "/platform/wizards",
 				component: WizardsAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const wizards = yield* Wizards;
@@ -149,7 +141,7 @@ export const wizardsPanelPlugin = definePlugin({
 							.adminList()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])))).map(toWire);
 					}),
-			},
+			}),
 		],
 	},
 });

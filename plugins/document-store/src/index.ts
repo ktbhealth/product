@@ -1,7 +1,12 @@
 import { DatabaseIcon, FileTextIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import {
+	adminConsolePage,
+	platformAdminGuard,
+	platformAdminPlugin,
+	platformPanelPlugin,
+} from "@ktb/platform";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import * as Effect from "effect/Effect";
 
@@ -311,18 +316,6 @@ export const documentStoreChromePlugin = definePlugin({
 	],
 });
 
-/** /platform admin gate shared by both console pages — same contract
- * as pages.panel: hard-404 non-admins via `guard`, and every
- * DocumentStoreAdmin method re-checks inside the service/fns. */
-const adminGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
-
 /** Console pages: the collections index, the cross-collection
  * documents browser (/platform/documents) plus a wildcard browser for
  * /platform/document-store/<name> — `panel.pages` paths are exact, but
@@ -336,11 +329,10 @@ export const documentStorePanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, documentStoreAdminPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "document-store.collections",
 				path: "/platform/document-store",
 				component: DocumentStoreCollectionsPage,
-				guard: (_path) => adminGuard(),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const admin = yield* DocumentStoreAdmin;
@@ -349,12 +341,11 @@ export const documentStorePanelPlugin = definePlugin({
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
 						return infos.map(toCollectionWire);
 					}),
-			},
-			{
+			}),
+			adminConsolePage({
 				id: "document-store.documents",
 				path: "/platform/documents",
 				component: DocumentStoreDocumentsPage,
-				guard: (_path) => adminGuard(),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const admin = yield* DocumentStoreAdmin;
@@ -370,7 +361,7 @@ export const documentStorePanelPlugin = definePlugin({
 							Effect.catchTag("Forbidden", () => Effect.succeed(empty)),
 						);
 					}),
-			},
+			}),
 			{
 				id: "document-store.collection",
 				path: "/platform/document-store/*",
@@ -379,7 +370,7 @@ export const documentStorePanelPlugin = definePlugin({
 					Effect.gen(function* () {
 						const name = collectionNameFromPath(path);
 						if (name === null) return false;
-						if (!(yield* adminGuard())) return false;
+						if (!(yield* platformAdminGuard())) return false;
 						const admin = yield* DocumentStoreAdmin;
 						const info = yield* admin
 							.getCollection(name)

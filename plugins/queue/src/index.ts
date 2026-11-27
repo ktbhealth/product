@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 
 import type { Forbidden } from "@ktb/authz";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { QueueAdmin, QueueAdminLive } from "./admin.ts";
 import { QueuePlatformPage } from "./platform-page.tsx";
@@ -55,20 +55,12 @@ export const queuePanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, queueServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "queue.jobs",
 				path: "/platform/queue",
 				component: QueuePlatformPage,
 				// Hard 404 for non-admins — same contract as the /platform
 				// layout guard; every service call re-checks anyway.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: () =>
 					Effect.gen(function* () {
 						const admin = yield* QueueAdmin;
@@ -83,7 +75,7 @@ export const queuePanelPlugin = definePlugin({
 						);
 						return { queues, runs, kinds };
 					}),
-			},
+			}),
 		],
 	},
 });

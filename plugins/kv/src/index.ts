@@ -2,7 +2,7 @@ import { DatabaseIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { KvAdmin, KvAdminLive } from "./admin.ts";
 import { kvEntries } from "./schema.ts";
@@ -110,18 +110,10 @@ export const kvPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, kvAdminServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "kv.entries",
 				path: "/platform/kv",
 				component: KvAdminConsolePage,
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const admin = yield* KvAdmin;
@@ -138,7 +130,7 @@ export const kvPanelPlugin = definePlugin({
 							Effect.catchTag("Forbidden", () => Effect.succeed(empty)),
 						);
 					}),
-			},
+			}),
 		],
 	},
 });

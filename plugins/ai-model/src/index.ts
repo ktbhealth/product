@@ -3,7 +3,7 @@ import { CpuIcon } from "lucide-react";
 import { Effect } from "effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { AiModels, AiModelsLive, type ModelCard } from "./models.ts";
 import { ModelsPanelPage } from "./platform-page.tsx";
@@ -12,18 +12,6 @@ import { aiModel } from "./schema.ts";
 export { aiModel } from "./schema.ts";
 export type { AiModel, AiModelKind } from "./schema.ts";
 export { AiModels, AiModelsLive, ModelError, type ModelCard } from "./models.ts";
-
-/** Platform-admin gate for the panel page — same contract as the
- * /platform/audit admin surface: hard deny for non-admins, the
- * AiModels service re-checks every call anyway. */
-const adminGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
 
 export const aiModelTablesPlugin = definePlugin({
 	id: "ai.model.tables",
@@ -71,11 +59,10 @@ export const aiModelPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, aiModelServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "ai-models",
 				path: "/platform/ai/models",
 				component: ModelsPanelPage,
-				guard: adminGuard,
 				loader: () =>
 					Effect.gen(function* () {
 						const models = yield* AiModels;
@@ -89,7 +76,7 @@ export const aiModelPanelPlugin = definePlugin({
 							}),
 						);
 					}),
-			},
+			}),
 		],
 	},
 });

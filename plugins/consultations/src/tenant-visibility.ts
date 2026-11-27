@@ -5,7 +5,7 @@ import type { DbClient } from "@ktb/db";
 import { consultations } from "@ktb/db/schema";
 import { Forbidden } from "@ktb/authz";
 import type { PermissionsShape } from "@ktb/rbac";
-import type { PlatformAdminShape } from "@ktb/platform";
+import { platformAdminAdmits, type PlatformAdminShape } from "@ktb/platform";
 import { accessibleTenantIds, tenantScopeCondition } from "@ktb/tenant";
 import { tenantIsZk } from "@ktb/vault";
 
@@ -26,10 +26,7 @@ const orPlatformAdmin = (
 
 /** True when the bound principal is a platform admin (never throws). */
 export const isPlatformAdmin = (platformAdmin: PlatformAdminShape) =>
-	platformAdmin.requireAdmin().pipe(
-		Effect.as(true),
-		Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-	);
+	platformAdminAdmits(platformAdmin);
 
 /**
  * Tenant visibility fence (P-053-B) — same model as the patients

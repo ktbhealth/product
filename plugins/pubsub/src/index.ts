@@ -2,7 +2,7 @@ import { RadioTowerIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { PubSubAdmin, PubSubAdminLive } from "./admin.ts";
 import { PubSubPlatformPage } from "./platform-page.tsx";
@@ -54,20 +54,12 @@ export const pubsubPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, pubsubServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "pubsub.topics",
 				path: "/platform/pubsub",
 				component: PubSubPlatformPage,
 				// Hard 404 for non-admins — same contract as the /platform
 				// layout guard; every service call re-checks anyway.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: () =>
 					Effect.gen(function* () {
 						const admin = yield* PubSubAdmin;
@@ -85,7 +77,7 @@ export const pubsubPanelPlugin = definePlugin({
 						);
 						return { topics, declaredTopics };
 					}),
-			},
+			}),
 		],
 	},
 });
