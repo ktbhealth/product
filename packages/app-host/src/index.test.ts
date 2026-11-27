@@ -3,13 +3,12 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { CommandBus, QueryBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 import { Jobs } from "@ktb/jobs-port";
 import { OrchestratorRegistry } from "@ktb/orchestrator";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { PlatformAdmin } from "@ktb/platform";
 import { pluginDuration, pluginInvocations, tagged } from "@ktb/observability";
-import { AI_ENDPOINTS_TEST_DDL } from "../../../plugins/ai-provider/src/index.ts";
 import {
 	NotificationsMarkAllRead,
 	NotificationsUnreadCount,
@@ -27,38 +26,8 @@ import {
 	plugins,
 } from "./index.ts";
 
-const DDL = `
-CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE plugin_state (plugin_id TEXT PRIMARY KEY NOT NULL, enabled INTEGER DEFAULT true NOT NULL, config TEXT, updated_at INTEGER NOT NULL);
-${AI_ENDPOINTS_TEST_DDL}
-`;
-
-// job_runs projection for the Jobs-port test — same shape as
-// packages/jobs-port/src/index.test.ts.
-const JOB_RUNS_DDL = `
-CREATE TABLE job_runs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	status TEXT NOT NULL DEFAULT 'queued',
-	payload_ref TEXT,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-`;
-
-// RBAC grant tables for the PlatformAdmin grantFor hook — same shape
-// as plugins/rbac/src/index.test.ts (role_permissions/subject_roles
-// were dropped in T-183; relation_tuples is the only grant store).
-const RBAC_DDL = `
-CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-`;
-
 const env = {
-	DB: makeD1(DDL),
+	DB: makeTestD1(),
 	BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long!!",
 	BETTER_AUTH_URL: "http://localhost:3000",
 	PLATFORM_ADMIN_EMAILS: "admin@x.com",
@@ -193,7 +162,7 @@ describe("createApp", () => {
 		const send = vi.fn(async (_body: unknown) => {});
 		const queueApp = createApp({
 			...env,
-			DB: makeD1(`${DDL}\n${JOB_RUNS_DDL}`),
+			DB: makeTestD1(),
 			AUDIO_QUEUE: { send },
 		});
 		try {
@@ -211,7 +180,7 @@ describe("createApp", () => {
 	});
 
 	it("admits RBAC-granted admins through the PlatformAdmin gate", async () => {
-		const rbacDb = makeD1(`${DDL}\n${RBAC_DDL}`);
+		const rbacDb = makeTestD1();
 		const rbacApp = createApp({ ...env, DB: rbacDb });
 		try {
 			const isAdmin = (subject: { email?: string | null; userId?: string | null }) =>
@@ -721,7 +690,7 @@ describe("verification email", () => {
 		const send = vi.fn<(builder: unknown) => Promise<unknown>>(async () => ({}));
 		const withEmail = createApp({
 			...base,
-			DB: makeD1(DDL),
+			DB: makeTestD1(),
 			EMAIL: { send },
 			EMAIL_FROM: "noreply@ktb.test",
 		});
@@ -744,7 +713,7 @@ describe("verification email", () => {
 		const withEmail = createApp(
 			{
 				...base,
-				DB: makeD1(DDL),
+				DB: makeTestD1(),
 				EMAIL: { send: async () => Promise.reject(failure) },
 				EMAIL_FROM: "noreply@ktb.test",
 			},
@@ -763,7 +732,7 @@ describe("verification email", () => {
 
 	it("logs instead of sending under EMAIL_STUB", async () => {
 		const info = vi.spyOn(console, "info").mockImplementation(() => {});
-		const stubbed = createApp({ ...base, DB: makeD1(DDL), EMAIL_STUB: "1" });
+		const stubbed = createApp({ ...base, DB: makeTestD1(), EMAIL_STUB: "1" });
 		try {
 			await verify(stubbed);
 			expect(info).toHaveBeenCalledWith(expect.stringContaining("[email-stub] to=a@ktb.test"));
@@ -802,7 +771,7 @@ describe("password reset email", () => {
 		const send = vi.fn<(builder: unknown) => Promise<unknown>>(async () => ({}));
 		const withEmail = createApp({
 			...base,
-			DB: makeD1(DDL),
+			DB: makeTestD1(),
 			EMAIL: { send },
 			EMAIL_FROM: "noreply@ktb.test",
 		});
@@ -825,7 +794,7 @@ describe("password reset email", () => {
 		const withEmail = createApp(
 			{
 				...base,
-				DB: makeD1(DDL),
+				DB: makeTestD1(),
 				EMAIL: { send: async () => Promise.reject(failure) },
 				EMAIL_FROM: "noreply@ktb.test",
 			},

@@ -15,14 +15,15 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { images } from "./schema.ts";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import type { ServerRuntime } from "@ktb/server-fns";
 
 import { Route as UploadRoute } from "./api-routes/images.ts";
 import { Route as ServeRoute } from "./api-routes/images.$id.ts";
-import { ImagesLive, IMAGES_TEST_DDL } from "./service.ts";
+import { ImagesLive } from "./service.ts";
 
 const handlersOf = (r: unknown) =>
 	(
@@ -55,7 +56,7 @@ const authStub = Auth.of({
 	},
 } as never);
 
-const db = makeDb(makeD1(IMAGES_TEST_DDL));
+const db = makeDb(makeTestD1());
 
 const infra = Layer.mergeAll(
 	Layer.succeed(Db, db),

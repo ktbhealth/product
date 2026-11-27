@@ -602,11 +602,6 @@ export const EvalValidatorLive = Layer.effect(
 	}),
 );
 
-// EVAL_VALIDATOR_TEST_DDL lives in ./test-ddl.ts — a top-level
-// `${EVAL_PERSONA_TEST_DDL}` const here would dereference the
-// eval-persona binding mid-cycle (ai-provider pins EVAL_* constants
-// from this module, so eval-persona → ai-provider → eval-validator
-// → eval-persona is a real import cycle).
 export const evalValidatorTablesPlugin = definePlugin({
 	id: "eval.validator.tables",
 	meta: { keywords: ["eval", "validator", "tables"] },

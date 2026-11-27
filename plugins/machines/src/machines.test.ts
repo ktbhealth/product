@@ -6,15 +6,15 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Audit } from "@ktb/audit";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { groups } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant, type TenantRole } from "@ktb/tenant";
 
-import { MACHINES_TEST_DDL, Machines, MachinesLive } from "./index.ts";
+import { Machines, MachinesLive } from "./index.ts";
 import { insertMachine, updateMachine } from "./machines.ts";
 
-const DDL = MACHINES_TEST_DDL;
 const TENANT_ID = 7;
 const ADMIN_EMAIL = "admin@x.com";
 const USER_EMAIL = "doc@clinic.com";
@@ -73,7 +73,7 @@ const asTenantAdmin = { email: USER_EMAIL, role: "admin" as TenantRole };
 describe("Machines", () => {
 	let db: DbClient;
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 		await db.insert(groups).values({
 			id: TENANT_ID,
 			name: "Clinic",

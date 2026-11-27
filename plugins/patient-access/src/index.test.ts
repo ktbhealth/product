@@ -7,7 +7,8 @@ import { PatientAuditAccess } from "@ktb/audit";
 import { PatientProfiles } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { asc, eq } from "drizzle-orm";
 
 import {
@@ -36,10 +37,8 @@ import { patientAccess } from "./schema.ts";
 // "Rui" is still pending, the invite to "Eva" unclaimed and the link to
 // "Ivo" revoked.
 const DDL = `
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
-INSERT INTO patients (id, owner_id, name) VALUES
-  (1, 'doc', 'Leo'), (2, 'doc', 'Ana'), (3, 'doc', 'Rui'), (4, 'doc', 'Eva'), (5, 'doc', 'Ivo');
-CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+INSERT INTO patients (id, owner_id, name, created_at) VALUES
+  (1, 'doc', 'Leo', 0), (2, 'doc', 'Ana', 0), (3, 'doc', 'Rui', 0), (4, 'doc', 'Eva', 0), (5, 'doc', 'Ivo', 0);
 INSERT INTO patient_access (patient_id, user_id, email, relation, status, source, created_at, updated_at) VALUES
   (1, 'parent', NULL, 'guardian', 'active', 'invite', 0, 0),
   (2, 'parent', NULL, 'self', 'active', 'cpf', 0, 0),
@@ -53,20 +52,16 @@ INSERT INTO patient_access (patient_id, user_id, email, relation, status, source
 // Leo, where its older CPF match still awaits approval; "leo" has not
 // verified the address its invite went to.
 const LINKS_DDL = `
-CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0);
-INSERT INTO user (id, email, email_verified) VALUES
-  ('ana', 'Ana@KTB.test', 1), ('leo', 'leo@ktb.test', 0), ('eva', 'eva@ktb.test', 1);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
-INSERT INTO patients (id, owner_id, name) VALUES (1, 'doc', 'Ana'), (2, 'doc', 'Leo'), (3, 'other', 'Rui');
-CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX patient_access_patient_user_idx ON patient_access (patient_id, user_id);
+INSERT INTO "user" (id, email, email_verified, name, created_at, updated_at) VALUES
+  ('ana', 'Ana@KTB.test', 1, 'ana', 0, 0), ('leo', 'leo@ktb.test', 0, 'leo', 0, 0), ('eva', 'eva@ktb.test', 1, 'eva', 0, 0);
+INSERT INTO patients (id, owner_id, name, created_at) VALUES (1, 'doc', 'Ana', 0), (2, 'doc', 'Leo', 0), (3, 'other', 'Rui', 0);
 INSERT INTO patient_access (id, patient_id, user_id, email, relation, status, source, granted_by, created_at, updated_at) VALUES
   (1, 1, NULL, 'ana@ktb.test', 'self', 'invited', 'invite', 'doc', 0, 0),
   (2, 2, 'ana', NULL, 'self', 'pending', 'cpf', NULL, 0, 0),
   (3, 2, NULL, 'ana@ktb.test', 'guardian', 'invited', 'invite', 'sec', 0, 0),
   (4, 3, NULL, 'leo@ktb.test', 'self', 'invited', 'invite', 'other', 0, 0);
 `;
-const linksDb = () => makeDb(makeD1(LINKS_DDL));
+const linksDb = () => makeDb(makeTestD1(LINKS_DDL));
 type TestDb = ReturnType<typeof linksDb>;
 
 /** The stored rows of a patient, oldest first, without the timestamps. */
@@ -383,7 +378,7 @@ describe("PatientLinksLive", () => {
 });
 
 describe("listPatientProfiles", () => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 
 	it("returns only actively linked records, by name", async () => {
 		expect(await listPatientProfiles(db, "parent")).toEqual([
@@ -399,7 +394,7 @@ describe("listPatientProfiles", () => {
 
 describe("PatientProfilesLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<PatientProfiles, never>;
-	const d1 = makeD1(DDL);
+	const d1 = makeTestD1(DDL);
 
 	beforeAll(() => {
 		runtime = ManagedRuntime.make(
@@ -498,7 +493,7 @@ describe("PatientAuditAccessLive", () => {
 });
 
 describe("portalLink", () => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 
 	it("returns relation and record name for an active link only", async () => {
 		expect(await portalLink(db, "parent", 1)).toEqual({

@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,7 +22,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { promptsApi } from "./apis.ts";
 import { promptsCreateFn, promptsListFn, promptsRemoveFn, promptsUpdateFn } from "./fns.ts";
-import { AI_PROMPT_TEST_DDL, AiPromptsLive } from "./index.ts";
+import { AiPromptsLive } from "./index.ts";
 
 const ADMIN = "admin@x.com";
 
@@ -31,7 +32,7 @@ describe("ai-prompt fns", () => {
 	const auth = stubAuth(() => sessionUser(currentEmail));
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(AI_PROMPT_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN))),

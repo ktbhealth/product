@@ -2,19 +2,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import {
-	MACHINES_TEST_DDL,
-	Machines,
-	MachinesLive,
-	machinesPanelPlugin,
-	plugins,
-} from "./index.ts";
+import { Machines, MachinesLive, machinesPanelPlugin, plugins } from "./index.ts";
 import { plugins as clientPlugins } from "./client.ts";
 
 describe("machines plugin manifests", () => {
@@ -55,7 +50,7 @@ describe("machinesPanelPlugin page", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(MACHINES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN))),

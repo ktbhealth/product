@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { DoctorDelegations } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	claimDoctorInvites,
@@ -33,29 +33,25 @@ import { doctorAccess } from "./schema.ts";
 // who is also doc-a's secretary. newbie has a verified account and
 // unverified an unproven one — neither linked to anything yet.
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, email TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0);
-INSERT INTO "user" VALUES
-  ('doc-a', 'a@ktb.test', 1), ('doc-b', 'b@ktb.test', 1), ('doc-c', 'c@ktb.test', 1),
-  ('doc-d', 'd@ktb.test', 1), ('both', 'both@ktb.test', 1), ('sec', 'sec@ktb.test', 1),
-  ('newbie', 'newbie@ktb.test', 1), ('unverified', 'unverified@ktb.test', 0), ('plain', 'plain@ktb.test', 1);
-CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+INSERT INTO "user" (id, email, email_verified, name, created_at, updated_at) VALUES
+  ('doc-a', 'a@ktb.test', 1, 'doc-a', 0, 0), ('doc-b', 'b@ktb.test', 1, 'doc-b', 0, 0), ('doc-c', 'c@ktb.test', 1, 'doc-c', 0, 0),
+  ('doc-d', 'd@ktb.test', 1, 'doc-d', 0, 0), ('both', 'both@ktb.test', 1, 'both', 0, 0), ('sec', 'sec@ktb.test', 1, 'sec', 0, 0),
+  ('newbie', 'newbie@ktb.test', 1, 'newbie', 0, 0), ('unverified', 'unverified@ktb.test', 0, 'unverified', 0, 0), ('plain', 'plain@ktb.test', 1, 'plain', 0, 0);
 INSERT INTO doctors (id, user_id, display_name, created_at, updated_at) VALUES
   (1, 'doc-a', 'Zeca Lima', 0, 0),
   (2, 'doc-b', 'Ana Souza', 0, 0),
   (3, 'doc-c', 'Dr. Caio', 0, 0),
   (4, 'doc-d', 'Dra. Dora', 0, 0),
   (5, 'both', 'Dra. Bia', 0, 0);
-CREATE TABLE doctor_access (id INTEGER PRIMARY KEY AUTOINCREMENT, doctor_id INTEGER NOT NULL, user_id TEXT, email TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'secretary', status TEXT NOT NULL DEFAULT 'invited', invited_by TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-CREATE UNIQUE INDEX doctor_access_doctor_email_idx ON doctor_access (doctor_id, email);
-INSERT INTO doctor_access (doctor_id, user_id, email, status) VALUES
-  (1, 'sec', 'sec@ktb.test', 'active'),
-  (2, 'sec', 'sec@ktb.test', 'active'),
-  (3, NULL, 'sec@ktb.test', 'invited'),
-  (4, 'sec', 'sec@ktb.test', 'revoked'),
-  (1, 'both', 'both@ktb.test', 'active');
+INSERT INTO doctor_access (doctor_id, user_id, email, status, created_at, updated_at) VALUES
+  (1, 'sec', 'sec@ktb.test', 'active', 0, 0),
+  (2, 'sec', 'sec@ktb.test', 'active', 0, 0),
+  (3, NULL, 'sec@ktb.test', 'invited', 0, 0),
+  (4, 'sec', 'sec@ktb.test', 'revoked', 0, 0),
+  (1, 'both', 'both@ktb.test', 'active', 0, 0);
 `;
 
-const freshDb = () => makeDb(makeD1(DDL));
+const freshDb = () => makeDb(makeTestD1(DDL));
 
 describe("listDelegatedProfiles", () => {
 	const db = freshDb();

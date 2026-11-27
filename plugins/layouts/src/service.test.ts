@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { RichTextDeleteHooks, type RichTextDeleteHook } from "@ktb/rich-text/delete-hooks";
@@ -15,7 +16,6 @@ import {
 	InvalidBuilderDoc,
 	InvalidLayoutConfig,
 	InvalidLayoutName,
-	LAYOUTS_TEST_DDL,
 	LayoutNameTaken,
 	LayoutNotFound,
 	Layouts,
@@ -64,7 +64,7 @@ describe("LayoutsLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(LAYOUTS_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -377,7 +377,7 @@ describe("LayoutsLive", () => {
 
 describe("Layouts.resolveForPage", () => {
 	const depsFor = (extra?: Layer.Layer<RichTexts>) => {
-		const db = makeDb(makeD1(LAYOUTS_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const base = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -486,7 +486,7 @@ describe("layoutsRichTextDeleteHook", () => {
 	const allLayouts = () => db.select().from(layouts);
 
 	beforeAll(() => {
-		db = makeDb(makeD1(LAYOUTS_TEST_DDL));
+		db = makeDb(makeTestD1());
 		hook = layoutsRichTextDeleteHook(db);
 	});
 

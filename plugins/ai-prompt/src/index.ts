@@ -87,17 +87,6 @@ export const aiPromptPanelPlugin = definePlugin({
 	},
 });
 
-// Re-exported for tests: DDL that creates `ai_prompt` (+ a `groups`
-// stub for the tenant FK) in the in-memory better-sqlite3 test
-// databases of instrumented plugins.
-export const AI_PROMPT_TEST_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE ai_prompt (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, name TEXT NOT NULL, version INTEGER NOT NULL, locale TEXT NOT NULL DEFAULT '', template TEXT NOT NULL, variables TEXT, model_hint TEXT, is_system INTEGER NOT NULL DEFAULT 0, is_default INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE UNIQUE INDEX ai_prompt_scope_name_version_locale_idx ON ai_prompt (scope, name, version, locale);
-CREATE INDEX ai_prompt_tenant_idx ON ai_prompt (tenant_id);
-CREATE INDEX ai_prompt_name_idx ON ai_prompt (name);
-`;
-
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [

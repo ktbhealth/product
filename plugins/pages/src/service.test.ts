@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Forbidden, Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { RichTextDeleteHooks, type RichTextDeleteHook } from "@ktb/rich-text/delete-hooks";
@@ -11,7 +12,6 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
-	PAGES_TEST_DDL,
 	Pages,
 	PagesLive,
 	DuplicatePagePath,
@@ -60,7 +60,7 @@ describe("PagesLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Pages, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(PAGES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -483,7 +483,7 @@ describe("PagesLive", () => {
 
 describe("Pages.validatedSearch", () => {
 	const depsFor = (schemasLayer?: Layer.Layer<Schemas>) => {
-		const db = makeDb(makeD1(PAGES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const base = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -725,7 +725,7 @@ describe("pagesRichTextDeleteHook", () => {
 	const allPages = () => db.select().from(page);
 
 	beforeAll(() => {
-		db = makeDb(makeD1(PAGES_TEST_DDL));
+		db = makeDb(makeTestD1());
 		hook = pagesRichTextDeleteHook(db);
 	});
 

@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { groupsServicesPlugin } from "@ktb/groups";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
@@ -20,13 +21,9 @@ import {
 } from "./index.ts";
 
 const DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
 INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES
   ('Clinic A', 'clinic-a', 'clinic', NULL, 1000, 1000),
   ('Org B', 'org-b', 'org', NULL, 2000, 2000);
-CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX group_members_group_member_idx ON group_members (group_id, member_kind, member_id);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 INSERT INTO group_members (group_id, member_kind, member_id, role, created_at) VALUES
   (1, 'user', 'u1', 'admin', 1000),
   (1, 'user', 'u2', NULL, 1000),
@@ -38,7 +35,7 @@ describe("TenantsLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Tenants, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

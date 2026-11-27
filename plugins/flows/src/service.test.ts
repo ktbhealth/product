@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	defineCollection,
 	DocumentCollections,
 	DocumentStore,
 	DocumentStoreLive,
-	DOCUMENT_STORE_TEST_DDL,
 	f,
 	type DocumentRecord,
 	type DocumentStoreError,
@@ -26,11 +26,7 @@ import { Flows, FlowsServicesLive, type FlowEventInput } from "./service.ts";
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0);
 `;
 
 const docs = defineCollection({
@@ -113,7 +109,7 @@ describe("FlowsServicesLive (integration)", () => {
 		runtime.runPromise(asUser(Effect.flatMap(Flows, eff)));
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1(GROUPS_DDL));
 		const shared = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: [docs] }),

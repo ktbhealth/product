@@ -11,7 +11,7 @@ import { Patients } from "@ktb/patients";
 import { PortalAccess } from "@ktb/patient-access";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	parseAnamnesis,
@@ -121,24 +121,21 @@ const ownerLayers = (stubs: Stubs) => {
 	return Layer.mergeAll(access, consultations, doctors, patients);
 };
 
-// Vault's portal helpers are real repo functions — the D1 carries only
-// the tables they touch (portal_keys + entity_deks; user satisfies the
-// FK stub). Patient 1 is tenant 7 with grants for ana's device; 2 is
-// tenantless; 3 belongs to a stranger.
+// Vault's portal helpers are real repo functions — the migrated schema
+// provides user/portal_keys/entity_deks; only seed rows are needed.
+// Patient 1 is tenant 7 with grants for ana's device; 2 is tenantless;
+// 3 belongs to a stranger.
 const VAULT_DDL = `
-CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0, updated_at INTEGER);
-INSERT INTO user (id, name, email) VALUES ('ana', 'Ana', 'ana@ktb.test');
-CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE cascade, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES ('ana', 'anaDev', 'anaSign');
-CREATE TABLE entity_deks (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reader_kind TEXT NOT NULL, reader_pubkey TEXT NOT NULL, reader_id TEXT, wrapped_dek TEXT NOT NULL, granted_by_user_id TEXT, created_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO entity_deks (tenant_id, entity_type, entity_id, reader_kind, reader_pubkey, wrapped_dek) VALUES
-  (7, 'patient', '1', 'patient', 'anaDev', 'w1.patient'),
-  (7, 'consultation', '10', 'patient', 'anaDev', 'w1.consult');
+INSERT INTO "user" (id, name, email, created_at, updated_at) VALUES ('ana', 'Ana', 'ana@ktb.test', 0, 0);
+INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key, created_at) VALUES ('ana', 'anaDev', 'anaSign', 0);
+INSERT INTO entity_deks (tenant_id, entity_type, entity_id, reader_kind, reader_pubkey, wrapped_dek, created_at) VALUES
+  (7, 'patient', '1', 'patient', 'anaDev', 'w1.patient', 0),
+  (7, 'consultation', '10', 'patient', 'anaDev', 'w1.consult', 0);
 `;
 
 const runtimes: ManagedRuntime.ManagedRuntime<PatientPortal, never>[] = [];
 
-const makeRuntime = (stubs: Stubs = {}, db: ReturnType<typeof makeDb> = makeDb(makeD1(""))) => {
+const makeRuntime = (stubs: Stubs = {}, db: ReturnType<typeof makeDb> = makeDb(makeTestD1())) => {
 	const runtime = ManagedRuntime.make(
 		PatientPortalLive.pipe(
 			Layer.provide(Layer.mergeAll(Layer.succeed(Db, db), ownerLayers(stubs))),
@@ -296,7 +293,7 @@ describe("PatientPortal.consultation", () => {
 	const runtime = ManagedRuntime.make(
 		PatientPortalLive.pipe(
 			Layer.provideMerge(
-				Layer.mergeAll(Layer.succeed(Db, makeDb(makeD1(""))), ownerLayers(stubs), auditStub),
+				Layer.mergeAll(Layer.succeed(Db, makeDb(makeTestD1())), ownerLayers(stubs), auditStub),
 			),
 		),
 	);
@@ -377,7 +374,7 @@ describe("PatientPortal.awaitingInvites", () => {
 });
 
 describe("PatientPortal ZK surface", () => {
-	const db = makeDb(makeD1(VAULT_DDL));
+	const db = makeDb(makeTestD1(VAULT_DDL));
 	const runtime = makeRuntime(
 		{
 			// ana holds active links to patients 1 (tenant 7, granted) and

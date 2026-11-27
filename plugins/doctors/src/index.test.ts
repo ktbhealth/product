@@ -6,7 +6,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	DoctorProfilesLive,
@@ -25,13 +25,11 @@ import {
 import { doctors } from "./schema.ts";
 
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, email TEXT NOT NULL);
-INSERT INTO "user" VALUES ('u1', 'ana@ktb.test'), ('sec', 'sec@ktb.test');
-CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO "user" (id, email, name, created_at, updated_at) VALUES ('u1', 'ana@ktb.test', 'u1', 0, 0), ('sec', 'sec@ktb.test', 'sec', 0, 0);
 `;
 
 describe("doctors repo", () => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 
 	it("has no profile for an unknown user", async () => {
 		expect(await getDoctorByUser(db, "u1")).toBeNull();
@@ -48,7 +46,7 @@ describe("doctors repo", () => {
 });
 
 describe("doctor profile directory", () => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 	const own: DoctorProfile = {
 		doctorId: 1,
 		userId: "u1",
@@ -108,7 +106,7 @@ describe("doctor profile directory", () => {
 });
 
 describe("switch-doctor portal loader", () => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 	const own: DoctorProfile = {
 		doctorId: 1,
 		userId: "u1",
@@ -197,7 +195,7 @@ describe("switch-doctor portal loader", () => {
 
 describe("DoctorsLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Doctors, never>;
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 
 	beforeAll(() => {
 		runtime = ManagedRuntime.make(DoctorsLive.pipe(Layer.provide(Layer.succeed(Db, db))));

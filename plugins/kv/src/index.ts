@@ -135,28 +135,6 @@ export const kvPanelPlugin = definePlugin({
 	},
 });
 
-/** Test DDL mirroring the drizzle table (better-sqlite3 has no
- * migrations; tests create the schema directly). */
-export const KV_TEST_DDL = `
-CREATE TABLE kv_entries (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	namespace TEXT NOT NULL,
-	"key" TEXT NOT NULL,
-	tenant_id INTEGER,
-	owner_id TEXT,
-	value TEXT NOT NULL,
-	expires_at INTEGER,
-	version INTEGER NOT NULL DEFAULT 1,
-	created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-	updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-	tenant_key INTEGER GENERATED ALWAYS AS (coalesce("tenant_id", -1)) VIRTUAL,
-	owner_key TEXT GENERATED ALWAYS AS (coalesce("owner_id", '')) VIRTUAL
-);
-CREATE UNIQUE INDEX kv_entries_uidx ON kv_entries (namespace, "key", tenant_key, owner_key);
-CREATE INDEX kv_entries_expiry_idx ON kv_entries (expires_at);
-CREATE INDEX kv_entries_scope_idx ON kv_entries (namespace, tenant_id, owner_id);
-`;
-
 /** Single-concern plugins contributed by this module. */
 export const plugins: readonly Plugin[] = [
 	kvTablesPlugin,

@@ -1,37 +1,10 @@
 import type { SqlDatabase } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+
 import { insertScheduledJob } from "@ktb/scheduler-port";
 import { describe, expect, it } from "vitest";
 import { notifySchedulerDo, SchedulerDo } from "./index.ts";
-
-const SCHEDULER_DDL = `
-CREATE TABLE scheduled_jobs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	params TEXT,
-	cron_expr TEXT,
-	run_at INTEGER,
-	next_run_at INTEGER NOT NULL,
-	claimed_until INTEGER,
-	last_run_at INTEGER,
-	status TEXT NOT NULL DEFAULT 'active',
-	tenant_id INTEGER,
-	created_by TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE job_runs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	status TEXT NOT NULL DEFAULT 'queued',
-	payload_ref TEXT,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-`;
 
 /** In-memory DO storage fake. */
 function makeState() {
@@ -172,7 +145,7 @@ describe("SchedulerDo scheduling", () => {
 	});
 
 	it("alarm() sweeps due rows and enqueues through the queue binding", async () => {
-		const sql = makeD1(SCHEDULER_DDL);
+		const sql = makeTestD1();
 		const db = makeDb(sql);
 		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
 		const { state } = makeState();
@@ -184,7 +157,7 @@ describe("SchedulerDo scheduling", () => {
 	});
 
 	it("alarm() skips the sweep when the queue binding is absent", async () => {
-		const sql = makeD1(SCHEDULER_DDL);
+		const sql = makeTestD1();
 		const db = makeDb(sql);
 		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
 		const { state } = makeState();

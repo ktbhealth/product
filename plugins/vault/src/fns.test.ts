@@ -14,7 +14,8 @@ vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Tenant, type TenantRole } from "@ktb/tenant";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,7 +24,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { PlatformAdmin, makePlatformAdminGate, parsePlatformAdminEmails } from "@ktb/platform";
 import { secretKeyringLive } from "@ktb/vault-keyring";
 
-import { vaultSecretsPlugin, vaultServicesPlugin, VAULT_TEST_DDL } from "./index.ts";
+import { vaultSecretsPlugin, vaultServicesPlugin } from "./index.ts";
 import {
 	vaultApproveDeviceFn,
 	vaultDekEnvelopesFn,
@@ -40,8 +41,8 @@ import {
 	vaultStateFn,
 } from "./fns.ts";
 
-const DDL = `${VAULT_TEST_DDL}
-INSERT INTO groups (id, name, slug, kind) VALUES (7, 'Clinic A', 'clinic-a', 'clinic');
+const DDL = `
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (7, 'Clinic A', 'clinic-a', 'clinic', 0, 0);
 `;
 
 const TENANT_FOR = (role: TenantRole | null) =>
@@ -53,7 +54,7 @@ describe("vault fns", () => {
 	let currentRole: TenantRole | null = null;
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const env = Layer.succeed(Db, db);
 		const servicesLayer = (plugin: { services?: unknown }) =>
 			(plugin.services as Layer.Layer<unknown, unknown, unknown>).pipe(

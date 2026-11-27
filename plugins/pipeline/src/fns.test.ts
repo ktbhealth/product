@@ -30,8 +30,9 @@ vi.mock("@ktb/orchestrator", async (importOriginal) => {
 });
 
 import { Db, makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { orchestrationNodeRuns, orchestrationRuns } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import {
 	makeOrchestratorRegistry,
 	OrchestratorRegistry,
@@ -59,39 +60,6 @@ import {
 	upsertOrchestrationFn,
 } from "./fns.ts";
 
-const DDL = `
-CREATE TABLE orchestration_defs (
-	id TEXT PRIMARY KEY NOT NULL,
-	version TEXT NOT NULL,
-	def TEXT NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_runs (
-	id TEXT PRIMARY KEY NOT NULL,
-	def_id TEXT NOT NULL,
-	def_version TEXT NOT NULL,
-	status TEXT DEFAULT 'running' NOT NULL,
-	state TEXT NOT NULL,
-	runtime TEXT NOT NULL,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_node_runs (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	node_id TEXT NOT NULL,
-	status TEXT NOT NULL,
-	latency_ms INTEGER NOT NULL,
-	error TEXT,
-	fires INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-`;
-
 const demoDef = {
 	id: "demo",
 	version: "1",
@@ -111,7 +79,7 @@ describe("pipeline admin fns", () => {
 		orchestratorSpy.getOrchestrationDef.mockImplementation(
 			orchestratorSpy.actual as typeof orchestratorSpy.getOrchestrationDef,
 		);
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -211,7 +179,7 @@ describe("listOrchestrationKindsFn with a live registry", () => {
 			id: "stage.custom",
 			run: () => Effect.succeed({}),
 		};
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -250,7 +218,7 @@ describe("durable-run fns", () => {
 	});
 
 	beforeAll(async () => {
-		testDb = makeDb(makeD1(DDL));
+		testDb = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, testDb),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -353,7 +321,7 @@ describe("startOrchestrationFn without the capability", () => {
 	let currentEmail: string | null = null;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -407,7 +375,7 @@ describe("non-Forbidden failures propagate", () => {
 
 	beforeAll(() => {
 		currentEmail = "admin@x.com";
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const brokenGate = {
 			isAdmin: () => Effect.succeed(false),
 			requireAdmin: () => Effect.fail(new Error("gate exploded")),
@@ -444,7 +412,7 @@ describe("upsert post-write re-read miss", () => {
 		orchestratorSpy.getOrchestrationDef.mockImplementation(
 			orchestratorSpy.actual as typeof orchestratorSpy.getOrchestrationDef,
 		);
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -474,7 +442,7 @@ describe("startOrchestrationFn tenant stamping", () => {
 	>(async () => "orun-t");
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		// Stub gate: requireAdmin passes without a Principal so the
 		// custom runAs only has to bind Tenant (the real gate's
 		// Principal path is covered by the describes above).

@@ -6,7 +6,7 @@ import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import { Tenant, withTenantAccess } from "./index.ts";
 import {
@@ -23,12 +23,9 @@ const notes = tenantTable("test_notes", {
 	body: text().notNull(),
 });
 
-const DDL =
-	"CREATE TABLE test_notes (" +
-	"id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-	"tenant_id INTEGER, " +
-	"body TEXT NOT NULL" +
-	")";
+const DDL = `
+CREATE TABLE test_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, body TEXT NOT NULL);
+`;
 
 const tenantA: Tenant = { id: 1, kind: "clinic", slug: "a", role: "member" };
 const tenantB: Tenant = { id: 2, kind: "clinic", slug: "b", role: "member" };
@@ -41,7 +38,7 @@ interface Fixture {
 }
 
 const makeFixture = async (): Promise<Fixture> => {
-	const sql = makeD1(DDL);
+	const sql = makeTestD1(DDL);
 	const ins = (tenantId: number | null, body: string) =>
 		sql
 			.prepare("INSERT INTO test_notes (tenant_id, body) VALUES (?, ?)")
@@ -158,7 +155,7 @@ describe("scopedRepo reads", () => {
 	it("findFirst returns null when the scope is empty", async () => {
 		// Only a tenant-B row and no personal rows: tenant A's scope
 		// (tenant_id IN (1) OR IS NULL) matches nothing.
-		const sql = makeD1(DDL);
+		const sql = makeTestD1(DDL);
 		await sql
 			.prepare("INSERT INTO test_notes (tenant_id, body) VALUES (?, ?)")
 			.bind(2, "b-only")

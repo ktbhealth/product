@@ -11,7 +11,8 @@ import {
 vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Permissions } from "@ktb/rbac";
 import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
 import { eq } from "drizzle-orm";
@@ -21,7 +22,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
 import { EvalValidatorLive } from "./index.ts";
-import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 import { evalRun, evalRunSample } from "./schema.ts";
 import { Route } from "./api-routes/eval.$sampleId.audio.ts";
 
@@ -29,7 +29,7 @@ const handlersOf = (r: unknown) =>
 	(r as { options: { server: { handlers: Record<string, (a: never) => Promise<Response>> } } })
 		.options.server.handlers;
 
-const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+const db = makeDb(makeTestD1());
 const state = { email: null as string | null, allow: true, enabled: true };
 
 const artifactBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);

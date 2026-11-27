@@ -10,5 +10,8 @@
 		"@ktb/tenant": "workspace:*",
 		"croner": "^9.0.0",
 		"drizzle-orm": "^0.45.1"
+	},
+	"devDependencies": {
+		"@ktb/db-testing": "workspace:*"
 	}
 }

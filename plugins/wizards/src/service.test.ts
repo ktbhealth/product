@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
@@ -17,7 +18,6 @@ import { Permissions, type PermissionsShape } from "@ktb/rbac";
 import {
 	MAX_ANSWERS_BYTES,
 	MAX_STEP_VALUE_BYTES,
-	WIZARDS_TEST_DDL,
 	Wizards,
 	WizardsServicesLive,
 	type UpsertDefInput,
@@ -118,7 +118,7 @@ describe("WizardsLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(WIZARDS_TEST_DDL));
+		db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

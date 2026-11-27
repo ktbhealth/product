@@ -2,14 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
-import {
-	defineCollection,
-	DOCUMENT_STORE_TEST_DDL,
-	DocumentCollections,
-	DocumentStoreLive,
-	f,
-} from "@ktb/document-store";
+import { makeTestD1 } from "@ktb/db-testing";
+
+import { defineCollection, DocumentCollections, DocumentStoreLive, f } from "@ktb/document-store";
 import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -29,11 +24,7 @@ import { ApiLive } from "./service.ts";
  */
 
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0);
 `;
 
 const notes = defineCollection({
@@ -83,7 +74,7 @@ const permissionsStub = Permissions.of({
 	can: () => Effect.succeed(grantsAllow),
 } as never);
 
-const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+const db = makeDb(makeTestD1(GROUPS_DDL));
 
 const storeDeps = Layer.mergeAll(
 	Layer.succeed(Db, db),

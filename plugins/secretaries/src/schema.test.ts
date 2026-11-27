@@ -2,15 +2,11 @@ import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { eq } from "drizzle-orm";
 
 import { DOCTOR_ACCESS_ROLES, DOCTOR_ACCESS_STATUSES, doctorAccess } from "./schema.ts";
-
-const DDL = `
-CREATE TABLE doctor_access (id INTEGER PRIMARY KEY AUTOINCREMENT, doctor_id INTEGER NOT NULL, user_id TEXT, email TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'secretary', status TEXT NOT NULL DEFAULT 'invited', invited_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX doctor_access_doctor_email_idx ON doctor_access (doctor_id, email);
-`;
 
 describe("secretaries schema", () => {
 	it("exposes doctor_access with cascading FKs and lookup indexes", () => {
@@ -40,7 +36,7 @@ describe("secretaries schema", () => {
 	});
 
 	it("defaults to an invited secretary and fires $onUpdate", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const [created] = await db
 			.insert(doctorAccess)
 			.values({ doctorId: 1, email: "sec@ktb.test", createdAt: new Date(), updatedAt: new Date(0) })
@@ -58,7 +54,7 @@ describe("secretaries schema", () => {
 	});
 
 	it("rejects a second row for the same doctor and email", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		await db
 			.insert(doctorAccess)
 			.values({ doctorId: 1, email: "sec@ktb.test", createdAt: new Date(), updatedAt: new Date() });

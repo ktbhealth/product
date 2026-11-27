@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Query } from "@effect-server-utils/cqrs";
-import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
+import { adminAudit, AuditLive } from "@ktb/audit";
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -41,28 +42,20 @@ import {
 } from "./index.ts";
 
 const DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
 INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES
   ('Clinic A', 'clinic-a', 'clinic', '{"city":"sp"}', 1000, 1000),
   ('Org B', 'org-b', 'org', NULL, 2000, 2000);
-CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX group_members_group_member_idx ON group_members (group_id, member_kind, member_id);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
-CREATE INDEX relation_tuples_subject_idx ON relation_tuples (subject_kind, subject_id);
-CREATE INDEX relation_tuples_natural_idx ON relation_tuples (object_type, object_id, relation, subject_kind, subject_id);
 INSERT INTO group_members (group_id, member_kind, member_id, role, created_at) VALUES
   (1, 'user', 'u1', 'admin', 1000),
   (1, 'user', 'u2', NULL, 1000),
   (2, 'patient', 'p1', 'member', 1000);
-${AUDIT_TEST_DDL}
 `;
 
 describe("groups repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("listGroups returns groups newest-first with member counts", async () => {
@@ -341,7 +334,7 @@ describe("GroupsLive", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -670,7 +663,7 @@ describe("GroupsQueriesLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Query.Registered<typeof GroupsQueries>, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		runtime = ManagedRuntime.make(
 			GroupsQueriesLive.pipe(Layer.provide(Layer.succeed(Db, db))) as Layer.Layer<
 				Query.Registered<typeof GroupsQueries>,
@@ -768,7 +761,7 @@ describe("GroupsLive with PermissionInvalidator", () => {
 	let invalidations = 0;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
