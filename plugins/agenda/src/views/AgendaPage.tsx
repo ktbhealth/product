@@ -82,12 +82,18 @@ export interface AppointmentDraft {
 
 /** The view-facing write surface — bound to the plugin's server fns
  * (./apis.ts) in the mounted page, a stub in tests. */
+/** Write result — `reason: "conflict"` marks a double-booking (P-119-A). */
+export interface AppointmentWriteResult {
+	readonly ok: boolean;
+	readonly reason?: "conflict";
+}
+
 export interface AgendaApi {
-	readonly create: (draft: AppointmentDraft) => Promise<{ readonly ok: boolean }>;
+	readonly create: (draft: AppointmentDraft) => Promise<AppointmentWriteResult>;
 	readonly update: (
 		id: number,
 		patch: Partial<AppointmentDraft>,
-	) => Promise<{ readonly ok: boolean }>;
+	) => Promise<AppointmentWriteResult>;
 	readonly setStatus: (id: number, status: AppointmentStatus) => Promise<{ readonly ok: boolean }>;
 	readonly start: (
 		id: number,
@@ -409,10 +415,10 @@ export function AgendaPage({
 					t={t}
 					onSubmit={async (draft) => {
 						const res = await api.create(draft);
-						if (!res.ok) return false;
+						if (!res.ok) return res.reason ?? "failed";
 						setCreating(false);
 						refresh();
-						return true;
+						return "ok";
 					}}
 					onClose={() => setCreating(false)}
 				/>
@@ -424,10 +430,10 @@ export function AgendaPage({
 					t={t}
 					onSubmit={async (draft) => {
 						const res = await api.update(editing.id, draft);
-						if (!res.ok) return false;
+						if (!res.ok) return res.reason ?? "failed";
 						setEditing(null);
 						refresh();
-						return true;
+						return "ok";
 					}}
 					onClose={() => setEditing(null)}
 				/>
@@ -447,7 +453,7 @@ function AppointmentFormDialog({
 	readonly patients: readonly AgendaPatientOption[];
 	readonly initial?: AgendaListItem | null;
 	readonly t: AgendaMessages;
-	readonly onSubmit: (draft: AppointmentDraft) => Promise<boolean>;
+	readonly onSubmit: (draft: AppointmentDraft) => Promise<"ok" | "conflict" | "failed">;
 	readonly onClose: () => void;
 }) {
 	const init = initial ? asDate(initial.startsAt) : new Date();
@@ -461,26 +467,26 @@ function AppointmentFormDialog({
 	const [durationMin, setDurationMin] = useState(String(initial?.durationMin ?? 30));
 	const [note, setNote] = useState(initial?.note ?? "");
 	const [busy, setBusy] = useState(false);
-	const [failed, setFailed] = useState(false);
+	const [failed, setFailed] = useState<false | "conflict" | "failed">(false);
 
 	const submit = async () => {
 		/* v8 ignore next -- the submit button is disabled while patientId is empty or busy */
 		if (patientId === "" || busy) return;
 		const startsAt = new Date(`${date}T${time}`);
 		if (Number.isNaN(startsAt.getTime())) {
-			setFailed(true);
+			setFailed("failed");
 			return;
 		}
 		setBusy(true);
 		setFailed(false);
 		try {
-			const ok = await onSubmit({
+			const outcome = await onSubmit({
 				patientId: Number(patientId),
 				startsAt,
 				durationMin: Number(durationMin) || undefined,
 				...(note.trim() === "" ? {} : { note: note.trim() }),
 			});
-			if (!ok) setFailed(true);
+			if (outcome !== "ok") setFailed(outcome);
 		} finally {
 			setBusy(false);
 		}
@@ -566,7 +572,11 @@ function AppointmentFormDialog({
 							rows={2}
 						/>
 					</Field>
-					{failed ? <p className="text-sm text-destructive">{t.form.required}</p> : null}
+					{failed ? (
+						<p role="alert" className="text-sm text-destructive">
+							{failed === "conflict" ? t.form.conflict : t.form.required}
+						</p>
+					) : null}
 					<DialogFooter>
 						<Button type="button" variant="outline" onClick={onClose} disabled={busy}>
 							{t.form.cancel}

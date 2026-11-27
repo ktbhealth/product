@@ -4145,6 +4145,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "agenda",
+		key: "form.conflict",
+		locale: "en",
+		value: "This time overlaps another appointment.",
+	},
+	{
+		namespace: "agenda",
 		key: "status.scheduled",
 		locale: "en",
 		value: "Scheduled",
@@ -4333,6 +4339,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "agenda",
+		key: "form.conflict",
+		locale: "pt-BR",
+		value: "Este horário conflita com outro agendamento.",
+	},
+	{
+		namespace: "agenda",
 		key: "status.scheduled",
 		locale: "pt-BR",
 		value: "Agendado",
@@ -4518,6 +4530,12 @@ export const I18N_BASELINE = [
 		key: "form.required",
 		locale: "es",
 		value: "Obligatorio",
+	},
+	{
+		namespace: "agenda",
+		key: "form.conflict",
+		locale: "es",
+		value: "Este horario se superpone con otra cita.",
 	},
 	{
 		namespace: "agenda",

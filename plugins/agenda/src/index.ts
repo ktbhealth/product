@@ -22,10 +22,12 @@ export {
 	type AppointmentSyncState,
 } from "./schema.ts";
 export {
+	AppointmentConflict,
 	Appointments,
 	AppointmentsLive,
 	appointmentScope,
 	claimReminder,
+	findOverlappingAppointment,
 	createAppointment,
 	DEFAULT_DURATION_MIN,
 	getAppointment,

@@ -742,6 +742,9 @@ export const I18N_MANIFEST = {
 		"form.required": {
 			params: [],
 		},
+		"form.conflict": {
+			params: [],
+		},
 		"status.scheduled": {
 			params: [],
 		},
