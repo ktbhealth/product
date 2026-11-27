@@ -187,7 +187,7 @@ describe("PortalSignInPage (/login/patient)", () => {
 		expect(screen.getByRole("button", { name: /Please wait…/ })).toHaveProperty("disabled", true);
 	});
 
-	it("routes a staff account (no patient audience) through the doctor funnel", async () => {
+	it("routes a staff account (no patient audience) to the doctor portal", async () => {
 		mocks.portalAudiencesFn.mockResolvedValue(["member", "doctor", "clinician"]);
 		mocks.doctorContextFn.mockResolvedValue({
 			profiles: [{ doctorId: 7, displayName: "Dr. Ana", role: "owner" }],
@@ -195,22 +195,22 @@ describe("PortalSignInPage (/login/patient)", () => {
 		});
 		render(createElement(Page, {}));
 		await signIn();
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/doctor"));
 		expect(assign).toHaveBeenCalledTimes(1);
 	});
 
-	it("sends a multi-profile staff account to the doctor chooser", async () => {
+	it("routes a delegated-only staff account to the secretary portal", async () => {
 		mocks.portalAudiencesFn.mockResolvedValue(["member", "doctor", "clinician"]);
 		mocks.doctorContextFn.mockResolvedValue({
 			profiles: [
-				{ doctorId: 7, displayName: "Dr. Ana", role: "owner" },
 				{ doctorId: 8, displayName: "Clinic", role: "secretary" },
+				{ doctorId: 9, displayName: "Assist", role: "secretary" },
 			],
 			activeDoctorId: null,
 		});
 		render(createElement(Page, {}));
 		await signIn();
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/secretary"));
 	});
 
 	it("falls back to the portal when the audience lookup fails", async () => {
