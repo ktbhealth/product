@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 import { ArrowLeftRightIcon } from "lucide-react";
 
-import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";

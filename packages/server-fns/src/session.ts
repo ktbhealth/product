@@ -1,15 +1,4 @@
-import {
-	actingAs,
-	Auth,
-	DOCTOR_PROFILE_COOKIE,
-	DoctorProfiles,
-	PATIENT_PROFILE_COOKIE,
-	PatientProfiles,
-	profileIdFromHeaders,
-	resolveDoctorProfile,
-	resolvePatientProfile,
-} from "@ktb/auth";
-import type { ActingUser, DoctorProfile, PatientProfile, SessionUser } from "@ktb/auth";
+import { Auth, type SessionUser } from "@ktb/auth";
 import { tenantSelectorFromHeaders, type TenantSelector } from "@ktb/tenant/selector";
 import {
 	recordUnsafe,
@@ -20,6 +9,17 @@ import {
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import {
+	actingAs,
+	DOCTOR_PROFILE_COOKIE,
+	DoctorProfiles,
+	PATIENT_PROFILE_COOKIE,
+	PatientProfiles,
+	profileIdFromHeaders,
+	resolveDoctorProfile,
+	resolvePatientProfile,
+} from "./profiles.ts";
+import type { ActingUser, DoctorProfile, PatientProfile } from "./profiles.ts";
 import { run } from "./runtime.ts";
 
 export type { ActingUser, DoctorProfile, PatientProfile, SessionUser };

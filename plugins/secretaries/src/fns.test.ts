@@ -29,7 +29,8 @@ vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestUrl: () => new URL("https://app.ktb.test/secretaries"),
 }));
-vi.mock("@ktb/server-fns", () => ({
+vi.mock("@ktb/server-fns", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/server-fns")>()),
 	getDoctorContext: mocks.getDoctorContext,
 	getLocale: mocks.getLocale,
 	getSessionUser: mocks.getSessionUser,

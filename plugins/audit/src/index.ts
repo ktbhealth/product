@@ -21,7 +21,7 @@ import {
 import { ScrollTextIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
-import { DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import { contentHash } from "@ktb/crypto/digest";
 import { Db, type DbClient } from "@ktb/db";

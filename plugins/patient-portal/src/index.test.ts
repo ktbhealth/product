@@ -57,7 +57,7 @@ const anamnesis = (overrides: Partial<Anamnesis> = {}): Anamnesis => ({
 
 const json = (a: Anamnesis) => JSON.stringify(a);
 
-/** Structural twin of `@ktb/auth`'s PatientProfile — the package is
+/** Structural twin of `@ktb/server-fns`'s PatientProfile — the package is
  * not a declared dep of this plugin, and the stub only needs the shape. */
 type Link = { patientId: number; name: string; relation: "self" | "guardian" };
 

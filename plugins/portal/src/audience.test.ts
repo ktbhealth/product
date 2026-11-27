@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { DoctorProfiles, PatientProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { PlatformAdmin } from "@ktb/platform";
 

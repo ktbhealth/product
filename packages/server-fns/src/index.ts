@@ -43,6 +43,17 @@ export {
 	type ServerRuntime,
 } from "./runtime.ts";
 export {
+	actingAs,
+	DOCTOR_PROFILE_COOKIE,
+	DoctorDelegations,
+	DoctorProfiles,
+	PATIENT_PROFILE_COOKIE,
+	PatientProfiles,
+	profileIdFromHeaders,
+	resolveDoctorProfile,
+	resolvePatientProfile,
+} from "./profiles.ts";
+export {
 	NotADoctorError,
 	UnauthenticatedError,
 	ensureDoctorUser,

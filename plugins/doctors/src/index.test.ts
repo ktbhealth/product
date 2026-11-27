@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";

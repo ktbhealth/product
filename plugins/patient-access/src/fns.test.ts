@@ -18,7 +18,10 @@ vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestUrl: () => new URL("https://app.ktb.test/consultations/new"),
 }));
-vi.mock("@ktb/server-fns", () => mocks);
+vi.mock("@ktb/server-fns", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@ktb/server-fns")>()),
+	...mocks,
+}));
 
 import { Forbidden } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";

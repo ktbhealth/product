@@ -1,12 +1,15 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
-import type { SessionUser } from "./index.ts";
+import type { SessionUser } from "@ktb/auth";
 
 /**
  * Profiles — who a session user may act as. One account, several roles:
  * the role is derived from links (doctor profile, delegated doctor
- * access, patient access), never stored on the account itself.
+ * access, patient access), never stored on the account itself. This is
+ * the acting-as contract `session.ts` resolves per request; the
+ * directories are implemented by the doctors / secretaries /
+ * patient-access plugins.
  */
 
 /** A doctor profile the user may act as: their own ("owner") or one
@@ -38,7 +41,7 @@ export class DoctorProfiles extends Context.Service<
 		 */
 		claimInvites(userId: string): Effect.Effect<number>;
 	}
->()("@ktb/auth/DoctorProfiles") {}
+>()("@ktb/server-fns/DoctorProfiles") {}
 
 /**
  * Delegation source — the optional extension of the directory: who,
@@ -55,7 +58,7 @@ export class DoctorDelegations extends Context.Service<
 		 * email; returns how many were claimed. */
 		claimInvites(userId: string): Effect.Effect<number>;
 	}
->()("@ktb/auth/DoctorDelegations") {}
+>()("@ktb/server-fns/DoctorDelegations") {}
 
 /** A patient record the user may open in the portal: their own ("self")
  * or one they are responsible for ("guardian"). */
@@ -77,7 +80,7 @@ export class PatientProfiles extends Context.Service<
 		 */
 		syncLinks(userId: string): Effect.Effect<number>;
 	}
->()("@ktb/auth/PatientProfiles") {}
+>()("@ktb/server-fns/PatientProfiles") {}
 
 /**
  * The user a request acts as on the doctor side. `id` is the acting
