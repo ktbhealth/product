@@ -3,7 +3,6 @@ import { useEffect, useRef, useMemo, useState, type FormEvent } from "react";
 import {
 	ArrowLeftIcon,
 	BrainIcon,
-	CheckIcon,
 	ClipboardListIcon,
 	CopyIcon,
 	DownloadIcon,
@@ -49,12 +48,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Breadcrumb,
-	BreadcrumbItem,
-	BreadcrumbList,
-	BreadcrumbSeparator,
-} from "@ktbhealth/ui/components/breadcrumb";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
@@ -138,21 +131,6 @@ function fmtElapsed(totalSec: number) {
 	const m = Math.floor(totalSec / 60);
 	const s = totalSec % 60;
 	return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function Step({ n, label, done }: { n: number; label: string; done: boolean }) {
-	return (
-		<span className="flex items-center gap-2">
-			<span
-				className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${
-					done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-				}`}
-			>
-				{done ? <CheckIcon className="size-3.5" aria-hidden /> : n}
-			</span>
-			<span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-		</span>
-	);
 }
 
 export interface NewConsultationApi {
@@ -1049,9 +1027,6 @@ export function NewConsultationPage({
 		URL.revokeObjectURL(url);
 	}
 
-	const step1 = consented && (patientId !== null || patients.length === 0);
-	const step2 = transcript.trim().length > 0;
-	const step3 = anamnesis !== null;
 	// Anamnesis is generated from the transcript version on screen —
 	// the corrected/server text once the audio pipeline panel is up.
 	const extractText = viewedText?.text ?? transcript;
@@ -1365,20 +1340,27 @@ export function NewConsultationPage({
 			) : null}
 
 			{showRoom ? (
-				/* ---- pre-consultation room: the green-room stage gates the
-				 * first record capture (patient + consent live inside it;
-				 * source tabs stay reachable for upload/bot, dictation via
-				 * the secondary action). ---- */
-				<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+				/* ---- pre-consultation room: standalone fullscreen stage —
+				 * covers the portal chrome like the catalog demo. The slim
+				 * header carries navigation + capture-source tabs; patient,
+				 * consent and the audio test live inside the room itself. ---- */
+				<div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
+					<div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 lg:px-8">
+						<Link
+							to={portalPath("/consultations")}
+							className={buttonVariants({ variant: "outline", size: "sm" })}
+						>
+							<ArrowLeftIcon />
+							{t.detail.back}
+						</Link>
+						{sourceTabs}
+						{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
+					</div>
 					{draftNotices}
 					{patientPickerOpen ? (
-						<Card className="shrink-0">
-							<CardContent className="pt-4">{patientPicker}</CardContent>
-						</Card>
-					) : null}
-					{sourceTabs ? <div className="shrink-0">{sourceTabs}</div> : null}
-					{!supported ? (
-						<p className="shrink-0 px-1 text-xs text-info">{nc.unsupportedBrowser}</p>
+						<div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2 lg:px-8">
+							{patientPicker}
+						</div>
 					) : null}
 					<PreconsultationRoom
 						className="min-h-0 flex-1"
@@ -1505,21 +1487,6 @@ export function NewConsultationPage({
 									</TabsTrigger>
 								</TabsList>
 							</Tabs>
-							<Breadcrumb>
-								<BreadcrumbList>
-									<BreadcrumbItem>
-										<Step n={1} label={nc.steps.prepare} done={step1} />
-									</BreadcrumbItem>
-									<BreadcrumbSeparator />
-									<BreadcrumbItem>
-										<Step n={2} label={nc.steps.transcribe} done={step2} />
-									</BreadcrumbItem>
-									<BreadcrumbSeparator />
-									<BreadcrumbItem>
-										<Step n={3} label={nc.steps.review} done={step3} />
-									</BreadcrumbItem>
-								</BreadcrumbList>
-							</Breadcrumb>
 						</CardHeader>
 						<CardContent className="space-y-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
 							{/* 1. prepare: patient + consent */}
