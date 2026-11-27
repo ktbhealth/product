@@ -2746,6 +2746,182 @@ export const I18N_MANIFEST = {
 		"warmup.dismiss": {
 			params: [],
 		},
+		"liveFlow.brandName": {
+			params: [],
+		},
+		"liveFlow.roomTitle": {
+			params: [],
+		},
+		"liveFlow.readyTitle": {
+			params: [],
+		},
+		"liveFlow.consentTitle": {
+			params: [],
+		},
+		"liveFlow.consentDescription": {
+			params: [],
+		},
+		"liveFlow.changePatient": {
+			params: [],
+		},
+		"liveFlow.testAudio": {
+			params: [],
+		},
+		"liveFlow.testingAudio": {
+			params: [],
+		},
+		"liveFlow.calibratedAudio": {
+			params: [],
+		},
+		"liveFlow.startSession": {
+			params: [],
+		},
+		"liveFlow.startingSession": {
+			params: [],
+		},
+		"liveFlow.secondaryAction": {
+			params: [],
+		},
+		"liveFlow.modalityInPerson": {
+			params: [],
+		},
+		"liveFlow.modalityTelemedicine": {
+			params: [],
+		},
+		"liveFlow.captureInPerson": {
+			params: [],
+		},
+		"liveFlow.captureTelemedicine": {
+			params: [],
+		},
+		"liveFlow.deviceInPerson": {
+			params: [],
+		},
+		"liveFlow.deviceTelemedicine": {
+			params: [],
+		},
+		"liveFlow.engineInPerson": {
+			params: [],
+		},
+		"liveFlow.engineTelemedicine": {
+			params: [],
+		},
+		"liveFlow.audioStatus.ready": {
+			params: [],
+		},
+		"liveFlow.audioStatus.muted": {
+			params: [],
+		},
+		"liveFlow.audioStatus.testing": {
+			params: [],
+		},
+		"liveFlow.audioStatus.calibrated": {
+			params: [],
+		},
+		"liveFlow.networkStatus": {
+			params: [],
+		},
+		"liveFlow.encryption": {
+			params: [],
+		},
+		"liveFlow.connectionStable": {
+			params: [],
+		},
+		"liveFlow.pickerDone": {
+			params: [],
+		},
+		"liveFlow.audioSettingsTitle": {
+			params: [],
+		},
+		"liveFlow.inputDevice": {
+			params: [],
+		},
+		"liveFlow.systemDefaultDevice": {
+			params: [],
+		},
+		"liveFlow.live": {
+			params: [],
+		},
+		"liveFlow.paused": {
+			params: [],
+		},
+		"liveFlow.ended": {
+			params: [],
+		},
+		"liveFlow.anamnesis": {
+			params: [],
+		},
+		"liveFlow.endConsultation": {
+			params: [],
+		},
+		"liveFlow.transcriptTitle": {
+			params: [],
+		},
+		"liveFlow.diarizationActive": {
+			params: [],
+		},
+		"liveFlow.diarizationPaused": {
+			params: [],
+		},
+		"liveFlow.diarizationEnded": {
+			params: [],
+		},
+		"liveFlow.copy": {
+			params: [],
+		},
+		"liveFlow.export": {
+			params: [],
+		},
+		"liveFlow.listening": {
+			params: [],
+		},
+		"liveFlow.pausedListening": {
+			params: [],
+		},
+		"liveFlow.endedListening": {
+			params: [],
+		},
+		"liveFlow.audioSourceInPerson": {
+			params: [],
+		},
+		"liveFlow.audioSourceTelemedicine": {
+			params: [],
+		},
+		"liveFlow.yearsOld": {
+			params: [],
+		},
+		"liveFlow.recordPrefix": {
+			params: [],
+		},
+		"reviewUi.playback": {
+			params: [],
+		},
+		"reviewUi.syncBadge": {
+			params: [],
+		},
+		"reviewUi.volume": {
+			params: [],
+		},
+		"reviewUi.confirming": {
+			params: [],
+		},
+		"reviewUi.flaggedTitle": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} passages flagged",
+		},
+		"reviewUi.flaggedHint": {
+			params: [],
+		},
+		"reviewUi.pendingTitle": {
+			params: [],
+		},
+		"reviewUi.approveHint": {
+			params: [],
+		},
 	},
 	"eval.credentials": {
 		title: {

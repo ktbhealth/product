@@ -6,12 +6,6 @@ export const CONF_STYLE: Record<Confidence, string> = {
 	baixa: "bg-muted text-muted-foreground ring-border",
 };
 
-export const CONF_BAR: Record<Confidence, string> = {
-	alta: "border-l-primary",
-	media: "border-l-info",
-	baixa: "border-l-border",
-};
-
 const SPEAKER_STYLE: Record<string, string> = {
 	Doctor: "bg-info/10 text-info ring-info/20",
 	Patient: "bg-primary/10 text-primary ring-primary/20",
