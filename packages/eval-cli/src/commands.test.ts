@@ -479,15 +479,21 @@ describe("generate", () => {
 	test("adapter failures surface as failed outcomes (exit 1)", { timeout: 30_000 }, async () => {
 		const wd = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-edge-"));
 		vi.spyOn(console, "log").mockImplementation(() => {});
+		// local profile → edge-tts: the binary must be absent for every
+		// synthesis to fail. Hosts may have it installed, so hide PATH
+		// behind an empty dir instead of assuming ENOENT.
+		const emptyBin = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-emptybin-"));
+		const realPath = process.env.PATH;
+		process.env.PATH = emptyBin;
 		try {
-			// local profile → edge-tts: the binary is absent in test env,
-			// so every synthesis fails and the command reports failures.
 			expect(
 				await exec(["generate", "fx", "--profile", "local", "--n", "1", "--workdir", wd]),
 			).toBe(1);
 		} finally {
+			process.env.PATH = realPath;
 			vi.restoreAllMocks();
 			fs.rmSync(wd, { recursive: true, force: true });
+			fs.rmSync(emptyBin, { recursive: true, force: true });
 		}
 	});
 });

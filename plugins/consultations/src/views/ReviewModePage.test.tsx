@@ -954,6 +954,77 @@ describe("ReviewModePage — anamnesis step extras", () => {
 		fireEvent.click(section);
 		expect(document.querySelectorAll("mark").length).toBe(0);
 	});
+
+	it("a fully filled anamnesis hides the pending-data strip", () => {
+		const filled: Anamnesis = {
+			historico: SECTION,
+			queixa_principal: { content: "Dor", confidence: "alta", evidence: [] },
+			hda: { content: "HDA", confidence: "baixa", evidence: [] },
+			antecedentes: { content: "HAS", confidence: "media", evidence: [] },
+			alergias: { content: "nenhuma", confidence: "alta", evidence: [] },
+			medicamentos_em_uso: { content: "nenhum", confidence: "alta", evidence: [] },
+			exame_fisico: { content: "normal", confidence: "alta", evidence: [] },
+			hipoteses: { content: "virose", confidence: "media", evidence: [] },
+			conduta: { content: "repouso", confidence: "alta", evidence: [] },
+		};
+		renderPage({}, [item({})], detail({ ...reviewed(), anamnesis: filled }));
+		expect(screen.getByText("Chief complaint")).toBeTruthy();
+		expect(screen.queryByText("Pending data")).toBeNull();
+	});
+
+	it("a failed section save keeps the editor open and does not invalidate", async () => {
+		const edit = vi.fn<NonNullable<ConsultationDetailApi["editAnamnesis"]>>(async () => ({
+			ok: false,
+		}));
+		renderPage({ api: api({ editAnamnesis: edit }) }, [item({})], reviewed());
+		fireEvent.click(screen.getAllByRole("button", { name: "Edit section" })[0]!);
+		fireEvent.change(screen.getByDisplayValue("HDA"), { target: { value: "rascunho" } });
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() => expect(edit).toHaveBeenCalled());
+		expect(screen.getByDisplayValue("rascunho")).toBeTruthy();
+		expect(routerMocks.invalidate).not.toHaveBeenCalled();
+	});
+
+	it("homologation bar offers regenerate without approve when only generate exists", () => {
+		const stored = serializeTranscriptEdits([
+			{
+				at: "2026-01-01T00:00:00.000Z",
+				by: "u1",
+				u: bytesToB64(genesisUpdate("stale-z")),
+			},
+		]);
+		renderPage(
+			{ api: api({ approveAnamnesis: undefined }) },
+			[item({})],
+			detail({ ...reviewed(), transcriptEdits: stored, transcriptReviewedEdits: 1 }),
+		);
+		expect(screen.getByText("Regenerate anamnesis")).toBeTruthy();
+		expect(screen.queryByText("Approve & next")).toBeNull();
+	});
+
+	it("chapter seek is a no-op when no audio element is mounted", () => {
+		renderPage({}, [item({})], detail({ ...reviewed(), audioKey: null, audioStatus: "none" }));
+		const chip = screen.getByText("Chief complaint · 0:02");
+		expect(document.querySelector("audio")).toBeNull();
+		expect(() => fireEvent.click(chip)).not.toThrow();
+	});
+
+	it("a rejected play() on chapter seek is swallowed", async () => {
+		window.HTMLMediaElement.prototype.play = vi.fn(() => Promise.reject(new Error("nope")));
+		renderPage({}, [item({})], reviewed());
+		const audio = document.querySelector("audio")!;
+		fireEvent.click(screen.getByText("Chief complaint · 0:02"));
+		expect(audio.currentTime).toBe(2.5);
+		await waitFor(() => expect(audio.play).toHaveBeenCalled());
+	});
+
+	it("ZK rows reach the anamnesis step with the decrypted audio url slot", async () => {
+		const zk = { keyring: {}, api: {} } as unknown as ConsultationZk;
+		zkMocks.decryptConsultation.mockResolvedValueOnce(null);
+		renderPage({ zk }, [item({})], reviewed());
+		await waitFor(() => expect(zkMocks.decryptConsultation).toHaveBeenCalled());
+		expect(screen.getByText("Chief complaint")).toBeTruthy();
+	});
 });
 
 describe("ReviewModePage — base text pinning", () => {

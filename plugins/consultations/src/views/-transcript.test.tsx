@@ -955,6 +955,14 @@ describe("ReviewAudioPlayer", () => {
 		expect(audio.currentTime).toBe(6);
 	});
 
+	it("does not jump when the playhead sits before the first gap", () => {
+		const audio = renderReview({ segments: GAPS });
+		playing(audio, false);
+		audio.currentTime = 1; // inside seg 0–2, ahead of the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(1);
+	});
+
 	it("honors the persisted skip-silence off pref", () => {
 		localStorage.setItem("ktb.audio.skipSilence", "0");
 		const audio = renderReview({ segments: GAPS });
@@ -995,6 +1003,48 @@ describe("useReviewAudioState", () => {
 			result.current.handlers.onMutedChange?.(true);
 		});
 		expect(result.current.audio.playing).toBe(false);
+	});
+
+	it("mirrors finite and non-finite durations into the snapshot", () => {
+		const el = document.createElement("audio");
+		// stable ref — an inline {current} literal changes identity every
+		// render and the effect's sync() would loop forever.
+		const ref = { current: el };
+		const { result } = renderHook(() => useReviewAudioState(ref));
+		// jsdom duration is NaN → reported as 0.
+		expect(result.current.audio.durationSec).toBe(0);
+		Object.defineProperty(el, "duration", { value: 42, configurable: true });
+		act(() => el.dispatchEvent(new Event("durationchange")));
+		expect(result.current.audio.durationSec).toBe(42);
+	});
+
+	it("handlers write seek, skip, rate, volume and mute onto the element", () => {
+		const el = document.createElement("audio");
+		document.body.appendChild(el);
+		const ref = { current: el };
+		try {
+			const { result } = renderHook(() => useReviewAudioState(ref));
+			act(() => {
+				result.current.handlers.onSeek?.(12);
+				result.current.handlers.onSkip?.(5);
+				result.current.handlers.onSpeedChange?.(1.5);
+				result.current.handlers.onVolumeChange?.(0.5);
+				result.current.handlers.onMutedChange?.(true);
+			});
+			expect(el.currentTime).toBe(17);
+			expect(el.playbackRate).toBe(1.5);
+			expect(el.volume).toBe(0.5);
+			expect(el.muted).toBe(true);
+			// paused element → play() fires; its rejection is swallowed
+			// by the handler's .catch.
+			el.play = vi.fn(() => Promise.reject(new Error("autoplay blocked")));
+			act(() => {
+				result.current.handlers.onPlayPause?.();
+			});
+			expect(el.play).toHaveBeenCalled();
+		} finally {
+			el.remove();
+		}
 	});
 });
 

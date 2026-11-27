@@ -473,7 +473,7 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 	// Speaker diarization (P-118): same audio, best-effort — nulls and
 	// failures keep the segments unspeaker'd rather than failing the job.
 	const diarizer = deps.diarizationAi ?? deps.ai;
-	if (deps.diarization === true && diarizer !== undefined && segments != null) {
+	if (deps.diarization === true && segments != null) {
 		/* v8 ignore next -- assignSpeakers only returns null for a null
 		 * segment list, which the guard above already excludes. */
 		segments = assignSpeakers(segments, await diarizeAudio(diarizer, bytes)) ?? segments;

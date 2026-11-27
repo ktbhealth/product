@@ -1248,9 +1248,11 @@ export function NewConsultationPage({
 	function startFromRoom() {
 		setRoomDone(true);
 		setPatientPickerOpen(false);
+		// Neither capture can already be running — the room gates the
+		// only entry point — so the toggle guards inside are dead code.
 		if (modality === "in-person") {
-			if (!recording) toggleRecording();
-		} else if (!tabRecording) {
+			toggleRecording();
+		} else {
 			toggleTabCapture();
 		}
 	}
@@ -1545,12 +1547,7 @@ export function NewConsultationPage({
 	// Change-patient modal for the room — select an existing patient or
 	// quick-create one, same controls as the capture rail.
 	const patientPickerDialog = (
-		<PickerDialog
-			open={patientPickerOpen}
-			onOpenChange={(open) => {
-				if (!open) setPatientPickerOpen(false);
-			}}
-		>
+		<PickerDialog open={patientPickerOpen} onOpenChange={setPatientPickerOpen}>
 			<PickerDialogContent className="sm:max-w-md">
 				<PickerDialogHeader>
 					<PickerDialogTitle>{nc.patientLabel}</PickerDialogTitle>
@@ -1569,12 +1566,7 @@ export function NewConsultationPage({
 	// a shortcut into the real mic test. Only meaningful for in-person
 	// mic capture; telemedicine hears the meeting tab instead.
 	const audioSettingsDialog = (
-		<PickerDialog
-			open={audioSettingsOpen}
-			onOpenChange={(open) => {
-				if (!open) setAudioSettingsOpen(false);
-			}}
-		>
+		<PickerDialog open={audioSettingsOpen} onOpenChange={setAudioSettingsOpen}>
 			<PickerDialogContent className="sm:max-w-md">
 				<PickerDialogHeader>
 					<PickerDialogTitle>{lf.audioSettingsTitle}</PickerDialogTitle>

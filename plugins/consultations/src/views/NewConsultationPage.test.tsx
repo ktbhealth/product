@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -2314,8 +2314,9 @@ describe("NewConsultationPage", () => {
 			// in jsdom under full-suite load; the regression this guards is
 			// the MenuGroupLabel crash on open, not pointer fidelity.
 			fireEvent.click(screen.getByText("Admin"));
-			expect(await screen.findByText("admin@ktb.health", {}, { timeout: 3000 })).toBeTruthy();
-			fireEvent.click(await screen.findByText("Patients", {}, { timeout: 3000 }));
+			const menu = await screen.findByRole("menu", {}, { timeout: 3000 });
+			expect(within(menu).getByText("admin@ktb.health")).toBeTruthy();
+			fireEvent.click(within(menu).getByText("Patients"));
 			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/patients" });
 		});
 
@@ -2332,6 +2333,372 @@ describe("NewConsultationPage", () => {
 			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
 			await user.click(screen.getAllByText("Test audio (3s)")[0]!);
 			expect(backendLoad).toHaveBeenCalled();
+		});
+
+		it("user menu navigates to every portal section", async () => {
+			renderPage(makeApi(), PATIENTS, undefined, undefined, "/portal/doctor", true, "Dr. House", {
+				name: "Admin",
+				email: "admin@ktb.health",
+			});
+			// the open menu also renders an "Admin" label — target the
+			// trigger button specifically.
+			const openMenu = async () => {
+				fireEvent.click(screen.getAllByRole("button", { name: /Admin/ })[0]!);
+				// scope item clicks to the popup — "Consultations" also
+				// matches the room header's back link.
+				return screen.findByRole("menu", {}, { timeout: 3000 });
+			};
+			let menu = await openMenu();
+			fireEvent.click(within(menu).getByText("Portal home"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor" });
+			menu = await openMenu();
+			fireEvent.click(within(menu).getByText("Consultations"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/consultations" });
+			menu = await openMenu();
+			fireEvent.click(within(menu).getByText("Review queue"));
+			expect(navigateMock).toHaveBeenCalledWith({ to: "/portal/doctor/review" });
+		});
+
+		it("change-patient dialog closes through its own dismiss control", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, 1, undefined, undefined, true);
+			await user.click(screen.getAllByText("Change")[0]!);
+			const dlg = await screen.findByText("Done");
+			expect(dlg).toBeTruthy();
+			// Base UI's X button — exercises Dialog onOpenChange(false).
+			const popup = dlg.closest('[data-slot="dialog-content"]')!;
+			fireEvent.click(within(popup as HTMLElement).getByRole("button", { name: /close/i }));
+			await vi.waitFor(() => {
+				const el = document.querySelector('[data-slot="dialog-content"]');
+				expect(el === null || el.hasAttribute("data-closed")).toBe(true);
+			});
+		});
+
+		it("audio settings dialog closes through its dismiss control", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await user.click(screen.getByRole("button", { name: "Audio settings" }));
+			const title = await screen.findByText("Audio settings");
+			const popup = title.closest('[data-slot="dialog-content"]')!;
+			fireEvent.click(within(popup as HTMLElement).getByRole("button", { name: /close/i }));
+			await vi.waitFor(() => {
+				const el = document.querySelector('[data-slot="dialog-content"]');
+				expect(el === null || el.hasAttribute("data-closed")).toBe(true);
+			});
+		});
+
+		it("mic toggle and device chip drive the room preview controls", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await screen.findByText("Ready to start the consultation?");
+			// no mediaDevices in jsdom → the device chip is the fallback
+			// button that reports "" (back to system default)
+			await user.click(screen.getByRole("button", { name: "Toggle microphone" }));
+			await user.click(screen.getByRole("button", { name: "Room microphone" }));
+		});
+
+		it("live screen sample/clear/anamnesis controls drive capture state", async () => {
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true, "Dr. House");
+			await roomConsent(user);
+			await user.click(screen.getByText("Start Session"));
+			expect(screen.getByText("Live Consultation Transcript")).toBeTruthy();
+			await user.click(screen.getByText("Use sample"));
+			const clear = screen.getByText("Clear");
+			expect((clear.closest("button") as HTMLButtonElement).disabled).toBe(false);
+			await user.click(clear);
+			// anamnesis toggles exist in both the header and the control bar
+			const anamnesisButtons = await screen.findAllByText("AI anamnesis");
+			expect(anamnesisButtons.length).toBeGreaterThanOrEqual(2);
+			for (const b of anamnesisButtons) {
+				fireEvent.click(b.closest("button") ?? b);
+			}
+		});
+
+		it("enumerates inputs, applies the picked device and runs the real mic test", async () => {
+			const user = userEvent.setup();
+			const trackStop = vi.fn();
+			const gum = vi.fn(async () => ({
+				getTracks: () => [{ stop: trackStop, kind: "audio" }],
+			}));
+			const enumerateDevices = vi
+				.fn<() => Promise<MediaDeviceInfo[]>>()
+				.mockRejectedValueOnce(new Error("denied"))
+				.mockResolvedValue([
+					{ kind: "audioinput", deviceId: "mic-1", label: "Mic One", groupId: "" },
+					{ kind: "audioinput", deviceId: "mic-2", label: "", groupId: "" },
+					{ kind: "audioinput", deviceId: "default", label: "Default", groupId: "" },
+					{ kind: "videoinput", deviceId: "cam-1", label: "Cam", groupId: "" },
+				] as MediaDeviceInfo[]);
+			const listeners = new Set<() => void>();
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: {
+					enumerateDevices,
+					getUserMedia: gum,
+					addEventListener: (_t: string, fn: () => void) => listeners.add(fn),
+					removeEventListener: (_t: string, fn: () => void) => listeners.delete(fn),
+				},
+			});
+			class FakeAudioContext {
+				destination = {};
+				createMediaStreamSource() {
+					return { connect: vi.fn() };
+				}
+				createAnalyser() {
+					return {
+						fftSize: 0,
+						frequencyBinCount: 512,
+						getByteTimeDomainData: (buf: Uint8Array) => buf.fill(200),
+					};
+				}
+				close = vi.fn(async () => {});
+			}
+			vi.stubGlobal("AudioContext", FakeAudioContext);
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				// first enumerate rejects (covers the .catch) — devicechange
+				// re-runs it successfully.
+				await vi.waitFor(() => expect(enumerateDevices).toHaveBeenCalled());
+				for (const fn of [...listeners]) fn();
+				await vi.waitFor(() =>
+					expect(enumerateDevices.mock.calls.length).toBeGreaterThanOrEqual(2),
+				);
+				// the preview device picker now lists the real inputs —
+				// wait for the audioDevices state to flush into the room.
+				await vi.waitFor(() => expect(screen.getAllByRole("combobox").length).toBeGreaterThan(0));
+				const previewSelect = screen.getAllByRole("combobox")[0]!;
+				fireEvent.pointerDown(previewSelect);
+				fireEvent.mouseDown(previewSelect);
+				fireEvent.mouseUp(previewSelect);
+				fireEvent.click(previewSelect);
+				await user.click(await screen.findByRole("option", { name: "Mic One" }));
+				// gear → settings dialog → same device → run the real test
+				await user.click(screen.getByRole("button", { name: "Audio settings" }));
+				const combo = await screen.findByRole("combobox", { name: "Input device" });
+				fireEvent.pointerDown(combo);
+				fireEvent.mouseDown(combo);
+				fireEvent.mouseUp(combo);
+				fireEvent.click(combo);
+				await user.click(await screen.findByRole("option", { name: "Mic One" }));
+				const dlg = document.querySelector('[data-slot="dialog-content"]')!;
+				fireEvent.click(
+					within(dlg as HTMLElement).getByRole("button", { name: "Test audio (3s)" }),
+				);
+				await vi.waitFor(
+					() =>
+						expect(gum).toHaveBeenCalledWith({
+							audio: {
+								echoCancellation: true,
+								noiseSuppression: true,
+								deviceId: { exact: "mic-1" },
+							},
+						}),
+					{ timeout: 4000 },
+				);
+				await vi.waitFor(() => expect(trackStop).toHaveBeenCalled(), { timeout: 4000 });
+				// reopen → System default covers the "default" arm; the dialog's
+				// X exercises onOpenChange(false).
+				await user.click(screen.getByRole("button", { name: "Audio settings" }));
+				const combo2 = await screen.findByRole("combobox", { name: "Input device" });
+				fireEvent.pointerDown(combo2);
+				fireEvent.mouseDown(combo2);
+				fireEvent.mouseUp(combo2);
+				fireEvent.click(combo2);
+				await user.click(await screen.findByRole("option", { name: "System default" }));
+				const dlg2 = document.querySelector('[data-slot="dialog-content"]')!;
+				fireEvent.click(within(dlg2 as HTMLElement).getByRole("button", { name: /close/i }));
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		}, 20000);
+
+		it("mic test reports silence and swallows a second concurrent run", async () => {
+			const user = userEvent.setup();
+			const trackStop = vi.fn();
+			const gum = vi.fn(async () => ({
+				getTracks: () => [{ stop: trackStop, kind: "audio" }],
+			}));
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: { getUserMedia: gum },
+			});
+			class SilentAudioContext {
+				destination = {};
+				createMediaStreamSource() {
+					return { connect: vi.fn() };
+				}
+				createAnalyser() {
+					return {
+						fftSize: 0,
+						frequencyBinCount: 512,
+						getByteTimeDomainData: (buf: Uint8Array) => buf.fill(128),
+					};
+				}
+				close = vi.fn(async () => {});
+			}
+			vi.stubGlobal("AudioContext", SilentAudioContext);
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				const buttons = screen.getAllByText("Test audio (3s)");
+				// two rapid clicks — the second hits the in-flight guard
+				fireEvent.click(buttons[0]!);
+				fireEvent.click(buttons[0]!);
+				await screen.findByText(
+					"Audio test failed — no sound detected. Check your microphone.",
+					{},
+					{ timeout: 6000 },
+				);
+				expect(gum).toHaveBeenCalledTimes(1);
+				expect(trackStop).toHaveBeenCalled();
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		}, 20000);
+
+		it("mic test reports a denied microphone", async () => {
+			const user = userEvent.setup();
+			const gum = vi.fn(async () => {
+				throw new Error("denied");
+			});
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: { getUserMedia: gum },
+			});
+			class FakeAudioContext {
+				destination = {};
+				createMediaStreamSource() {
+					return { connect: vi.fn() };
+				}
+				createAnalyser() {
+					return {
+						fftSize: 0,
+						frequencyBinCount: 512,
+						getByteTimeDomainData: (buf: Uint8Array) => buf.fill(200),
+					};
+				}
+				close = vi.fn(async () => {});
+			}
+			vi.stubGlobal("AudioContext", FakeAudioContext);
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				await user.click(screen.getAllByText("Test audio (3s)")[0]!);
+				await screen.findByText(
+					"Audio test failed — microphone unavailable or permission denied.",
+					{},
+					{ timeout: 3000 },
+				);
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		}, 15000);
+
+		it("mic test is a no-op when the browser is unsupported", async () => {
+			micSupported = false;
+			const user = userEvent.setup();
+			renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+			await screen.findByText("Ready to start the consultation?");
+			await user.click(screen.getAllByText("Test audio (3s)")[0]!);
+			expect(backendLoad).toHaveBeenCalled();
+		});
+
+		it("device enumeration resolving after unmount is ignored", async () => {
+			let resolveDevices!: (v: MediaDeviceInfo[]) => void;
+			const pending = new Promise<MediaDeviceInfo[]>((r) => {
+				resolveDevices = r;
+			});
+			Object.defineProperty(window.navigator, "mediaDevices", {
+				configurable: true,
+				value: {
+					enumerateDevices: () => pending,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+				},
+			});
+			try {
+				const { unmount } = renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				await screen.findByText("Ready to start the consultation?");
+				unmount();
+				await act(async () => {
+					resolveDevices([
+						{ kind: "audioinput", deviceId: "mic-9", label: "Late Mic", groupId: "" },
+					] as MediaDeviceInfo[]);
+				});
+			} finally {
+				delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+			}
+		});
+
+		it("picker unlinks the patient then quick-creates one with an age", async () => {
+			const user = userEvent.setup();
+			const api = makeApi();
+			renderPage(api, PATIENTS, 1, undefined, undefined, true);
+			await user.click(screen.getAllByText("Change")[0]!);
+			const trigger = screen.getByRole("combobox", { name: "Patient" });
+			fireEvent.pointerDown(trigger);
+			fireEvent.mouseDown(trigger);
+			fireEvent.mouseUp(trigger);
+			fireEvent.click(trigger);
+			await user.click(await screen.findByRole("option", { name: "unlinked" }));
+			await user.type(screen.getByLabelText("New patient name"), "Ana");
+			await user.type(screen.getByLabelText("New patient age"), "42");
+			await user.click(screen.getByText("+ patient"));
+			expect(api["createPatient"]).toHaveBeenCalled();
+			// quick-create closes the dialog; the room card shows the new patient
+			expect((await screen.findAllByText("Ana")).length).toBeGreaterThan(0);
+			expect(screen.getAllByText(/42/).length).toBeGreaterThan(0);
+		});
+
+		it("user menu falls back to placeholders when the account has no name", async () => {
+			renderPage(makeApi(), PATIENTS, undefined, undefined, "/portal/doctor", true, "Dr. House", {
+				email: "",
+			});
+			// avatar shows "?"; the trigger + menu labels fall back to email
+			fireEvent.click(screen.getByText("?"));
+			const menu = await screen.findByRole("menu", {}, { timeout: 3000 });
+			expect(within(menu).getAllByRole("menuitem")).toHaveLength(4);
+		});
+
+		it("live screen shows the engine badge and surfaces generate errors", async () => {
+			statusImpl = () => ({ state: "ready", device: "webgpu" });
+			const user = userEvent.setup();
+			const api = makeApi({
+				extractAnamnesis: vi.fn(async () => {
+					throw new Error("llm down");
+				}),
+			});
+			renderPage(api, PATIENTS, undefined, undefined, undefined, true);
+			await roomConsent(user);
+			await user.click(screen.getByText("Start Session"));
+			expect(await screen.findByText(/model ready \(webgpu\)/)).toBeTruthy();
+			// a transcript final keeps the capture live; a failed generate
+			// then surfaces its error inside the live strip itself.
+			await vi.waitFor(() => expect(micCb).not.toBeNull());
+			act(() => micCb!({ type: "final", text: "paciente relata dor" }));
+			// both anamnesis toggles flip the same Sheet — one click opens it
+			fireEvent.click((await screen.findAllByText("AI anamnesis"))[0]!.closest("button")!);
+			await user.click(await screen.findByText("Generate anamnesis →"));
+			expect(await screen.findByText("llm down")).toBeTruthy();
+		});
+
+		it("room stage floats the recovered-draft notices", async () => {
+			const origCreate = URL.createObjectURL;
+			URL.createObjectURL = vi.fn(() => "blob:draft-room");
+			draftMock.state.draft = {
+				audio: new Blob(["audio"], { type: "audio/webm" }),
+				transcript: "Doctor: rascunho",
+				patientId: 1,
+				savedAt: Date.now(),
+			};
+			try {
+				renderPage(makeApi(), PATIENTS, undefined, undefined, undefined, true);
+				expect(await screen.findByText(/Draft recovered/)).toBeTruthy();
+			} finally {
+				URL.createObjectURL = origCreate;
+			}
 		});
 	});
 

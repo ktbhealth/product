@@ -467,6 +467,22 @@ describe("WhisperTranscriber", () => {
 		await expect(t.recording()).resolves.toBeNull();
 	});
 
+	it("mic transcriber requests the picked device with an exact constraint", async () => {
+		const { mod, nav } = await setup();
+		const mic = mod.createWhisperMicTranscriber("mic-1");
+		mic.start(() => {});
+		await vi.waitFor(() =>
+			expect(nav.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+				audio: {
+					echoCancellation: true,
+					noiseSuppression: true,
+					deviceId: { exact: "mic-1" },
+				},
+			}),
+		);
+		mic.stop();
+	});
+
 	it("factories create mic and tab transcribers", async () => {
 		const { mod, nav } = await setup();
 		const mic = mod.createWhisperMicTranscriber();
