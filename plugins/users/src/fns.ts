@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { forbiddenTo, sessionHandler } from "@ktb/server-fns";
 
 import { Users } from "./index.ts";
 
@@ -28,19 +28,19 @@ type Result<T> = { readonly ok: true; readonly data: T } | { readonly ok: false 
  */
 export const setUserSuspendedFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSetSuspended(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const users = yield* Users;
-					yield* users.adminSetSuspended(data.userId, data.suspended);
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const users = yield* Users;
+						yield* users.adminSetSuspended(data.userId, data.suspended);
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 const CreateUserInput = Schema.Struct({
 	email: Schema.NonEmptyString,
@@ -65,24 +65,20 @@ type CreateUserResult =
  */
 export const createUserFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreateUser(input))
-	.handler(async ({ data }): Promise<CreateUserResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const users = yield* Users;
-					const created = yield* users.adminCreate(data);
-					if (!created.ok) return { ok: false as const, error: created.error };
-					return { ok: true as const, data: { userId: created.userId } };
-				}),
-			).pipe(
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed({ ok: false as const } as CreateUserResult),
-				),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<CreateUserResult> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const users = yield* Users;
+						const created = yield* users.adminCreate(data);
+						if (!created.ok) return { ok: false as const, error: created.error };
+						return { ok: true as const, data: { userId: created.userId } };
+					}),
+				).pipe(forbiddenTo({ ok: false as const } as CreateUserResult)),
+			);
+		}),
+	);
 
 const UpdateUserInput = Schema.Struct({
 	userId: Schema.NonEmptyString,
@@ -103,23 +99,23 @@ type UpdateUserResult =
  */
 export const updateUserFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdateUser(input))
-	.handler(async ({ data }): Promise<UpdateUserResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const users = yield* Users;
-					const res = yield* users.adminUpdate(data.userId, {
-						name: data.name,
-						email: data.email,
-					});
-					if (!res.ok) return { ok: false as const, error: res.error };
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<UpdateUserResult> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const users = yield* Users;
+						const res = yield* users.adminUpdate(data.userId, {
+							name: data.name,
+							email: data.email,
+						});
+						if (!res.ok) return { ok: false as const, error: res.error };
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 const DeleteUserInput = Schema.Struct({
 	userId: Schema.NonEmptyString,
@@ -139,17 +135,17 @@ type DeleteUserResult =
  */
 export const deleteUserFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDeleteUser(input))
-	.handler(async ({ data }): Promise<DeleteUserResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const users = yield* Users;
-					const res = yield* users.adminDelete(data.userId);
-					if (!res.ok) return { ok: false as const, error: res.error };
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<DeleteUserResult> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const users = yield* Users;
+						const res = yield* users.adminDelete(data.userId);
+						if (!res.ok) return { ok: false as const, error: res.error };
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);

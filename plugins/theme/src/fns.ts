@@ -6,7 +6,7 @@ import * as Schema from "effect/Schema";
 
 import { FontCatalog, type FontCatalogFamily } from "@ktb/fonts/catalog";
 import { PlatformAdmin } from "@ktb/platform";
-import { run, runAs, ensureSessionUser, getSessionUser } from "@ktb/server-fns";
+import { forbiddenTo, getSessionUser, run, runAs, sessionHandler } from "@ktb/server-fns";
 
 import { presentTheme, themeFontAxes } from "./present.ts";
 import { Theme } from "./theme.ts";
@@ -113,16 +113,14 @@ const previewRow = async (
 /** Admin list for the /platform/theme page and the header popover.
  * Non-admins get an empty list (the page guard 404s them anyway). */
 export const listThemesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly ThemeSummary[]> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
+	sessionHandler(async ({ run }): Promise<readonly ThemeSummary[]> => {
+		return run(
 			Effect.gen(function* () {
 				const theme = yield* Theme;
 				return yield* theme.list();
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as ThemeSummary[]))),
+			}).pipe(forbiddenTo([] as ThemeSummary[])),
 		);
-	},
+	}),
 );
 
 const GetInput = Schema.Struct({ id: Schema.Number });
@@ -135,31 +133,31 @@ const decodeAssets = Schema.decodeUnknownSync(AssetsInput);
  * get an empty list (the service gate denies). */
 export const listThemeAssetsFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeAssets(input))
-	.handler(async ({ data }): Promise<readonly ThemeAssetSummary[]> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const theme = yield* Theme;
-				return yield* theme.listAssets(data.themeId);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as ThemeAssetSummary[]))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<readonly ThemeAssetSummary[]> => {
+			return run(
+				Effect.gen(function* () {
+					const theme = yield* Theme;
+					return yield* theme.listAssets(data.themeId);
+				}).pipe(forbiddenTo([] as ThemeAssetSummary[])),
+			);
+		}),
+	);
 
 /** Full theme by id for the admin editor — seeds/fonts/brand +
  * derived tokens. Non-admins get null (the service gate denies). */
 export const getThemeFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeGet(input))
-	.handler(async ({ data }): Promise<ResolvedTheme | null> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const theme = yield* Theme;
-				return yield* theme.get(data.id);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null as ResolvedTheme | null))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<ResolvedTheme | null> => {
+			return run(
+				Effect.gen(function* () {
+					const theme = yield* Theme;
+					return yield* theme.get(data.id);
+				}).pipe(forbiddenTo(null as ResolvedTheme | null)),
+			);
+		}),
+	);
 
 /**
  * Ready managed font families for the editor's per-slot source
@@ -170,10 +168,8 @@ export const getThemeFn = createServerFn({ method: "GET" })
  * hides and free-form families keep working.
  */
 export const listThemeFontSourcesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly ThemeFontSourceOption[]> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
+	sessionHandler(async ({ run }): Promise<readonly ThemeFontSourceOption[]> => {
+		return run(
 			Effect.gen(function* () {
 				const gate = yield* PlatformAdmin;
 				yield* gate.requireAdmin();
@@ -207,11 +203,9 @@ export const listThemeFontSourcesFn = createServerFn({ method: "GET" }).handler(
 							...(axes.length === 0 ? {} : { axes }),
 						};
 					});
-			}).pipe(
-				Effect.catchTag("Forbidden", () => Effect.succeed([] as readonly ThemeFontSourceOption[])),
-			),
+			}).pipe(forbiddenTo([] as readonly ThemeFontSourceOption[])),
 		);
-	},
+	}),
 );
 
 const PublishInput = Schema.Struct({
@@ -230,27 +224,27 @@ const decodePublish = Schema.decodeUnknownSync(PublishInput);
  * tolerates and corrects invalid color strings. */
 export const publishThemeFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePublish(input))
-	.handler(async ({ data }): Promise<ThemeSummary> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const theme = yield* Theme;
-				return yield* theme.publish({
-					id: data.id,
-					scope: data.scope,
-					scopeId: data.scopeId ?? "",
-					appName: data.appName,
-					// Wire payloads are untyped JSON at the boundary; the
-					// palette engine parses/tolerates every field. Undefined
-					// optional columns preserve stored values on update.
-					seeds: data.seeds as ThemeSeeds,
-					fonts: data.fonts === undefined ? undefined : (data.fonts as ThemeFontConfig | null),
-					brand: data.brand === undefined ? undefined : (data.brand as ThemeBrand | null),
-				});
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<ThemeSummary> => {
+			return run(
+				Effect.gen(function* () {
+					const theme = yield* Theme;
+					return yield* theme.publish({
+						id: data.id,
+						scope: data.scope,
+						scopeId: data.scopeId ?? "",
+						appName: data.appName,
+						// Wire payloads are untyped JSON at the boundary; the
+						// palette engine parses/tolerates every field. Undefined
+						// optional columns preserve stored values on update.
+						seeds: data.seeds as ThemeSeeds,
+						fonts: data.fonts === undefined ? undefined : (data.fonts as ThemeFontConfig | null),
+						brand: data.brand === undefined ? undefined : (data.brand as ThemeBrand | null),
+					});
+				}),
+			);
+		}),
+	);
 
 const EnabledInput = Schema.Struct({
 	id: Schema.Number,
@@ -260,40 +254,34 @@ const decodeEnabled = Schema.decodeUnknownSync(EnabledInput);
 
 export const setThemeEnabledFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeEnabled(input))
-	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
-		const user = await ensureSessionUser();
-		await runAs(
-			user,
-			Effect.flatMap(Theme, (t) => t.setEnabled(data.id, data.enabled)),
-		);
-		return { ok: true };
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<{ readonly ok: boolean }> => {
+			await run(Effect.flatMap(Theme, (t) => t.setEnabled(data.id, data.enabled)));
+			return { ok: true };
+		}),
+	);
 
 /** Move the is_main flag to `id` — the admin "Set main" row action.
  * Admin-gated inside the service. */
 export const setThemeMainFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeGet(input))
-	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
-		const user = await ensureSessionUser();
-		await runAs(
-			user,
-			Effect.flatMap(Theme, (t) => t.setMain(data.id)),
-		);
-		return { ok: true };
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<{ readonly ok: boolean }> => {
+			await run(Effect.flatMap(Theme, (t) => t.setMain(data.id)));
+			return { ok: true };
+		}),
+	);
 
 /** Hard-delete a theme row — the editor discards untouched auto-created
  * drafts through this. Admin-gated inside the service. */
 export const deleteThemeFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeGet(input))
-	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
-		const user = await ensureSessionUser();
-		await runAs(
-			user,
-			Effect.flatMap(Theme, (t) => t.remove(data.id)),
-		);
-		return { ok: true };
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<{ readonly ok: boolean }> => {
+			await run(Effect.flatMap(Theme, (t) => t.remove(data.id)));
+			return { ok: true };
+		}),
+	);
 
 const PreviewInput = Schema.Struct({
 	themeId: Schema.NullOr(Schema.Number),
@@ -308,32 +296,32 @@ const decodePreview = Schema.decodeUnknownSync(PreviewInput);
  */
 export const setThemePreviewFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePreview(input))
-	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
-		const user = await ensureSessionUser();
-		const isAdmin = await runAs(
-			user,
-			Effect.gen(function* () {
-				const gate = yield* PlatformAdmin;
-				return yield* gate.isAdmin({ email: user.email, userId: user.id });
-			}),
-		);
-		if (!isAdmin) return { ok: false };
-		const api = await cookieApi();
-		if (api === null) return { ok: false };
-		try {
-			if (data.themeId === null) {
-				api.deleteCookie?.(THEME_PREVIEW_COOKIE, { path: "/" });
-			} else {
-				api.setCookie?.(THEME_PREVIEW_COOKIE, String(data.themeId), {
-					path: "/",
-					httpOnly: true,
-					sameSite: "lax",
-					secure: true,
-					maxAge: THEME_PREVIEW_MAX_AGE,
-				});
+	.handler(
+		sessionHandler(async ({ data, user, run }): Promise<{ readonly ok: boolean }> => {
+			const isAdmin = await run(
+				Effect.gen(function* () {
+					const gate = yield* PlatformAdmin;
+					return yield* gate.isAdmin({ email: user.email, userId: user.id });
+				}),
+			);
+			if (!isAdmin) return { ok: false };
+			const api = await cookieApi();
+			if (api === null) return { ok: false };
+			try {
+				if (data.themeId === null) {
+					api.deleteCookie?.(THEME_PREVIEW_COOKIE, { path: "/" });
+				} else {
+					api.setCookie?.(THEME_PREVIEW_COOKIE, String(data.themeId), {
+						path: "/",
+						httpOnly: true,
+						sameSite: "lax",
+						secure: true,
+						maxAge: THEME_PREVIEW_MAX_AGE,
+					});
+				}
+				return { ok: true };
+			} catch {
+				return { ok: false };
 			}
-			return { ok: true };
-		} catch {
-			return { ok: false };
-		}
-	});
+		}),
+	);

@@ -17,12 +17,17 @@ const mocks = vi.hoisted(() => ({
 // plain async fn; `run` executes the Effect for real against a stub
 // Email service so the `sender !== null` branch is exercised.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => ({
-	getLocale: mocks.getLocale,
-	getSessionUser: mocks.getSessionUser,
-	run: mocks.run,
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		getLocale: mocks.getLocale,
+		getSessionUser: mocks.getSessionUser,
+		run: mocks.run,
+		runAs: mocks.runAs,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 
 import { Email } from "@ktb/email";
 import { PlatformAdmin } from "@ktb/platform";

@@ -38,7 +38,8 @@ const family: FontFamilySummary = {
 	meta: null,
 };
 
-vi.mock("@ktb/server-fns", async () => {
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
 	const Effect = await import("effect/Effect");
 	const { Forbidden } = await import("@ktb/authz");
 	const { Fonts } = await import("./service.ts");
@@ -96,6 +97,8 @@ vi.mock("@ktb/server-fns", async () => {
 		ensureSessionUser: async () => ({ id: "u-admin", email: "admin@x.com" }),
 		// Unused by this module but exported for parity with the real barrel.
 		run: (effect: Effect.Effect<unknown, unknown, never>) => Effect.runPromise(provide(effect)),
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
 	};
 });
 

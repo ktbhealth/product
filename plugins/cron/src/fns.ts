@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { forbiddenTo, sessionHandler } from "@ktb/server-fns";
 
 import {
 	CronAdmin,
@@ -25,20 +25,20 @@ const decodeRunNowInput = Schema.decodeUnknownSync(RunNowInput);
 
 export const runCronJobFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRunNowInput(input))
-	.handler(async ({ data }): Promise<CronRunNowResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* CronAdmin;
-				return yield* admin.runNow(data.id);
-			}).pipe(
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed<CronRunNowResult>({ ok: false, reason: "forbidden" }),
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<CronRunNowResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* CronAdmin;
+					return yield* admin.runNow(data.id);
+				}).pipe(
+					Effect.catchTag("Forbidden", () =>
+						Effect.succeed<CronRunNowResult>({ ok: false, reason: "forbidden" }),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);
 
 // --- runtime scheduler (scheduled_jobs) ---------------------------------
 
@@ -75,60 +75,60 @@ const forbiddenWrite = (): ScheduleWriteResult => ({ ok: false, reason: "unavail
 
 export const createScheduleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreateScheduleInput(input))
-	.handler(async ({ data }): Promise<ScheduleWriteResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* CronAdmin;
-				return yield* admin.createSchedule({ ...data, createdBy: user.id });
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(forbiddenWrite()))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user, run }): Promise<ScheduleWriteResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* CronAdmin;
+					return yield* admin.createSchedule({ ...data, createdBy: user.id });
+				}).pipe(forbiddenTo(forbiddenWrite())),
+			);
+		}),
+	);
 
 export const updateScheduleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdateScheduleInput(input))
-	.handler(async ({ data }): Promise<ScheduleWriteResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* CronAdmin;
-				return yield* admin.updateSchedule(data.id, data.patch);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(forbiddenWrite()))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<ScheduleWriteResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* CronAdmin;
+					return yield* admin.updateSchedule(data.id, data.patch);
+				}).pipe(forbiddenTo(forbiddenWrite())),
+			);
+		}),
+	);
 
 export const deleteScheduleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDeleteScheduleInput(input))
-	.handler(async ({ data }): Promise<ScheduleDeleteResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* CronAdmin;
-				return yield* admin.deleteSchedule(data.id);
-			}).pipe(
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed<ScheduleDeleteResult>({ ok: false, reason: "unavailable" }),
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<ScheduleDeleteResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* CronAdmin;
+					return yield* admin.deleteSchedule(data.id);
+				}).pipe(
+					Effect.catchTag("Forbidden", () =>
+						Effect.succeed<ScheduleDeleteResult>({ ok: false, reason: "unavailable" }),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);
 
 export const runScheduleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRunNowInput(input))
-	.handler(async ({ data }): Promise<CronRunNowResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* CronAdmin;
-				return yield* admin.runScheduleNow(data.id);
-			}).pipe(
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed<CronRunNowResult>({ ok: false, reason: "forbidden" }),
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<CronRunNowResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* CronAdmin;
+					return yield* admin.runScheduleNow(data.id);
+				}).pipe(
+					Effect.catchTag("Forbidden", () =>
+						Effect.succeed<CronRunNowResult>({ ok: false, reason: "forbidden" }),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);

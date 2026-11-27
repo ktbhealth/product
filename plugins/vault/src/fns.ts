@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
+import { optionalSessionHandler, sessionHandler } from "@ktb/server-fns";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { Vault, type ClinicKey } from "./index.ts";
@@ -79,121 +79,127 @@ const boundTenantId = Effect.map(Tenant, tenantScopeId);
  * fields mark personal scope — ZK requires a clinic tenant.
  */
 export const vaultStateFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<{
-		readonly tenantId: number | null;
-		readonly role: string | null;
-		readonly zk: boolean;
-	}> => {
-		const user = await getSessionUser();
-		if (!user) return { tenantId: null, role: null, zk: false };
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenant = yield* Tenant;
-				const tenantId = tenantScopeId(tenant);
-				if (tenant === null || tenantId === null) {
-					return { tenantId: null, role: null, zk: false };
-				}
-				const vault = yield* Vault;
-				const zk = yield* vault.isZk(tenantId);
-				return { tenantId, role: tenant.role, zk };
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => ({ tenantId: null, role: null, zk: false }),
+		async ({
+			run,
+		}): Promise<{
+			readonly tenantId: number | null;
+			readonly role: string | null;
+			readonly zk: boolean;
+		}> => {
+			return run(
+				Effect.gen(function* () {
+					const tenant = yield* Tenant;
+					const tenantId = tenantScopeId(tenant);
+					if (tenant === null || tenantId === null) {
+						return { tenantId: null, role: null, zk: false };
+					}
+					const vault = yield* Vault;
+					const zk = yield* vault.isZk(tenantId);
+					return { tenantId, role: tenant.role, zk };
+				}),
+			);
+		},
+	),
 );
 
 /** Member devices of the bound tenant (any status) — the admin list. */
 export const vaultDevicesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly ClinicKey[]> => {
-		const user = await getSessionUser();
-		if (!user) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return [] as ClinicKey[];
-				const vault = yield* Vault;
-				return yield* vault.devices(tenantId).pipe(denyToFalse([] as ClinicKey[]));
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => [],
+		async ({ run }): Promise<readonly ClinicKey[]> => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return [] as ClinicKey[];
+					const vault = yield* Vault;
+					return yield* vault.devices(tenantId).pipe(denyToFalse([] as ClinicKey[]));
+				}),
+			);
+		},
+	),
 );
 
 /** The caller's own device row by wrap pubkey — enrollment status plus
  * the `wrappedMasterKey` envelope only this device can unwrap. */
 export const vaultEnrollmentFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeEnrollment(input))
-	.handler(async ({ data }): Promise<ClinicKey | null> => {
-		const user = await getSessionUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return null;
-				const vault = yield* Vault;
-				return yield* vault.deviceEnrollment(tenantId, data.wrapPublicKey).pipe(denyToFalse(null));
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => null,
+			async ({ data, run }): Promise<ClinicKey | null> => {
+				return run(
+					Effect.gen(function* () {
+						const tenantId = yield* boundTenantId;
+						if (tenantId === null) return null;
+						const vault = yield* Vault;
+						return yield* vault
+							.deviceEnrollment(tenantId, data.wrapPublicKey)
+							.pipe(denyToFalse(null));
+					}),
+				);
+			},
+		),
+	);
 
 /** Register this device's pubkeys — pending until an admin approves. */
 export const vaultEnrollDeviceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePubkeys(input))
-	.handler(async ({ data }): Promise<Result<ClinicKey>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return { ok: false as const };
-				const vault = yield* Vault;
-				return yield* vault.enrollDevice({ tenantId, ...data }).pipe(
-					Effect.map((device) => ({ ok: true as const, data: device })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<ClinicKey>> => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return { ok: false as const };
+					const vault = yield* Vault;
+					return yield* vault.enrollDevice({ tenantId, ...data }).pipe(
+						Effect.map((device) => ({ ok: true as const, data: device })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /** Approve a pending device — admin+; `wrappedMasterKey` is the clinic
  * master key wrapped to THAT device's pubkey, computed client-side. */
 export const vaultApproveDeviceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeApprove(input))
-	.handler(async ({ data }): Promise<Result<ClinicKey>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return { ok: false as const };
-				const vault = yield* Vault;
-				return yield* vault.approveDevice({ tenantId, ...data }).pipe(
-					Effect.map((device) => ({ ok: true as const, data: device })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<ClinicKey>> => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return { ok: false as const };
+					const vault = yield* Vault;
+					return yield* vault.approveDevice({ tenantId, ...data }).pipe(
+						Effect.map((device) => ({ ok: true as const, data: device })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /** Revoke a device — admin+ for others, member+ for the owner's own. */
 export const vaultRevokeDeviceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDeviceId(input))
-	.handler(async ({ data }): Promise<Result<ClinicKey>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return { ok: false as const };
-				const vault = yield* Vault;
-				return yield* vault.revokeDevice({ tenantId, clinicKeyId: data.clinicKeyId }).pipe(
-					Effect.map((device) => ({ ok: true as const, data: device })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<ClinicKey>> => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return { ok: false as const };
+					const vault = yield* Vault;
+					return yield* vault.revokeDevice({ tenantId, clinicKeyId: data.clinicKeyId }).pipe(
+						Effect.map((device) => ({ ok: true as const, data: device })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /**
  * Record DEK grants (T-144): the client wraps a record's DEK to each
@@ -202,21 +208,21 @@ export const vaultRevokeDeviceFn = createServerFn({ method: "POST" })
  */
 export const vaultGrantAccessFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeGrants(input))
-	.handler(async ({ data }) => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return { ok: false as const };
-				const vault = yield* Vault;
-				return yield* vault.grantAccess({ tenantId, ...data }).pipe(
-					Effect.map((rows) => ({ ok: true as const, data: rows })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return { ok: false as const };
+					const vault = yield* Vault;
+					return yield* vault.grantAccess({ tenantId, ...data }).pipe(
+						Effect.map((rows) => ({ ok: true as const, data: rows })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /**
  * The caller's wrapped DEK envelopes for a batch of records, keyed by
@@ -225,38 +231,38 @@ export const vaultGrantAccessFn = createServerFn({ method: "POST" })
  */
 export const vaultDekEnvelopesFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeDekEnvelopes(input))
-	.handler(async ({ data }): Promise<Record<string, string>> => {
-		const user = await getSessionUser();
-		if (!user) return {};
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return {};
-				const vault = yield* Vault;
-				const out: Record<string, string> = {};
-				for (const entityId of data.entityIds) {
-					const envelope = yield* vault
-						.dekEnvelope({
-							tenantId,
-							entityType: data.entityType,
-							entityId,
-							readerPubkey: data.wrapPublicKey,
-						})
-						.pipe(denyToFalse(null));
-					if (envelope !== null) out[String(entityId)] = envelope;
-				}
-				return out;
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => ({}),
+			async ({ data, run }): Promise<Record<string, string>> => {
+				return run(
+					Effect.gen(function* () {
+						const tenantId = yield* boundTenantId;
+						if (tenantId === null) return {};
+						const vault = yield* Vault;
+						const out: Record<string, string> = {};
+						for (const entityId of data.entityIds) {
+							const envelope = yield* vault
+								.dekEnvelope({
+									tenantId,
+									entityType: data.entityType,
+									entityId,
+									readerPubkey: data.wrapPublicKey,
+								})
+								.pipe(denyToFalse(null));
+							if (envelope !== null) out[String(entityId)] = envelope;
+						}
+						return out;
+					}),
+				);
+			},
+		),
+	);
 
 /** One-way zk enable for the bound tenant — admin+ (T-143). */
 export const vaultEnableZkFn = createServerFn({ method: "POST" }).handler(
-	async (): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
+	sessionHandler(async ({ run }): Promise<Result<null>> => {
+		return run(
 			Effect.gen(function* () {
 				const tenantId = yield* boundTenantId;
 				if (tenantId === null) return { ok: false as const };
@@ -266,7 +272,7 @@ export const vaultEnableZkFn = createServerFn({ method: "POST" }).handler(
 					.pipe(Effect.as({ ok: true as const, data: null }), denyToFalse({ ok: false as const }));
 			}),
 		);
-	},
+	}),
 );
 
 // ── Server-side secrets (P-098 C2) ────────────────────────────────
@@ -296,80 +302,83 @@ const decodeSecretId = Schema.decodeUnknownSync(SecretIdInput);
 
 /** Secret metadata for the bound tenant — members may list. */
 export const vaultSecretsListFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly SecretMeta[]> => {
-		const user = await getSessionUser();
-		if (!user) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return [] as SecretMeta[];
-				const secrets = yield* Secrets;
-				return yield* secrets.list({ tenantId }).pipe(
-					/* v8 ignore next -- bound-tenant member read cannot raise
-					 * these tags; the catches are defensive only */
-					Effect.catchTags({
-						/* v8 ignore next -- list never raises SecretError */
-						SecretError: () => Effect.succeed([] as SecretMeta[]),
-						/* v8 ignore next -- bound role always satisfies member */
-						TenantForbidden: () => Effect.succeed([] as SecretMeta[]),
-						/* v8 ignore next -- tenant scope never raises Forbidden */
-						Forbidden: () => Effect.succeed([] as SecretMeta[]),
-					}),
-				);
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => [],
+		async ({ run }): Promise<readonly SecretMeta[]> => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return [] as SecretMeta[];
+					const secrets = yield* Secrets;
+					return yield* secrets.list({ tenantId }).pipe(
+						/* v8 ignore next -- bound-tenant member read cannot raise
+						 * these tags; the catches are defensive only */
+						Effect.catchTags({
+							/* v8 ignore next -- list never raises SecretError */
+							SecretError: () => Effect.succeed([] as SecretMeta[]),
+							/* v8 ignore next -- bound role always satisfies member */
+							TenantForbidden: () => Effect.succeed([] as SecretMeta[]),
+							/* v8 ignore next -- tenant scope never raises Forbidden */
+							Forbidden: () => Effect.succeed([] as SecretMeta[]),
+						}),
+					);
+				}),
+			);
+		},
+	),
 );
 
 /** Create or rotate-by-name a tenant secret — admin+ (service gate). */
 export const vaultSecretPutFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSecretPut(input))
-	.handler(async ({ data }): Promise<Result<SecretMeta>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const tenantId = yield* boundTenantId;
-				if (tenantId === null) return { ok: false as const };
-				const secrets = yield* Secrets;
-				return yield* secrets.put({ tenantId, ...data }).pipe(
-					Effect.map((meta) => ({ ok: true as const, data: meta })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<SecretMeta>> => {
+			return run(
+				Effect.gen(function* () {
+					const tenantId = yield* boundTenantId;
+					if (tenantId === null) return { ok: false as const };
+					const secrets = yield* Secrets;
+					return yield* secrets.put({ tenantId, ...data }).pipe(
+						Effect.map((meta) => ({ ok: true as const, data: meta })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /** Re-wrap the DEK + re-encrypt the current value — admin+ (service gate). */
 export const vaultSecretRotateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSecretId(input))
-	.handler(async ({ data }): Promise<Result<SecretMeta>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const secrets = yield* Secrets;
-				return yield* secrets.rotate({ id: data.id }).pipe(
-					Effect.map((meta) => ({ ok: true as const, data: meta })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<SecretMeta>> => {
+			return run(
+				Effect.gen(function* () {
+					const secrets = yield* Secrets;
+					return yield* secrets.rotate({ id: data.id }).pipe(
+						Effect.map((meta) => ({ ok: true as const, data: meta })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /** Hard-delete a secret row — admin+ (service gate). */
 export const vaultSecretRemoveFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSecretId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const secrets = yield* Secrets;
-				return yield* secrets
-					.remove({ id: data.id })
-					.pipe(Effect.as({ ok: true as const, data: null }), denyToFalse({ ok: false as const }));
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.gen(function* () {
+					const secrets = yield* Secrets;
+					return yield* secrets
+						.remove({ id: data.id })
+						.pipe(
+							Effect.as({ ok: true as const, data: null }),
+							denyToFalse({ ok: false as const }),
+						);
+				}),
+			);
+		}),
+	);

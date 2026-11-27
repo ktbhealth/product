@@ -2,7 +2,6 @@
 // functions share the same contract; this module stays as the host's
 // import path.
 export {
-	ensureDoctorUser,
 	ensureSessionUser,
 	getDoctorUser,
 	getSessionAccount,

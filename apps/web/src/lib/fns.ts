@@ -33,11 +33,17 @@ import {
 import { PortalAudience } from "@ktb/portal";
 import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
+import {
+	doctorHandler,
+	forbiddenTo,
+	optionalDoctorHandler,
+	optionalSessionHandler,
+} from "@ktb/server-fns";
 import type { MiddlewareContext, Page, PanelPage } from "@ktb/kernel";
 import { cachedEnabledIds } from "./enabled-ids.ts";
 import { runPageMiddleware } from "./middleware.ts";
 import { Schema } from "effect";
-import { ensureDoctorUser, getDoctorUser, getSessionAccount, getSessionUser } from "#/lib/auth.ts";
+import { getSessionAccount, getSessionUser } from "#/lib/auth.ts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -262,18 +268,20 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
  * guards turn that into a hard 404; admin data paths enforce the same
  * gate again inside domain services (defense in depth).
  */
-export const platformAdminFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getSessionUser();
-	if (!user) return false;
-	return run(
-		Effect.gen(function* () {
-			const platformAdmin = yield* PlatformAdmin;
-			// Subject form: RBAC-granted superadmins pass alongside the
-			// email allowlist — userId is the signed-in account id.
-			return yield* platformAdmin.isAdmin({ email: user.email, userId: user.id });
-		}),
-	);
-});
+export const platformAdminFn = createServerFn({ method: "GET" }).handler(
+	optionalSessionHandler(
+		() => false,
+		async ({ user }) =>
+			run(
+				Effect.gen(function* () {
+					const platformAdmin = yield* PlatformAdmin;
+					// Subject form: RBAC-granted superadmins pass alongside the
+					// email allowlist — userId is the signed-in account id.
+					return yield* platformAdmin.isAdmin({ email: user.email, userId: user.id });
+				}),
+			),
+	),
+);
 
 /**
  * Result of the page data server fns (`portalPageDataFn`,
@@ -452,18 +460,17 @@ export const portalPageDataFn = createServerFn({ method: "GET" })
  * wire output.
  */
 export const portalAudiencesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly string[]> => {
-		const user = await getSessionUser();
-		if (user === null) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audience = yield* Effect.serviceOption(PortalAudience);
-				if (Option.isNone(audience)) return [] as string[];
-				return [...(yield* audience.value.audiences())].sort();
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => [] as string[],
+		async ({ run }): Promise<readonly string[]> =>
+			run(
+				Effect.gen(function* () {
+					const audience = yield* Effect.serviceOption(PortalAudience);
+					if (Option.isNone(audience)) return [] as string[];
+					return [...(yield* audience.value.audiences())].sort();
+				}),
+			),
+	),
 );
 
 /**
@@ -474,27 +481,30 @@ export const portalAudiencesFn = createServerFn({ method: "GET" }).handler(
  * denied, same contract as `pageData`. Pages without a guard are
  * never listed: nothing to hide.
  */
-export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getSessionUser();
-	if (user === null) return [] as string[];
-	// Guards run in parallel — each is its own runAs, and serial awaits
-	// would multiply sidebar-load latency by the page count. Promise.all
-	// preserves portalPages iteration order; failures count as denied,
-	// same contract as pageData.
-	const checks = await Promise.all(
-		[...portalPages.values()].flatMap((entry) => {
-			const path = entry.page.path;
-			const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
-			if (guard === undefined) return [];
-			return [
-				runAs(user, guard(path))
-					.catch(() => false)
-					.then((ok) => ({ path, ok })),
-			];
-		}),
-	);
-	return checks.filter((check) => !check.ok).map((check) => check.path);
-});
+export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(
+	optionalSessionHandler(
+		() => [] as string[],
+		async ({ run }) => {
+			// Guards run in parallel — each is its own runAs, and serial awaits
+			// would multiply sidebar-load latency by the page count. Promise.all
+			// preserves portalPages iteration order; failures count as denied,
+			// same contract as pageData.
+			const checks = await Promise.all(
+				[...portalPages.values()].flatMap((entry) => {
+					const path = entry.page.path;
+					const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
+					if (guard === undefined) return [];
+					return [
+						run(guard(path))
+							.catch(() => false)
+							.then((ok) => ({ path, ok })),
+					];
+				}),
+			);
+			return checks.filter((check) => !check.ok).map((check) => check.path);
+		},
+	),
+);
 
 /**
  * Loader data for app-shell pages contributed via `pages` (P-059):
@@ -545,32 +555,34 @@ export const appPageDataFn = createServerFn({ method: "GET" })
  * notifications.services plugin is registered (the service tag is absent
  * otherwise).
  */
-export const listMyNotificationsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return [];
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const notifications = yield* Notifications;
-			const rows = yield* notifications.list(user.id, 50);
-			return rows.map(rowToConsole);
-		}),
-	);
-});
+export const listMyNotificationsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => [],
+		async ({ user, run }) =>
+			run(
+				Effect.gen(function* () {
+					const notifications = yield* Notifications;
+					const rows = yield* notifications.list(user.id, 50);
+					return rows.map(rowToConsole);
+				}),
+			),
+	),
+);
 
 /** Exact unread count for the /platform dashboard card — the list fn
  * above is capped at 50 rows, so it can't be derived client-side. */
-export const countMyUnreadNotificationsFn = createServerFn({ method: "GET" }).handler(async () => {
-	const user = await getDoctorUser();
-	if (!user) return 0;
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const notifications = yield* Notifications;
-			return yield* notifications.unreadCount(user.id);
-		}),
-	);
-});
+export const countMyUnreadNotificationsFn = createServerFn({ method: "GET" }).handler(
+	optionalDoctorHandler(
+		() => 0,
+		async ({ user, run }) =>
+			run(
+				Effect.gen(function* () {
+					const notifications = yield* Notifications;
+					return yield* notifications.unreadCount(user.id);
+				}),
+			),
+	),
+);
 
 const decodeNotificationIds = Schema.decodeUnknownSync(Schema.Array(Schema.Number));
 
@@ -579,30 +591,26 @@ const decodeNotificationIds = Schema.decodeUnknownSync(Schema.Array(Schema.Numbe
  * the service's user-scoped UPDATE. */
 export const markMyNotificationsReadFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeNotificationIds(input))
-	.handler(async ({ data: ids }) => {
-		const user = await ensureDoctorUser();
-		return runAs(
-			user,
+	.handler(
+		doctorHandler(async ({ data: ids, user, run }) =>
+			run(
+				Effect.gen(function* () {
+					const notifications = yield* Notifications;
+					return yield* notifications
+						.markRead(user.id, ids)
+						.pipe(Effect.as(true), forbiddenTo(false));
+				}),
+			),
+		),
+	);
+
+export const markAllMyNotificationsReadFn = createServerFn({ method: "POST" }).handler(
+	doctorHandler(async ({ user, run }) =>
+		run(
 			Effect.gen(function* () {
 				const notifications = yield* Notifications;
-				return yield* notifications.markRead(user.id, ids).pipe(
-					Effect.as(true),
-					Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-				);
+				return yield* notifications.markAllRead(user.id).pipe(Effect.as(true), forbiddenTo(false));
 			}),
-		);
-	});
-
-export const markAllMyNotificationsReadFn = createServerFn({ method: "POST" }).handler(async () => {
-	const user = await ensureDoctorUser();
-	return runAs(
-		user,
-		Effect.gen(function* () {
-			const notifications = yield* Notifications;
-			return yield* notifications.markAllRead(user.id).pipe(
-				Effect.as(true),
-				Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-			);
-		}),
-	);
-});
+		),
+	),
+);

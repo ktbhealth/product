@@ -29,14 +29,19 @@ vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestUrl: () => new URL("https://app.ktb.test/secretaries"),
 }));
-vi.mock("@ktb/server-fns", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@ktb/server-fns")>()),
-	getDoctorContext: mocks.getDoctorContext,
-	getLocale: mocks.getLocale,
-	getSessionUser: mocks.getSessionUser,
-	run: mocks.run,
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		...actual,
+		getDoctorContext: mocks.getDoctorContext,
+		getLocale: mocks.getLocale,
+		getSessionUser: mocks.getSessionUser,
+		run: mocks.run,
+		runAs: mocks.runAs,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 
 import { InviteRejected, Secretaries } from "./index.ts";
 import {

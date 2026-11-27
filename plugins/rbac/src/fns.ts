@@ -4,7 +4,7 @@ import { Command } from "@effect-server-utils/cqrs";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { forbiddenTo, runAs, sessionHandler } from "@ktb/server-fns";
 
 import { RbacCommands, RoleRow, SubjectRoleRow } from "./api.ts";
 
@@ -63,112 +63,112 @@ type Result<T> = { readonly ok: true; readonly data: T } | { readonly ok: false 
 
 export const createRoleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRole(input))
-	.handler(async ({ data }): Promise<Result<Role>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					const role = yield* commands["rbac.createRole"](data);
-					return { ok: true as const, data: role };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<Role>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						const role = yield* commands["rbac.createRole"](data);
+						return { ok: true as const, data: role };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const updateRoleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRoleUpdate(input))
-	.handler(async ({ data }): Promise<Result<Role | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					const role = yield* commands["rbac.updateRole"](data);
-					return role === null ? ({ ok: false } as const) : { ok: true as const, data: role };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<Role | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						const role = yield* commands["rbac.updateRole"](data);
+						return role === null ? ({ ok: false } as const) : { ok: true as const, data: role };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const deleteRoleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRoleId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					yield* commands["rbac.deleteRole"](data);
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						yield* commands["rbac.deleteRole"](data);
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const setRolePermissionFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePermission(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					yield* commands["rbac.setRolePermission"](data);
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						yield* commands["rbac.setRolePermission"](data);
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const revokeRolePermissionFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRevoke(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					yield* commands["rbac.revokeRolePermission"](data);
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						yield* commands["rbac.revokeRolePermission"](data);
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const assignSubjectFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAssign(input))
-	.handler(async ({ data }): Promise<Result<SubjectRole>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					const assignment = yield* commands["rbac.assignSubject"](data);
-					return { ok: true as const, data: assignment };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<SubjectRole>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						const assignment = yield* commands["rbac.assignSubject"](data);
+						return { ok: true as const, data: assignment };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const unassignSubjectFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRoleId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const commands = yield* Command.dispatcher(RbacCommands);
-					yield* commands["rbac.unassignSubject"](data);
-					return { ok: true as const, data: null };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const commands = yield* Command.dispatcher(RbacCommands);
+						yield* commands["rbac.unassignSubject"](data);
+						return { ok: true as const, data: null };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);

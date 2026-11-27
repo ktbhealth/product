@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
+import { optionalSessionHandler, sessionHandler } from "@ktb/server-fns";
 
 import { AiModels, type ModelCard } from "./models.ts";
 import type { AiModelKind } from "./schema.ts";
@@ -78,76 +78,76 @@ const toCreateInput = (data: typeof CreateInput.Type) => ({
 
 /** Platform model list — admin-only; denials degrade to []. */
 export const modelsListFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly ModelCard[]> => {
-		const user = await getSessionUser();
-		if (!user) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const models = yield* AiModels;
-				return yield* models.list({ scope: "platform" }).pipe(denyToFalse([] as ModelCard[]));
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => [],
+		async ({ run }): Promise<readonly ModelCard[]> => {
+			return run(
+				Effect.gen(function* () {
+					const models = yield* AiModels;
+					return yield* models.list({ scope: "platform" }).pipe(denyToFalse([] as ModelCard[]));
+				}),
+			);
+		},
+	),
 );
 
 export const modelsCreateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<Result<ModelCard>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const models = yield* AiModels;
-				return yield* models.create(toCreateInput(data)).pipe(
-					Effect.map((card) => ({ ok: true as const, data: card })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
-
-export const modelsUpdateFn = createServerFn({ method: "POST" })
-	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<Result<ModelCard>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const models = yield* AiModels;
-				return yield* models
-					.update({
-						id: data.id,
-						...(data.name !== undefined ? { name: data.name } : {}),
-						...(data.modelId !== undefined ? { modelId: data.modelId } : {}),
-						...(data.endpointId !== undefined ? { endpointId: data.endpointId } : {}),
-						...(data.kind !== undefined ? { kind: data.kind as AiModelKind } : {}),
-						...(data.capabilities !== undefined ? { capabilities: data.capabilities } : {}),
-						...(data.contextTokens !== undefined ? { contextTokens: data.contextTokens } : {}),
-						...(data.costTier !== undefined ? { costTier: data.costTier } : {}),
-						...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}),
-						...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-					})
-					.pipe(
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<ModelCard>> => {
+			return run(
+				Effect.gen(function* () {
+					const models = yield* AiModels;
+					return yield* models.create(toCreateInput(data)).pipe(
 						Effect.map((card) => ({ ok: true as const, data: card })),
 						denyToFalse({ ok: false as const }),
 					);
-			}),
-		);
-	});
+				}),
+			);
+		}),
+	);
+
+export const modelsUpdateFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeUpdate(input))
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<ModelCard>> => {
+			return run(
+				Effect.gen(function* () {
+					const models = yield* AiModels;
+					return yield* models
+						.update({
+							id: data.id,
+							...(data.name !== undefined ? { name: data.name } : {}),
+							...(data.modelId !== undefined ? { modelId: data.modelId } : {}),
+							...(data.endpointId !== undefined ? { endpointId: data.endpointId } : {}),
+							...(data.kind !== undefined ? { kind: data.kind as AiModelKind } : {}),
+							...(data.capabilities !== undefined ? { capabilities: data.capabilities } : {}),
+							...(data.contextTokens !== undefined ? { contextTokens: data.contextTokens } : {}),
+							...(data.costTier !== undefined ? { costTier: data.costTier } : {}),
+							...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}),
+							...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+						})
+						.pipe(
+							Effect.map((card) => ({ ok: true as const, data: card })),
+							denyToFalse({ ok: false as const }),
+						);
+				}),
+			);
+		}),
+	);
 
 export const modelsRemoveFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const models = yield* AiModels;
-				return yield* models.remove(data.id).pipe(
-					Effect.map(() => ({ ok: true as const, data: null })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.gen(function* () {
+					const models = yield* AiModels;
+					return yield* models.remove(data.id).pipe(
+						Effect.map(() => ({ ok: true as const, data: null })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);

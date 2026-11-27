@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, requirePluginEnabled, runAs } from "@ktb/server-fns";
+import { pluginHandler, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import { DocumentStoreAdmin } from "./admin.ts";
@@ -155,107 +155,127 @@ const saveResult = (error: unknown): SaveDocumentResult => {
 /** Every collection for the console index page — `null` for
  * non-admins (same collapse contract as the page fns). */
 export const listCollectionsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly CollectionWire[] | null> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				return (yield* admin.listCollections()).map(toCollectionWire);
-			}),
-		).catch((error: unknown) => {
-			if (typeof error === "object" && error !== null && "_tag" in error) {
-				if (String((error as { _tag?: unknown })._tag) === "Forbidden") return null;
-			}
-			throw error;
-		});
-	},
+	pluginHandler(
+		"document-store.admin",
+		sessionHandler(async ({ user }): Promise<readonly CollectionWire[] | null> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const admin = yield* DocumentStoreAdmin;
+					return (yield* admin.listCollections()).map(toCollectionWire);
+				}),
+			).catch((error: unknown) => {
+				if (typeof error === "object" && error !== null && "_tag" in error) {
+					if (String((error as { _tag?: unknown })._tag) === "Forbidden") return null;
+				}
+				throw error;
+			});
+		}),
+	),
 );
 
 /** One page of documents for a collection — `null` for non-admins,
  * unknown collections and invalid queries. */
 export const documentsFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeList(input))
-	.handler(async ({ data }): Promise<DocumentsPageWire | null> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				const result = yield* admin.listDocuments(data.collection, {
-					...(data.limit === undefined ? {} : { limit: data.limit }),
-					...(data.offset === undefined ? {} : { offset: data.offset }),
+	.handler(
+		pluginHandler(
+			"document-store.admin",
+			sessionHandler(async ({ data, user }): Promise<DocumentsPageWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						const result = yield* admin.listDocuments(data.collection, {
+							...(data.limit === undefined ? {} : { limit: data.limit }),
+							...(data.offset === undefined ? {} : { offset: data.offset }),
+						});
+						return toDocumentsPageWire(result);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
 				});
-				return toDocumentsPageWire(result);
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Cross-collection document browser for the /platform/documents
  * console — `null` for non-admins like `documentsFn`. */
 export const browseDocumentsFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeBrowse(input))
-	.handler(async ({ data }): Promise<DocumentsPageWire | null> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				const result = yield* admin.browseDocuments({
-					...(data.collection === undefined ? {} : { collection: data.collection }),
-					...(data.limit === undefined ? {} : { limit: data.limit }),
-					...(data.offset === undefined ? {} : { offset: data.offset }),
+	.handler(
+		pluginHandler(
+			"document-store.admin",
+			sessionHandler(async ({ data, user }): Promise<DocumentsPageWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						const result = yield* admin.browseDocuments({
+							...(data.collection === undefined ? {} : { collection: data.collection }),
+							...(data.limit === undefined ? {} : { limit: data.limit }),
+							...(data.offset === undefined ? {} : { offset: data.offset }),
+						});
+						return toDocumentsPageWire(result);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
 				});
-				return toDocumentsPageWire(result);
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Insert a document; `denied` for non-admins/unknown collections,
  * `invalid` with issues for validation failures. */
 export const createDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<SaveDocumentResult> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				const record = yield* admin.insertDocument(data.collection, asData(data.data), {
-					...(data.idempotencyKey === undefined ? {} : { idempotencyKey: data.idempotencyKey }),
-				});
-				return { status: "saved" as const, record: toDocumentWire(record) };
+	.handler(
+		pluginHandler(
+			"document-store.admin",
+			sessionHandler(async ({ data, user }): Promise<SaveDocumentResult> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						const record = yield* admin.insertDocument(data.collection, asData(data.data), {
+							...(data.idempotencyKey === undefined ? {} : { idempotencyKey: data.idempotencyKey }),
+						});
+						return { status: "saved" as const, record: toDocumentWire(record) };
+					}),
+				).catch(saveResult);
 			}),
-		).catch(saveResult);
-	});
+		),
+	);
 
 /** Merge-patch a document by id; same result contract as create. */
 export const updateDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<SaveDocumentResult> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				const record = yield* admin.updateDocument(data.collection, data.id, asData(data.data), {
-					...(data.expectedVersion === undefined ? {} : { expectedVersion: data.expectedVersion }),
-				});
-				return { status: "saved" as const, record: toDocumentWire(record) };
+	.handler(
+		pluginHandler(
+			"document-store.admin",
+			sessionHandler(async ({ data, user }): Promise<SaveDocumentResult> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						const record = yield* admin.updateDocument(
+							data.collection,
+							data.id,
+							asData(data.data),
+							{
+								...(data.expectedVersion === undefined
+									? {}
+									: { expectedVersion: data.expectedVersion }),
+							},
+						);
+						return { status: "saved" as const, record: toDocumentWire(record) };
+					}),
+				).catch(saveResult);
 			}),
-		).catch(saveResult);
-	});
+		),
+	);
 
 export type DeleteDocumentResult =
 	| { readonly status: "deleted" }
@@ -266,30 +286,33 @@ export type DeleteDocumentResult =
  * referrers that blocked the delete (restrict policy). */
 export const deleteDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDocumentId(input))
-	.handler(async ({ data }): Promise<DeleteDocumentResult> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				yield* admin.deleteDocument(data.collection, data.id);
-				return { status: "deleted" as const };
+	.handler(
+		pluginHandler(
+			"document-store.admin",
+			sessionHandler(async ({ data, user }): Promise<DeleteDocumentResult> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						yield* admin.deleteDocument(data.collection, data.id);
+						return { status: "deleted" as const };
+					}),
+				).catch((error: unknown): DeleteDocumentResult => {
+					if (isHandled(error)) return { status: "denied" };
+					if (tagOf(error) === "DocumentInUse") {
+						const referencedBy = (error as { referencedBy?: unknown }).referencedBy;
+						return {
+							status: "in-use",
+							referencedBy: Array.isArray(referencedBy)
+								? referencedBy.map(String)
+								: /* v8 ignore next -- DocumentInUse always carries referencedBy */ [],
+						};
+					}
+					throw error;
+				});
 			}),
-		).catch((error: unknown): DeleteDocumentResult => {
-			if (isHandled(error)) return { status: "denied" };
-			if (tagOf(error) === "DocumentInUse") {
-				const referencedBy = (error as { referencedBy?: unknown }).referencedBy;
-				return {
-					status: "in-use",
-					referencedBy: Array.isArray(referencedBy)
-						? referencedBy.map(String)
-						: /* v8 ignore next -- DocumentInUse always carries referencedBy */ [],
-				};
-			}
-			throw error;
-		});
-	});
+		),
+	);
 
 export type MigrateCollectionResult =
 	| { readonly status: "migrated"; readonly report: CollectionMigrationReport }
@@ -301,18 +324,21 @@ export type MigrateCollectionResult =
  * itself only fails `denied` for non-admins/unknown collections. */
 export const migrateCollectionFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeMigrate(input))
-	.handler(async ({ data }): Promise<MigrateCollectionResult> => {
-		await requirePluginEnabled("document-store.admin");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* DocumentStoreAdmin;
-				const report = yield* admin.migrateCollection(data.collection);
-				return { status: "migrated" as const, report };
+	.handler(
+		pluginHandler(
+			"document-store.admin",
+			sessionHandler(async ({ data, user }): Promise<MigrateCollectionResult> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						const report = yield* admin.migrateCollection(data.collection);
+						return { status: "migrated" as const, report };
+					}),
+				).catch((error: unknown): MigrateCollectionResult => {
+					if (isHandled(error)) return { status: "denied" };
+					throw error;
+				});
 			}),
-		).catch((error: unknown): MigrateCollectionResult => {
-			if (isHandled(error)) return { status: "denied" };
-			throw error;
-		});
-	});
+		),
+	);

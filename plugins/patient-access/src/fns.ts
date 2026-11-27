@@ -10,10 +10,12 @@ import { consultations, patientAccess, patients, portalKeys } from "@ktb/db/sche
 import { Email } from "@ktb/email";
 import { inviteAcceptPath } from "@ktb/invites";
 import {
+	forbiddenTo,
 	getDoctorAccess,
 	getDoctorContext,
 	getDoctorUser,
 	getLocale,
+	optionalDoctorHandler,
 	run,
 	runAs,
 } from "@ktb/server-fns";
@@ -55,31 +57,33 @@ export const clinicalPortalFn = createServerFn({ method: "GET" }).handler(async 
  */
 export const patientLinksFn = createServerFn({ method: "GET" })
 	.validator((patientId: number) => decodeNumber(patientId))
-	.handler(async ({ data: patientId }) => {
-		const user = await getDoctorUser();
-		if (!user) return null;
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const service = yield* PatientLinks;
-				const links = yield* service.list(patientId);
-				const db = yield* Db;
-				const [patient] = yield* Effect.promise(() =>
-					db
-						.select({
-							id: patients.id,
-							name: patients.name,
-							email: patients.email,
-						})
-						.from(patients)
-						.where(and(eq(patients.id, patientId), eq(patients.ownerId, user.id))),
+	.handler(
+		optionalDoctorHandler(
+			({ data: patientId }) => null,
+			async ({ data: patientId, user, run }) => {
+				return run(
+					Effect.gen(function* () {
+						const service = yield* PatientLinks;
+						const links = yield* service.list(patientId);
+						const db = yield* Db;
+						const [patient] = yield* Effect.promise(() =>
+							db
+								.select({
+									id: patients.id,
+									name: patients.name,
+									email: patients.email,
+								})
+								.from(patients)
+								.where(and(eq(patients.id, patientId), eq(patients.ownerId, user.id))),
+						);
+						// Deleted between the ownership check and this read.
+						if (patient === undefined) return null;
+						return { patient, links };
+					}).pipe(forbiddenTo(null)),
 				);
-				// Deleted between the ownership check and this read.
-				if (patient === undefined) return null;
-				return { patient, links };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
-		);
-	});
+			},
+		),
+	);
 
 export type InvitePatientResult =
 	| {
@@ -129,56 +133,56 @@ const notifyInvitee = async (
 /** Invite an email to a patient record of the acting doctor. */
 export const invitePatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeInvite(input))
-	.handler(async ({ data }): Promise<InvitePatientResult> => {
-		const user = await getDoctorUser();
-		if (!user) return { ok: false, error: "failed" };
-		const result = await runAs(
-			user,
-			Effect.gen(function* () {
-				const service = yield* PatientLinks;
-				const row = yield* service.invite(data);
-				const db = yield* Db;
-				const [patient] = yield* Effect.promise(() =>
-					db
-						.select({ name: patients.name, tenantId: patients.tenantId })
-						.from(patients)
-						.where(eq(patients.id, data.patientId)),
+	.handler(
+		optionalDoctorHandler(
+			(): InvitePatientResult => ({ ok: false, error: "failed" }),
+			async ({ data, user, run }): Promise<InvitePatientResult> => {
+				const result = await run(
+					Effect.gen(function* () {
+						const service = yield* PatientLinks;
+						const row = yield* service.invite(data);
+						const db = yield* Db;
+						const [patient] = yield* Effect.promise(() =>
+							db
+								.select({ name: patients.name, tenantId: patients.tenantId })
+								.from(patients)
+								.where(eq(patients.id, data.patientId)),
+						);
+						// T-149: under ZK the stored name is ciphertext the server
+						// cannot read — the invite email must be metadata-only (no
+						// patient name). The gate fails closed: an unresolvable
+						// tenant gets the generic copy rather than a leak.
+						const zk =
+							patient !== undefined &&
+							(yield* Effect.promise(() => tenantZkOrClosed(db, patient.tenantId)));
+						return {
+							ok: true as const,
+							link: { id: row.id, email: row.email ?? "", status: row.status },
+							// Deleted between the ownership check and this read — the
+							// grant stands, there is just no name for the email. Under
+							// ZK the name is dropped the same way.
+							patientName: patient === undefined || zk ? null : patient.name,
+							patientExists: patient !== undefined,
+						};
+					}).pipe(
+						Effect.catchTag("PatientInviteRejected", (e) =>
+							Effect.succeed({ ok: false as const, error: e.code }),
+						),
+						forbiddenTo({ ok: false as const, error: "failed" as const }),
+					),
 				);
-				// T-149: under ZK the stored name is ciphertext the server
-				// cannot read — the invite email must be metadata-only (no
-				// patient name). The gate fails closed: an unresolvable
-				// tenant gets the generic copy rather than a leak.
-				const zk =
-					patient !== undefined &&
-					(yield* Effect.promise(() => tenantZkOrClosed(db, patient.tenantId)));
-				return {
-					ok: true as const,
-					link: { id: row.id, email: row.email ?? "", status: row.status },
-					// Deleted between the ownership check and this read — the
-					// grant stands, there is just no name for the email. Under
-					// ZK the name is dropped the same way.
-					patientName: patient === undefined || zk ? null : patient.name,
-					patientExists: patient !== undefined,
-				};
-			}).pipe(
-				Effect.catchTag("PatientInviteRejected", (e) =>
-					Effect.succeed({ ok: false as const, error: e.code }),
-				),
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed({ ok: false as const, error: "failed" as const }),
-				),
-			),
-		);
-		if (!result.ok) return result;
-		const emailed = !result.patientExists
-			? false
-			: await notifyInvitee(
-					result.link.email,
-					user.doctor.name ?? user.doctor.email,
-					result.patientName,
-				);
-		return { ok: true, link: result.link, emailed };
-	});
+				if (!result.ok) return result;
+				const emailed = !result.patientExists
+					? false
+					: await notifyInvitee(
+							result.link.email,
+							user.doctor.name ?? user.doctor.email,
+							result.patientName,
+						);
+				return { ok: true, link: result.link, emailed };
+			},
+		),
+	);
 
 /** Apply `action` to link `id` as the acting doctor; `{ ok: false }`
  * for non-doctors and for a link that is not one of their patients'. */
@@ -190,7 +194,7 @@ const changeLink = async (action: "approve" | "revoke", id: number) => {
 		Effect.gen(function* () {
 			const service = yield* PatientLinks;
 			return { ok: yield* service[action](id) };
-		}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false }))),
+		}).pipe(forbiddenTo({ ok: false })),
 	);
 };
 
@@ -227,58 +231,62 @@ export interface PortalReader {
 export const portalReadersFn = createServerFn({ method: "GET" })
 	.validator((id: number) => decodeNumber(id))
 	.handler(
-		async ({
-			data: patientId,
-		}): Promise<{
-			readonly readers: readonly PortalReader[];
-			readonly cipheredConsultationIds: readonly number[];
-		} | null> => {
-			const user = await getDoctorUser();
-			if (!user) return null;
-			return runAs(
-				user,
-				Effect.gen(function* () {
-					const service = yield* PatientLinks;
-					// Ownership gate — same authz as the links page itself.
-					yield* service.list(patientId);
-					const db = yield* Db;
-					const linked = yield* Effect.promise(() =>
-						db
-							.select({ userId: patientAccess.userId })
-							.from(patientAccess)
-							.where(
-								and(
-									eq(patientAccess.patientId, patientId),
-									eq(patientAccess.status, "active"),
-									isNotNull(patientAccess.userId),
+		optionalDoctorHandler(
+			({ data: patientId }) => null,
+			async ({
+				data: patientId,
+				run,
+			}): Promise<{
+				readonly readers: readonly PortalReader[];
+				readonly cipheredConsultationIds: readonly number[];
+			} | null> => {
+				return run(
+					Effect.gen(function* () {
+						const service = yield* PatientLinks;
+						// Ownership gate — same authz as the links page itself.
+						yield* service.list(patientId);
+						const db = yield* Db;
+						const linked = yield* Effect.promise(() =>
+							db
+								.select({ userId: patientAccess.userId })
+								.from(patientAccess)
+								.where(
+									and(
+										eq(patientAccess.patientId, patientId),
+										eq(patientAccess.status, "active"),
+										isNotNull(patientAccess.userId),
+									),
 								),
-							),
-					);
-					const userIds = linked.map((l) => l.userId!);
-					const readers = yield* Effect.promise(() =>
-						userIds.length === 0
-							? Promise.resolve([] as PortalReader[])
-							: db
-									.select({
-										readerId: portalKeys.userId,
-										wrapPublicKey: portalKeys.wrapPublicKey,
-									})
-									.from(portalKeys)
-									.where(inArray(portalKeys.userId, userIds)),
-					);
-					const ciphered = yield* Effect.promise(() =>
-						db
-							.select({ id: consultations.id })
-							.from(consultations)
-							.where(
-								and(
-									eq(consultations.patientId, patientId),
-									or(like(consultations.anamnesis, "v1.%"), like(consultations.transcript, "v1.%")),
+						);
+						const userIds = linked.map((l) => l.userId!);
+						const readers = yield* Effect.promise(() =>
+							userIds.length === 0
+								? Promise.resolve([] as PortalReader[])
+								: db
+										.select({
+											readerId: portalKeys.userId,
+											wrapPublicKey: portalKeys.wrapPublicKey,
+										})
+										.from(portalKeys)
+										.where(inArray(portalKeys.userId, userIds)),
+						);
+						const ciphered = yield* Effect.promise(() =>
+							db
+								.select({ id: consultations.id })
+								.from(consultations)
+								.where(
+									and(
+										eq(consultations.patientId, patientId),
+										or(
+											like(consultations.anamnesis, "v1.%"),
+											like(consultations.transcript, "v1.%"),
+										),
+									),
 								),
-							),
-					);
-					return { readers, cipheredConsultationIds: ciphered.map((c) => c.id) };
-				}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
-			);
-		},
+						);
+						return { readers, cipheredConsultationIds: ciphered.map((c) => c.id) };
+					}).pipe(forbiddenTo(null)),
+				);
+			},
+		),
 	);

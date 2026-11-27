@@ -3,13 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import {
-	ensureSessionUser,
-	getDoctorContext,
-	getLocale,
-	runAs,
-	setDoctorSelection,
-} from "@ktb/server-fns";
+import { getDoctorContext, getLocale, sessionHandler, setDoctorSelection } from "@ktb/server-fns";
 
 import { Doctors } from "./index.ts";
 
@@ -58,15 +52,15 @@ export const selectDoctorFn = createServerFn({ method: "POST" })
  * it — called right after a doctor sign-up, the only place a doctor
  * profile is created from. Patient accounts are never offered it.
  */
-export const ensureDoctorProfileFn = createServerFn({ method: "POST" }).handler(async () => {
-	const user = await ensureSessionUser();
-	const doctor = await runAs(
-		user,
-		Effect.gen(function* () {
-			const doctors = yield* Doctors;
-			return yield* doctors.ensureProfile(user.name ?? user.email);
-		}),
-	);
-	await setDoctorSelection(doctor.id);
-	return { ok: true };
-});
+export const ensureDoctorProfileFn = createServerFn({ method: "POST" }).handler(
+	sessionHandler(async ({ user, run }) => {
+		const doctor = await run(
+			Effect.gen(function* () {
+				const doctors = yield* Doctors;
+				return yield* doctors.ensureProfile(user.name ?? user.email);
+			}),
+		);
+		await setDoctorSelection(doctor.id);
+		return { ok: true };
+	}),
+);

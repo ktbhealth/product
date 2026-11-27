@@ -6,10 +6,12 @@ const mocks = vi.hoisted(() => ({
 	getPatientContext: vi.fn(),
 }));
 
-vi.mock("@ktb/server-fns", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@ktb/server-fns")>()),
-	...mocks,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return Object.assign({}, actual, mocks, actual.serverFnHandlerMocks(), {
+		forbiddenTo: actual.forbiddenTo,
+	});
+});
 
 import { Forbidden } from "@ktb/authz";
 import type { Page } from "@ktb/kernel";
