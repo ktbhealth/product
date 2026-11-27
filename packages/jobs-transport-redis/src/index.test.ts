@@ -115,6 +115,19 @@ describe("createRedisJobsTransport", () => {
 		await t.close();
 	});
 
+	it("retry() on a non-record body re-pushes the raw string unchanged", async () => {
+		const { client, list } = fakeRedis();
+		list.push("not-json{");
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		const [msg] = await t.receive();
+		msg?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(list).toEqual(["not-json{"]);
+		const [again] = await t.receive();
+		expect(again?.body).toBe("not-json{");
+		await t.close();
+	});
+
 	it("receive(count) drains up to count messages", async () => {
 		const { client } = fakeRedis();
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
