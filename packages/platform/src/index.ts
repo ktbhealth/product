@@ -117,9 +117,7 @@ export const platformAdminAdmits = (admin: PlatformAdminShape): Effect.Effect<bo
  * makes the host render not-found, the same hard-404 contract the
  * /platform gate produces. Assign directly (`guard: platformAdminGuard`)
  * or via `adminConsolePage`; the request path is ignored. */
-export const platformAdminGuard = (
-	_path?: string,
-): Effect.Effect<boolean, never, PlatformAdmin> =>
+export const platformAdminGuard = (_path?: string): Effect.Effect<boolean, never, PlatformAdmin> =>
 	Effect.gen(function* () {
 		const platformAdmin = yield* PlatformAdmin;
 		return yield* platformAdminAdmits(platformAdmin);
@@ -133,9 +131,9 @@ export const platformAdminGuard = (
  * overload) for permission-scoped or composite gates (wildcard path
  * resolution, rbac-OR-admin checks); pages intentionally relying on the
  * host's /platform gate alone should stay plain object literals. */
-export function adminConsolePage<
-	P extends Omit<PanelPage, "guard">,
->(page: P): P & {
+export function adminConsolePage<P extends Omit<PanelPage, "guard">>(
+	page: P,
+): P & {
 	readonly guard: (_path?: string) => Effect.Effect<boolean, never, PlatformAdmin>;
 };
 export function adminConsolePage(page: PanelPage): PanelPage;
