@@ -2283,7 +2283,7 @@ describe("NewConsultationPage", () => {
 			// The picker's Select is a Base UI combobox; in jsdom its trigger
 			// does not reliably open under user-event's full pointer sequence
 			// (pointer capture + focus), so drive the open with fireEvent.
-			const trigger = screen.getByLabelText("Patient");
+			const trigger = screen.getByRole("combobox", { name: "Patient" });
 			fireEvent.pointerDown(trigger);
 			fireEvent.mouseDown(trigger);
 			fireEvent.mouseUp(trigger);
@@ -2291,7 +2291,13 @@ describe("NewConsultationPage", () => {
 			await user.click(await screen.findByRole("option", { name: "João" }));
 			expect(screen.getAllByText("João").length).toBeGreaterThan(0);
 			await user.click(screen.getByText("Done"));
-			expect(screen.queryByLabelText("Patient")).toBeNull();
+			// Base UI's Presence keeps the popup mounted in jsdom until the
+			// exit animation ends (which never fires without CSS) — assert the
+			// closed state instead of unmount.
+			await vi.waitFor(() => {
+				const popup = document.querySelector('[data-slot="dialog-content"]');
+				expect(popup === null || popup.hasAttribute("data-closed")).toBe(true);
+			});
 		});
 
 		it("audio test warms the transcription engine", async () => {

@@ -30,6 +30,22 @@ import {
 } from "@ktbhealth/ui/components/empty";
 import { Field, FieldError, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
+import { Avatar, AvatarFallback } from "@ktbhealth/ui/components/avatar";
+import {
+	Dialog as PickerDialog,
+	DialogContent as PickerDialogContent,
+	DialogHeader as PickerDialogHeader,
+	DialogTitle as PickerDialogTitle,
+} from "@ktbhealth/ui/components/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@ktbhealth/ui/components/dropdown-menu";
 import { Label } from "@ktbhealth/ui/components/label";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import {
@@ -207,6 +223,7 @@ export function NewConsultationPage({
 	portalBase,
 	zk,
 	physician,
+	user,
 	liveFlow = true,
 }: {
 	initialPatients: Array<{ id: number; name: string }>;
@@ -232,6 +249,9 @@ export function NewConsultationPage({
 	 * room avatar, transcript speaker turns). Falls back to the generic
 	 * speaker label when the host has no name. */
 	physician?: string;
+	/** Signed-in account for the room's user menu (name/email + portal
+	 * navigation). Absent on hosts that do not resolve a session. */
+	user?: { readonly name?: string | null; readonly email: string } | null;
 	/** New live-consultation flow: the pre-consultation room before the
 	 * first record capture and the LiveConsultation screen while a
 	 * record-source capture runs. `false` restores the legacy capture
@@ -1249,9 +1269,152 @@ export function NewConsultationPage({
 		</>
 	);
 
+	// Real mic check for the room's "Test audio" — captures ~2.5s through
+	// an AnalyserNode and feeds the room's VU meter; a silent/denied mic
+	// surfaces as a toast instead of a fake "calibrated".
+	const [audioTestLevel, setAudioTestLevel] = useState<number | undefined>(undefined);
+	const audioTestActive = useRef(false);
+
+	async function runAudioTest() {
+		// Testing audio signals capture intent — warm the ASR engine so the
+		// first real capture doesn't pay the model-load latency.
+		backend.load();
+		if (
+			audioTestActive.current ||
+			!supported ||
+			typeof navigator === "undefined" ||
+			typeof AudioContext === "undefined"
+		)
+			return;
+		audioTestActive.current = true;
+		setAudioTestLevel(0);
+		let stream: MediaStream | null = null;
+		let audioCtx: AudioContext | null = null;
+		try {
+			stream = await navigator.mediaDevices.getUserMedia({
+				audio: { echoCancellation: true, noiseSuppression: true },
+			});
+			audioCtx = new AudioContext();
+			const source = audioCtx.createMediaStreamSource(stream);
+			const analyser = audioCtx.createAnalyser();
+			analyser.fftSize = 512;
+			source.connect(analyser);
+			const buf = new Uint8Array(analyser.frequencyBinCount);
+			const started = Date.now();
+			let peak = 0;
+			while (Date.now() - started < 2500) {
+				analyser.getByteTimeDomainData(buf);
+				let sum = 0;
+				for (const v of buf) {
+					const d = (v - 128) / 128;
+					sum += d * d;
+				}
+				const rms = Math.sqrt(sum / buf.length);
+				peak = Math.max(peak, rms);
+				setAudioTestLevel(Math.min(1, rms * 3));
+				await new Promise((r) => setTimeout(r, 80));
+			}
+			if (peak < 0.015) {
+				showToast({ text: "Audio test failed — no sound detected. Check your microphone." });
+			}
+		} catch {
+			showToast({ text: "Audio test failed — microphone unavailable or permission denied." });
+		} finally {
+			stream?.getTracks().forEach((track) => track.stop());
+			void audioCtx?.close();
+			audioTestActive.current = false;
+			setAudioTestLevel(undefined);
+		}
+	}
+
+	// Quick-create a patient from the name+age fields — shared by the
+	// capture rail and the room's change-patient dialog.
+	async function createQuickPatient() {
+		if (!patientName.trim()) return;
+		const age = Number(patientAge);
+		if (patientAge === "" || !Number.isInteger(age) || age < 0) {
+			setPatientError(nc.ageRequired);
+			return;
+		}
+		setPatientError(null);
+		const res = await api.createPatient({
+			data: { name: patientName, birthDate: birthDateFromAge(age) },
+		});
+		if (!res.ok) {
+			// Validation comes back as codes; this view is English-only (T-025).
+			const code = Object.values(res.errors)[0];
+			setPatientError(code ? errorMessage(code, locale) : nc.patientCreateFailed);
+			return;
+		}
+		const p = res.patient;
+		setPatients((prev) => [...prev, { id: p.id, name: p.name }]);
+		setPatientId(p.id);
+		setQuickCreatedId(p.id);
+		setCreatedAges((m) => ({ ...m, [p.id]: age }));
+		// A brand-new patient has no portal access — carry the
+		// quick-create answer into their access card (T-258);
+		// "Yes" without a usable email stays undecided.
+		const email = newPatientAccess.email.trim();
+		accessLookedUp.current.add(p.id);
+		setStandings((s) => ({ ...s, [p.id]: { status: "none", email: null } }));
+		setChoices((c) => ({
+			...c,
+			[p.id]: { send: newPatientAccess.send && looksLikeEmail(email), email },
+		}));
+		setNewPatientAccess({ send: true, email: "" });
+		setPatientName("");
+		setPatientAge("");
+		setPatientPickerOpen(false);
+	}
+
+	// Name + age + create button (+ access question, error, record link)
+	// — rendered by the capture rail and the room's patient dialog.
+	const patientCreateControls = (
+		<>
+			<Input
+				value={patientName}
+				onChange={(e) => setPatientName(e.target.value)}
+				placeholder={nc.newPatientPlaceholder}
+				aria-label={nc.newPatientNameLabel}
+				className="w-40"
+			/>
+			<Input
+				type="number"
+				min={0}
+				max={130}
+				inputMode="numeric"
+				value={patientAge}
+				onChange={(e) => setPatientAge(e.target.value)}
+				placeholder={nc.agePlaceholder}
+				aria-label={nc.newPatientAgeLabel}
+				className="w-20"
+			/>
+			<Button type="button" variant="outline" size="sm" onClick={() => void createQuickPatient()}>
+				{nc.addPatient}
+			</Button>
+			{accessEnabled && patientName.trim() !== "" ? (
+				<div className="basis-full">
+					<NewPatientAccessQuestion
+						choice={newPatientAccess}
+						onChange={setNewPatientAccess}
+						nc={nc}
+					/>
+				</div>
+			) : null}
+			{patientError ? <FieldError className="text-xs">{patientError}</FieldError> : null}
+			{quickCreatedId !== null && quickCreatedId === patientId ? (
+				<Link
+					to={portalPath(`/patients/${quickCreatedId}/edit`)}
+					className="text-xs font-medium underline"
+				>
+					{nc.completeRecord}
+				</Link>
+			) : null}
+		</>
+	);
+
 	// Compact patient picker revealed by the room's "Change" action —
-	// the rail and the room never render together, so the shared
-	// "patient-label" id stays unique.
+	// rendered as a real dialog from the fullscreen stage.
 	const patientPicker = (
 		<div className="flex flex-wrap items-center gap-3">
 			<Label
@@ -1284,6 +1447,65 @@ export function NewConsultationPage({
 				{lf.pickerDone}
 			</Button>
 		</div>
+	);
+
+	// Account menu for the room header — the fullscreen stage hides the
+	// portal shell, so session info + portal navigation live here.
+	const userMenu = user ? (
+		<DropdownMenu>
+			<DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground">
+				<Avatar size="sm">
+					<AvatarFallback className="bg-muted text-[11px] font-semibold uppercase">
+						{user.name?.[0] ?? user.email[0] ?? "?"}
+					</AvatarFallback>
+				</Avatar>
+				<span className="max-w-32 truncate">{user.name ?? user.email}</span>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-56">
+				<DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
+					<span className="text-sm font-medium text-foreground">{user.name ?? user.email}</span>
+					{user.name ? (
+						<span className="truncate text-xs text-muted-foreground">{user.email}</span>
+					) : null}
+				</DropdownMenuLabel>
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
+					<DropdownMenuItem render={<Link to={portalPath("")} />}>Portal home</DropdownMenuItem>
+					<DropdownMenuItem render={<Link to={portalPath("/patients")} />}>
+						Patients
+					</DropdownMenuItem>
+					<DropdownMenuItem render={<Link to={portalPath("/consultations")} />}>
+						Consultations
+					</DropdownMenuItem>
+					<DropdownMenuItem render={<Link to={portalPath("/review")} />}>
+						Review queue
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	) : null;
+
+	// Change-patient modal for the room — select an existing patient or
+	// quick-create one, same controls as the capture rail.
+	const patientPickerDialog = (
+		<PickerDialog
+			open={patientPickerOpen}
+			onOpenChange={(open) => {
+				if (!open) setPatientPickerOpen(false);
+			}}
+		>
+			<PickerDialogContent className="sm:max-w-md">
+				<PickerDialogHeader>
+					<PickerDialogTitle>{nc.patientLabel}</PickerDialogTitle>
+				</PickerDialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="flex flex-wrap items-center gap-3">{patientPicker}</div>
+					<div className="flex flex-wrap items-center gap-2 border-t pt-3">
+						{patientCreateControls}
+					</div>
+				</div>
+			</PickerDialogContent>
+		</PickerDialog>
 	);
 
 	return (
@@ -1356,13 +1578,9 @@ export function NewConsultationPage({
 						 * audio test live inside the room itself. ---- */
 						<div className="fixed inset-0 z-50 overflow-hidden bg-background">
 							{/* floating chrome — the room itself stays full-bleed
-							 * exactly like the catalog demo; navigation lives in
-							 * the room header's actions slot */}
-							{patientPickerOpen ? (
-								<div className="absolute top-20 left-3 z-10 rounded-xl border bg-card p-3 shadow-lg">
-									{patientPicker}
-								</div>
-							) : null}
+							 * exactly like the catalog demo; navigation + account
+							 * live in the room header's actions slot */}
+							{patientPickerDialog}
 							{draft || restoredUrl ? (
 								<div className="absolute top-20 right-3 z-10 flex w-80 flex-col gap-2">
 									{draftNotices}
@@ -1388,16 +1606,20 @@ export function NewConsultationPage({
 								onStart={startFromRoom}
 								onPostpone={() => setMode("dictation")}
 								onChangePatient={() => setPatientPickerOpen(true)}
-								onAudioTest={() => backend.load()}
+								onAudioTest={() => void runAudioTest()}
+								vuLevel={audioTestLevel}
 								telemetry={{ encryptionLabel: lf.encryption }}
 								headerActions={
-									<Link
-										to={portalPath("/consultations")}
-										className={buttonVariants({ variant: "outline", size: "sm" })}
-									>
-										<ArrowLeftIcon />
-										{t.detail.back}
-									</Link>
+									<>
+										<Link
+											to={portalPath("/consultations")}
+											className={buttonVariants({ variant: "outline", size: "sm" })}
+										>
+											<ArrowLeftIcon />
+											{t.detail.back}
+										</Link>
+										{userMenu}
+									</>
 								}
 								labels={roomLabels}
 							/>
@@ -1542,89 +1764,7 @@ export function NewConsultationPage({
 										</SelectContent>
 									</Select>
 								</div>
-								<div className="flex flex-wrap items-center gap-2">
-									<Input
-										value={patientName}
-										onChange={(e) => setPatientName(e.target.value)}
-										placeholder={nc.newPatientPlaceholder}
-										aria-label={nc.newPatientNameLabel}
-										className="w-40"
-									/>
-									<Input
-										type="number"
-										min={0}
-										max={130}
-										inputMode="numeric"
-										value={patientAge}
-										onChange={(e) => setPatientAge(e.target.value)}
-										placeholder={nc.agePlaceholder}
-										aria-label={nc.newPatientAgeLabel}
-										className="w-20"
-									/>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={async () => {
-											if (!patientName.trim()) return;
-											const age = Number(patientAge);
-											if (patientAge === "" || !Number.isInteger(age) || age < 0) {
-												setPatientError(nc.ageRequired);
-												return;
-											}
-											setPatientError(null);
-											const res = await api.createPatient({
-												data: { name: patientName, birthDate: birthDateFromAge(age) },
-											});
-											if (!res.ok) {
-												// Validation comes back as codes; this view is English-only (T-025).
-												const code = Object.values(res.errors)[0];
-												setPatientError(code ? errorMessage(code, locale) : nc.patientCreateFailed);
-												return;
-											}
-											const p = res.patient;
-											setPatients((prev) => [...prev, { id: p.id, name: p.name }]);
-											setPatientId(p.id);
-											setQuickCreatedId(p.id);
-											setCreatedAges((m) => ({ ...m, [p.id]: age }));
-											// A brand-new patient has no portal access — carry the
-											// quick-create answer into their access card (T-258);
-											// "Yes" without a usable email stays undecided.
-											const email = newPatientAccess.email.trim();
-											accessLookedUp.current.add(p.id);
-											setStandings((s) => ({ ...s, [p.id]: { status: "none", email: null } }));
-											setChoices((c) => ({
-												...c,
-												[p.id]: { send: newPatientAccess.send && looksLikeEmail(email), email },
-											}));
-											setNewPatientAccess({ send: true, email: "" });
-											setPatientName("");
-											setPatientAge("");
-										}}
-									>
-										{nc.addPatient}
-									</Button>
-									{accessEnabled && patientName.trim() !== "" ? (
-										<div className="basis-full">
-											<NewPatientAccessQuestion
-												choice={newPatientAccess}
-												onChange={setNewPatientAccess}
-												nc={nc}
-											/>
-										</div>
-									) : null}
-									{patientError ? (
-										<FieldError className="text-xs">{patientError}</FieldError>
-									) : null}
-									{quickCreatedId !== null && quickCreatedId === patientId ? (
-										<Link
-											to={portalPath(`/patients/${quickCreatedId}/edit`)}
-											className="text-xs font-medium underline"
-										>
-											{nc.completeRecord}
-										</Link>
-									) : null}
-								</div>
+								<div className="flex flex-wrap items-center gap-2">{patientCreateControls}</div>
 								<label
 									className={`ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs ${
 										consented
