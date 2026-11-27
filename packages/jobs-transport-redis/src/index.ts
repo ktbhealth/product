@@ -8,8 +8,8 @@
  *
  * Delivery semantics: at-least-once. `ack()` is a no-op (the entry is
  * already popped); `retry()` re-pushes the envelope onto the tail of
- * the list (RPUSH) so BRPOP delivers it again on the next poll. There is no
- * broker-side attempt counter — poison jobs are bounded by the
+ * the list (RPUSH) so BRPOP delivers it again on the next poll. There
+ * is no broker-side attempt counter — poison jobs are bounded by the
  * job_runs projection and handler idempotency, same trust model as
  * the dev:node SQLite queue.
  *

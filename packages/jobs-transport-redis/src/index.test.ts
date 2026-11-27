@@ -148,7 +148,7 @@ describe("createRedisJobsTransport", () => {
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		const [msg] = await t.receive();
 		msg?.retry();
-		// Let the fire-and-forget lPush rejection settle through .catch.
+		// Let the fire-and-forget requeue rejection settle through .catch.
 		await new Promise((r) => setTimeout(r, 0));
 		await t.close();
 	});
