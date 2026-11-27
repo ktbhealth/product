@@ -2,7 +2,7 @@ import { ServerIcon, TypeIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { FontProvidersPlatformPage, FontsPlatformPage } from "./platform-page.tsx";
 import { Fonts, FontsServicesLive } from "./service.ts";
@@ -29,17 +29,6 @@ export const fontsServicesPlugin = definePlugin({
 	requiredDeps: [platformAdminPlugin.id],
 	services: FontsServicesLive,
 });
-
-// Hard 404 for non-admins — same contract as the /platform layout
-// guard; every service/fn call re-checks anyway.
-const fontsPanelGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
 
 // Admin-gated inside the service; a Forbidden here means the guard
 // raced a revoked session — degrade to empty payloads rather than
@@ -70,20 +59,18 @@ export const fontsPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, fontsServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "fonts.providers",
 				path: "/platform/fonts/providers",
 				component: FontProvidersPlatformPage,
-				guard: fontsPanelGuard,
 				loader: fontsProvidersLoader,
-			},
-			{
+			}),
+			adminConsolePage({
 				id: "fonts.catalog",
 				path: "/platform/fonts",
 				component: FontsPlatformPage,
-				guard: fontsPanelGuard,
 				loader: fontsCatalogLoader,
-			},
+			}),
 		],
 	},
 });

@@ -3,7 +3,7 @@ import { MessageSquareTextIcon } from "lucide-react";
 import { Effect } from "effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { AiPrompts, AiPromptsLive, type PromptCard } from "./prompts.ts";
 import { PromptsPanelPage } from "./platform-page.tsx";
@@ -18,18 +18,6 @@ export {
 	type PromptCard,
 	type PromptVariable,
 } from "./prompts.ts";
-
-/** Platform-admin gate for the panel page — same contract as the
- * /platform/audit admin surface: hard deny for non-admins, the
- * AiPrompts service re-checks every call anyway. */
-const adminGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
 
 export const aiPromptTablesPlugin = definePlugin({
 	id: "ai.prompt.tables",
@@ -77,11 +65,10 @@ export const aiPromptPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, aiPromptServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "ai-prompts",
 				path: "/platform/ai/prompts",
 				component: PromptsPanelPage,
-				guard: adminGuard,
 				loader: () =>
 					Effect.gen(function* () {
 						const prompts = yield* AiPrompts;
@@ -95,7 +82,7 @@ export const aiPromptPanelPlugin = definePlugin({
 							}),
 						);
 					}),
-			},
+			}),
 		],
 	},
 });

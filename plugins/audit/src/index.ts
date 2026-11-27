@@ -32,7 +32,12 @@ import { Db, type DbClient } from "@ktb/db";
 // table object via the generated schema.gen.ts.
 import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import {
+	PlatformAdmin,
+	platformAdminPlugin,
+	platformPanelPlugin,
+	adminConsolePage,
+} from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
 import { AuditPlatformPage } from "./platform-page.tsx";
@@ -1034,20 +1039,12 @@ export const auditPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, auditServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "audit.admin",
 				path: "/platform/audit",
 				component: AuditPlatformPage,
 				// Hard 404 for non-admins — same contract as the /platform
 				// layout guard; the service re-checks anyway.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: () =>
 					Effect.gen(function* () {
 						const audit = yield* Audit;
@@ -1056,7 +1053,7 @@ export const auditPanelPlugin = definePlugin({
 							.adminList()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
 					}),
-			},
+			}),
 		],
 	},
 });

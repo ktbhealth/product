@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 
 import type { Forbidden } from "@ktb/authz";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { CronAdmin, CronAdminLive } from "./admin.ts";
 import { CronPlatformPage } from "./platform-page.tsx";
@@ -55,20 +55,12 @@ export const cronPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, cronServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "cron.jobs",
 				path: "/platform/cron",
 				component: CronPlatformPage,
 				// Hard 404 for non-admins — same contract as the /platform
 				// layout guard; every service call re-checks anyway.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: () =>
 					Effect.gen(function* () {
 						const admin = yield* CronAdmin;
@@ -89,7 +81,7 @@ export const cronPanelPlugin = definePlugin({
 						);
 						return { jobs, runs, schedules, scheduleKinds, schedulableKinds };
 					}),
-			},
+			}),
 		],
 	},
 });

@@ -3,7 +3,7 @@ import { ServerIcon } from "lucide-react";
 import { Effect } from "effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { Machines, MachinesLive, type MachineCard } from "./machines.ts";
 import { MachinesPanelPage } from "./platform-page.tsx";
@@ -18,18 +18,6 @@ export {
 	MachinesLive,
 	type MachineCard,
 } from "./machines.ts";
-
-/** Platform-admin gate for the panel page — same contract as the
- * /platform/audit admin surface: hard deny for non-admins, the
- * Machines service re-checks every call anyway. */
-const adminGuard = () =>
-	Effect.gen(function* () {
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
-	});
 
 export const machinesTablesPlugin = definePlugin({
 	id: "machines.tables",
@@ -78,11 +66,10 @@ export const machinesPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, machinesServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "machines",
 				path: "/platform/ai/machines",
 				component: MachinesPanelPage,
-				guard: adminGuard,
 				loader: () =>
 					Effect.gen(function* () {
 						const machines = yield* Machines;
@@ -96,7 +83,7 @@ export const machinesPanelPlugin = definePlugin({
 							}),
 						);
 					}),
-			},
+			}),
 		],
 	},
 });

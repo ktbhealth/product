@@ -4,7 +4,7 @@ import * as Option from "effect/Option";
 
 import { auditServicesPlugin } from "@ktb/audit";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminGuard, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
@@ -167,11 +167,7 @@ const i18nReadGuard = () =>
 			const ok = yield* permissionsOpt.value.can("i18n", "messages.read");
 			if (ok) return true;
 		}
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
+		return yield* platformAdminGuard();
 	});
 
 // Panel (system console) contribution: the /platform/i18n subtree is
