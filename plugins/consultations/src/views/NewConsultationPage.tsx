@@ -1733,6 +1733,9 @@ export function NewConsultationPage({
 								telemetry={{ encryptionLabel: lf.encryption }}
 								headerActions={
 									<>
+										{/* the account menu already carries the user
+										 * identity — hide the room's physician block so
+										 * the header doesn't show the same person twice */}
 										<Link
 											to={portalPath("/consultations")}
 											className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -1743,6 +1746,7 @@ export function NewConsultationPage({
 										{userMenu}
 									</>
 								}
+								showPhysicianHeader={false}
 								labels={roomLabels}
 							/>
 						</div>,
