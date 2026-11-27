@@ -1630,7 +1630,7 @@ describe("evalRunPack (@ktb/pipeline adapter)", () => {
 		registry.register(evalRunPack(["cleanup"]));
 		const ctx = {} as unknown as Parameters<(typeof RUN_STAGE_FNS)["cleanup"]>[0];
 		const outcome = await Effect.runPromise(
-			registry.run(EVAL_RUN_PIPELINE_ID, ctx).pipe(Effect.catch((e) => Effect.succeed(e))),
+			registry.run(EVAL_RUN_PIPELINE_ID, { run: ctx }).pipe(Effect.catch((e) => Effect.succeed(e))),
 		);
 		expect(outcome).toBeInstanceOf(PipelineRunError);
 		if (outcome instanceof PipelineRunError) {
@@ -1642,5 +1642,50 @@ describe("evalRunPack (@ktb/pipeline adapter)", () => {
 				expect.objectContaining({ stageId: "cleanup", status: "failed" }),
 			]);
 		}
+	});
+
+	it("never mutates StageContext.input — stage writes land on input.run", async () => {
+		// The @ktb/pipeline contract: `input` is the pipeline input,
+		// never mutated. The pack honors it literally by handing the
+		// registry an envelope `{ run: StageRun }` — the mutable working
+		// state is a named payload the stages share, not the input
+		// object itself. Frozen envelope: any stage write to `input`
+		// would throw instead of silently accumulating.
+		const records: RunRecord[] = [];
+		const answers: { id: string; kind: string; value: unknown; probability: number }[] = [];
+		const ctx = {
+			sample,
+			profile: ptBR,
+			entities,
+			runId: "r-env",
+			script: sample.script,
+			tag: (r: RunRecord): RunRecord => ({
+				...r,
+				runId: "r-env",
+				sampleId: sample.id,
+				datasetVersion: sample.datasetVersion,
+			}),
+			records,
+			provenance: undefined,
+			cleanupTimestamps: false,
+			answers,
+		} as unknown as Parameters<(typeof RUN_STAGE_FNS)["transcribe"]>[0];
+		const input = Object.freeze({ run: ctx });
+		const registry = makePipelineRegistry();
+		registry.register(evalRunPack(["transcribe", "cleanup", "judge"]));
+		const result = await Effect.runPromise(
+			registry.run(EVAL_RUN_PIPELINE_ID, input).pipe(Effect.provide(live)),
+		);
+		// Envelope untouched: same keys, same payload identity.
+		expect(Object.keys(input)).toEqual(["run"]);
+		expect(input.run).toBe(ctx);
+		// The shared payload DID accumulate across stages — records,
+		// answers and stage outputs behave exactly as direct dispatch.
+		expect(result.state.transcribe).toBeDefined();
+		expect(records.length).toBeGreaterThan(0);
+		expect(answers.length).toBeGreaterThan(0);
+		const typed = ctx as { asr?: { text: string }; corrected?: string };
+		expect(typed.asr?.text).toBe(asrResult.text);
+		expect(typed.corrected).toBeDefined();
 	});
 });
