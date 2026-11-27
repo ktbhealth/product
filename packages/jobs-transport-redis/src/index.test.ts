@@ -65,7 +65,13 @@ const fakeRedis = () => {
 	};
 	// `list` stays the queue for existing assertions; `pending` is the
 	// in-flight list the transport parks popped entries on.
-	return { client, lists, list: listFor("ktb:jobs"), pending: listFor("ktb:jobs:pending"), timeouts };
+	return {
+		client,
+		lists,
+		list: listFor("ktb:jobs"),
+		pending: listFor("ktb:jobs:pending"),
+		timeouts,
+	};
 };
 
 const envelope = (id: string): JobEnvelope => ({
