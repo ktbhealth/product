@@ -168,7 +168,41 @@ describe("createRedisJobsTransport", () => {
 		expect(pending).toHaveLength(0);
 		expect(list).toHaveLength(1);
 		const [again] = await t.receive();
-		expect(again?.body).toEqual(envelope("j2"));
+		expect(again?.body).toMatchObject(envelope("j2"));
+		await t.close();
+	});
+
+	it("retry() increments attempts on the requeued envelope and reports it", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("j3"));
+		const [first] = await t.receive();
+		expect(first?.attempts).toBe(1);
+		first?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		const [second] = await t.receive();
+		expect(second?.attempts).toBe(2);
+		second?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		const [third] = await t.receive();
+		expect(third?.attempts).toBe(3);
+		await t.close();
+	});
+
+	it("retry() requeues via RPUSH so the retried message is popped next", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("old"));
+		await t.send(envelope("retried"));
+		// list is [retried(left/newest), old(right/oldest)]; BRPOP pops old first.
+		const [first] = await t.receive();
+		expect(first?.body).toMatchObject({ id: "old" });
+		first?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		// RPUSH put "old" at the tail — it must be popped before "retried".
+		const [next] = await t.receive();
+		expect(next?.body).toMatchObject({ id: "old" });
+		expect(next?.attempts).toBe(2);
 		await t.close();
 	});
 
@@ -183,7 +217,8 @@ describe("createRedisJobsTransport", () => {
 		msg?.retry();
 		await new Promise((r) => setTimeout(r, 0));
 		const [again] = await t.receive();
-		expect(again?.body).toEqual(envelope("first"));
+		expect(again?.body).toMatchObject(envelope("first"));
+		expect(again?.attempts).toBe(2);
 		const [next] = await t.receive();
 		expect(next?.body).toEqual(envelope("second"));
 		await t.close();
@@ -195,6 +230,19 @@ describe("createRedisJobsTransport", () => {
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
 		const [msg] = await t.receive();
 		expect(msg?.body).toBe("not-json{");
+		await t.close();
+	});
+
+	it("retry() on a non-record body re-pushes the raw string unchanged", async () => {
+		const { client, list } = fakeRedis();
+		list.push("not-json{");
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		const [msg] = await t.receive();
+		msg?.retry();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(list).toEqual(["not-json{"]);
+		const [again] = await t.receive();
+		expect(again?.body).toBe("not-json{");
 		await t.close();
 	});
 
@@ -244,6 +292,7 @@ describe("createRedisJobsTransport", () => {
 		const entries: string[] = [JSON.stringify(envelope("poison"))];
 		const client: RedisLike = {
 			lPush: async () => 1,
+			rPush: async () => 0,
 			blMove: async () => entries.pop() ?? null,
 			lMove: async () => null,
 			lRem: async () => {
@@ -302,7 +351,10 @@ describe("createRedisJobsTransport", () => {
 		const destroy = vi.fn();
 		const client: RedisLike = {
 			lPush: async () => 0,
-			brPop: async () => null,
+			rPush: async () => 0,
+			blMove: async () => null,
+			lMove: async () => null,
+			lRem: async () => 0,
 			lLen: async () => 0,
 			// Simulates node-redis during reconnect: QUIT sits in the
 			// offline queue and the promise never settles.

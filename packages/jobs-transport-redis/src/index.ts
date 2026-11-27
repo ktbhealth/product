@@ -14,10 +14,11 @@
  * SIGKILL/OOM/reboot mid-handle leaves the envelope on the pending
  * list; the consumer calls `requeuePending()` once at startup to drain
  * stale entries back onto the queue, so the job is redelivered and its
- * `job_runs` row unsticks from "processing". There is no broker-side
- * attempt counter — poison jobs are bounded by the job_runs projection
- * and handler idempotency, same trust model as the dev:node SQLite
- * queue.
+ * `job_runs` row unsticks from "processing". The delivery count rides
+ * on the serialized envelope as an `attempts` field (ignored by the
+ * wire decoder) and is reported as `message.attempts`, so the
+ * consumer's `maxAttempts` ceiling actually binds — a poison job is
+ * acked as exhausted instead of looping forever.
  *
  * Single-consumer assumption: `requeuePending()` is only safe at boot
  * before `receive()` starts — a second live consumer's in-flight
@@ -124,8 +125,11 @@ export const createRedisJobsTransport = async (
 			const timeout = messages.length === 0 ? blockSeconds : BATCH_FILL_BLOCK_SECONDS;
 			const body = await client.blMove(queue, pending, "RIGHT", "LEFT", timeout);
 			if (body === null) break;
+			const parsed = safeParse(body);
+			const attempts = deliveryAttempts(parsed);
 			messages.push({
-				body: safeParse(body),
+				body: parsed,
+				attempts,
 				// ack clears the pending copy — the entry is already off
 				// the queue, so a crash before ack leaves it requeueable.
 				ack: () => {
@@ -135,11 +139,17 @@ export const createRedisJobsTransport = async (
 					// Re-push BEFORE clearing pending: a crash between the
 					// two leaves the pending copy for the reaper, never
 					// loses the job (at-least-once over exactly-once).
-					// RPUSH puts it at the tail — the next pop delivers it.
+					// RPUSH puts it at the tail — the next pop delivers it,
+					// with the delivery count incremented on the envelope.
+					const requeue = isRecord(parsed)
+						? JSON.stringify({ ...parsed, attempts: attempts + 1 })
+						: body;
 					void (async () => {
-						await client.rPush(queue, body);
+						await client.rPush(queue, requeue);
 						await client.lRem(pending, 1, body);
-					})().catch(() => {});
+					})().catch((error: unknown) =>
+						console.warn("jobs transport: retry requeue failed", { error: String(error) }),
+					);
 				},
 			});
 		}
@@ -184,4 +194,15 @@ const safeParse = (raw: string): unknown => {
 	} catch {
 		return raw;
 	}
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Delivery count carried on the envelope's `attempts` field; absent or
+ * malformed counts as the first delivery. */
+const deliveryAttempts = (body: unknown): number => {
+	if (!isRecord(body)) return 1;
+	const n = body.attempts;
+	return typeof n === "number" && Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
 };
