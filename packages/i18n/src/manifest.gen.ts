@@ -784,6 +784,40 @@ export const I18N_MANIFEST = {
 		"zk.lockedName": {
 			params: [],
 		},
+		"views.list": {
+			params: [],
+		},
+		"views.week": {
+			params: [],
+		},
+		"views.month": {
+			params: [],
+		},
+		previousMonth: {
+			params: [],
+		},
+		nextMonth: {
+			params: [],
+		},
+		moreCount: {
+			params: [
+				{
+					name: "count",
+				},
+			],
+			template: "+{count} more",
+		},
+		newAt: {
+			params: [
+				{
+					name: "time",
+				},
+			],
+			template: "New appointment at {time}",
+		},
+		detailsTitle: {
+			params: [],
+		},
 		startingSoon: {
 			params: [
 				{
