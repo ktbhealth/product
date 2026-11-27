@@ -76,10 +76,10 @@ export const runPageMiddleware = async (ctx: MiddlewareContext): Promise<Middlew
 	// and only when a plugin-contributed stage is actually in scope.
 	let enabled: ReadonlySet<string> | undefined;
 	for (const entry of effectiveMiddlewareChain(allEntries(), ctx)) {
-		if (entry.origin === "plugin") {
-			const ids = (enabled ??= await run(cachedEnabledIds()));
-			if (!entryEnabled(plugins, ids, entry)) continue;
-		}
+		const gated =
+			entry.origin === "plugin" &&
+			!entryEnabled(plugins, (enabled ??= await run(cachedEnabledIds())), entry);
+		if (gated) continue;
 		const verdict = await invokeStage(entry, ctx);
 		if (verdict.type !== "continue") return verdict;
 	}

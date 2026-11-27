@@ -94,4 +94,14 @@ describe("runPageMiddleware enablement gate", () => {
 		expect(verdict).toEqual({ type: "continue" });
 		expect(state.calls).toEqual(["mw.off.stage", "pkg.y.stage"]);
 	});
+
+	it("fails pkg-scoped checks closed when ctx.plugins is absent", async () => {
+		setEnabled("mw.on", "pkg.b");
+		const { plugins: _plugins, ...rest } = ctx();
+		const verdict = await runPageMiddleware(rest);
+		expect(verdict).toEqual({ type: "continue" });
+		// Per-id stages still gate on the enabled set; pkg-scoped stages
+		// have no member list to resolve against, so they skip.
+		expect(state.calls).toEqual(["mw.on.stage"]);
+	});
 });
