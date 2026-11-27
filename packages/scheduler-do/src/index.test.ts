@@ -193,6 +193,35 @@ describe("SchedulerDo scheduling", () => {
 		await expect(do_.alarm()).resolves.toBeUndefined();
 	});
 
+	it.each([
+		["unset", undefined],
+		["blank", "   "],
+		["non-string", 42],
+	])("alarm() skips the sweep when SCHEDULER_QUEUE_BINDING is %s", async (_label, binding) => {
+		const sql = makeD1(SCHEDULER_DDL);
+		const db = makeDb(sql);
+		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
+		const { state } = makeState();
+		const { env, sent } = makeEnv({ DB: sql, SCHEDULER_QUEUE_BINDING: binding });
+		const do_ = new SchedulerDo(state as never, env as never);
+		await expect(do_.alarm()).resolves.toBeUndefined();
+		expect(sent).toHaveLength(0);
+	});
+
+	it("alarm() skips the sweep when the named binding is absent", async () => {
+		const sql = makeD1(SCHEDULER_DDL);
+		const db = makeDb(sql);
+		await insertScheduledJob(db, { kind: "test.sched.do", runAt: Date.now() - 1000 });
+		const { state } = makeState();
+		const { env, sent } = makeEnv({
+			DB: sql,
+			SCHEDULER_QUEUE_BINDING: "MISSING_QUEUE",
+		});
+		const do_ = new SchedulerDo(state as never, env as never);
+		await expect(do_.alarm()).resolves.toBeUndefined();
+		expect(sent).toHaveLength(0);
+	});
+
 	it("/state reports pending entries and next alarm", async () => {
 		const { state } = makeState();
 		const { env } = makeEnv();
