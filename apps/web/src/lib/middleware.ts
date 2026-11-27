@@ -1,12 +1,14 @@
 import {
 	collectMiddlewareStages,
 	effectiveMiddlewareChain,
+	entryEnabled,
 	middlewareContinue,
 	type MiddlewareContext,
 	type MiddlewareStageEntry,
 	type MiddlewareVerdict,
 } from "@ktb/kernel";
 
+import { cachedEnabledIds } from "./enabled-ids.ts";
 import { run, runAs, serverPlugins } from "./platform.ts";
 import { builtinMiddlewareStages } from "./middleware-stages.ts";
 
@@ -25,6 +27,14 @@ import { builtinMiddlewareStages } from "./middleware-stages.ts";
  * already lived. Raw HTTP edge stages (rate-limit, captcha on
  * /api/auth/*) are Phase 5 work; the contract supports them but no
  * transport invokes handlers outside page dispatch yet.
+ *
+ * Enablement: plugin-contributed stages are gated package-granular
+ * (P-058) — a disabled plugin's stages are SKIPPED, not denied; the
+ * `ktb.plugin.enabled` built-in still owns the page-owner verdict.
+ * The predicate is the same `entryEnabled` the MiddlewareStages admin
+ * view reports, over the same `PluginStates.enabledIds()` set
+ * (TTL-cached per isolate — lib/enabled-ids.ts), so inspector and
+ * pipeline agree. Built-ins always run.
  */
 
 let entries: readonly MiddlewareStageEntry[] | undefined;
@@ -58,7 +68,18 @@ const invokeStage = (
  * except `ktb.portal.audience`, which denies on failure internally.
  */
 export const runPageMiddleware = async (ctx: MiddlewareContext): Promise<MiddlewareVerdict> => {
+	// `ctx.plugins` is the discovered registry the dispatch edge always
+	// supplies; absent, pkg-scoped checks fail closed (same contract as
+	// the ktb.plugin.enabled stage).
+	const plugins = ctx.plugins ?? [];
+	// The enabled-id set resolves lazily — at most once per request,
+	// and only when a plugin-contributed stage is actually in scope.
+	let enabled: ReadonlySet<string> | undefined;
 	for (const entry of effectiveMiddlewareChain(allEntries(), ctx)) {
+		const gated =
+			entry.origin === "plugin" &&
+			!entryEnabled(plugins, (enabled ??= await run(cachedEnabledIds())), entry);
+		if (gated) continue;
 		const verdict = await invokeStage(entry, ctx);
 		if (verdict.type !== "continue") return verdict;
 	}
