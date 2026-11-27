@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { makeLocalQueue, type LocalQueueHandler, type LocalQueueMessage } from "./node-queue.ts";
+import { makeLocalQueue, type LocalQueueHandler, type LocalQueueMessage } from "./queue.ts";
 
 let dir: string | undefined;
 const tmpDir = () => {

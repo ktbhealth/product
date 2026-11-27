@@ -67,6 +67,7 @@
         "@ktb/cron-port": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/db-sqlite": "workspace:*",
+        "@ktb/dev-node": "workspace:*",
         "@ktb/doctors": "workspace:*",
         "@ktb/email": "workspace:*",
         "@ktb/email-smtp": "workspace:*",
@@ -464,6 +465,18 @@
         "@types/better-sqlite3": "^9.6.0",
         "@types/node": "^22.10.2",
         "drizzle-orm": "^0.45.1",
+        "vitest": "5.1.0",
+      },
+    },
+    "packages/dev-node": {
+      "name": "@ktb/dev-node",
+      "dependencies": {
+        "@ktb/server-fns": "workspace:*",
+        "better-sqlite3": "^13.0.3",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^9.6.0",
+        "@types/node": "^22.10.2",
         "vitest": "5.1.0",
       },
     },
@@ -2988,6 +3001,8 @@
     "@ktb/db-sqlite": ["@ktb/db-sqlite@workspace:packages/db-sqlite"],
 
     "@ktb/dev-capture-test": ["@ktb/dev-capture-test@workspace:plugins/dev-capture-test"],
+
+    "@ktb/dev-node": ["@ktb/dev-node@workspace:packages/dev-node"],
 
     "@ktb/doctors": ["@ktb/doctors@workspace:plugins/doctors"],
 
