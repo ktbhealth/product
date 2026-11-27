@@ -704,6 +704,7 @@
     "packages/kernel": {
       "name": "@ktb/kernel",
       "devDependencies": {
+        "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/json-schema": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",

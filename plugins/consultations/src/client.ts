@@ -112,6 +112,7 @@ export const plugins: readonly Plugin[] = [
 			"vault.services",
 		],
 	}),
+	definePlugin({ id: "consultations.cqrs", meta: { keywords: ["consultations", "cqrs"] } }),
 	definePlugin({ id: "consultations.routes", meta: { keywords: ["consultations", "routes"] } }),
 	consultationsChromePlugin,
 	consultationsPanelPlugin,

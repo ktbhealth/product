@@ -66,6 +66,7 @@ export const plugins: readonly Plugin[] = [
 		// graph into the client bundle.
 		optionalDeps: ["rbac.services", "audit.services"],
 	}),
+	definePlugin({ id: "groups.cqrs", meta: { keywords: ["groups", "cqrs"] } }),
 	groupsChromePlugin,
 	groupsPanelPlugin,
 ];

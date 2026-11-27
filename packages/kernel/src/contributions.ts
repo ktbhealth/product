@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from "react";
+import type { Command, Query } from "@effect-server-utils/cqrs";
 import type { VirtualRouteNode } from "@tanstack/virtual-file-routes";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type * as Effect from "effect/Effect";
@@ -296,6 +297,24 @@ export interface TablesPlugin extends PluginBase, ForbiddenContributions<"tables
  * ManagedRuntime composition. */
 export interface ServicesPlugin extends PluginBase, ForbiddenContributions<"services"> {
 	readonly services: Layer.Any;
+}
+
+/** CQRS message groups (E.20): the query/command groups the host
+ * folds into the app-wide QueryBus/CommandBus dispatch tables at
+ * composition — declared explicitly on the manifest, the same
+ * registry that carries services/tables/routes. This replaces the
+ * retired `plugins/<pkg>/src/api.ts` filesystem convention (the host
+ * used to glob every api module and filter group-shaped exports).
+ * Server-only — group objects carry handler metadata and never reach
+ * the client registry (`clientStub` rejects the field). Events need
+ * no declaration: `EventBus` is already app-wide. Enable-state
+ * gating stays package-granular — the host tags each group with the
+ * declaring plugin's `pkg` stamp. */
+export interface CqrsPlugin extends PluginBase, ForbiddenContributions<"cqrs"> {
+	readonly cqrs: {
+		readonly queries?: readonly Query.AnyGroup[];
+		readonly commands?: readonly Command.AnyGroup[];
+	};
 }
 
 /** Route subtree composed into the host's virtualRouteConfig. */
@@ -623,6 +642,7 @@ export type Plugin =
 	| MarkerPlugin
 	| TablesPlugin
 	| ServicesPlugin
+	| CqrsPlugin
 	| RoutesPlugin
 	| LandingPlugin
 	| ChromePlugin

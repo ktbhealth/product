@@ -25,6 +25,7 @@ import {
 	listRoles,
 	plugins,
 	rbacChromePlugin,
+	rbacCqrsPlugin,
 	rbacPanelPlugin,
 	rbacServicesPlugin,
 	rbacTablesPlugin,
@@ -1144,6 +1145,7 @@ describe("plugins", () => {
 		expect(plugins).toEqual([
 			rbacTablesPlugin,
 			rbacServicesPlugin,
+			rbacCqrsPlugin,
 			rbacChromePlugin,
 			rbacPanelPlugin,
 		]);

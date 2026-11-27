@@ -237,6 +237,14 @@ export const usersServicesPlugin = definePlugin({
 	services: Layer.mergeAll(UsersLive, UsersQueriesLive),
 });
 
+/** CQRS surface (E.20): the query group declared in ./api.ts, folded
+ * into the app-wide query bus by the host. */
+export const usersCqrsPlugin = definePlugin({
+	id: "users.cqrs",
+	meta: { keywords: ["users", "cqrs"] },
+	cqrs: { queries: [UsersQueries] },
+});
+
 // Chrome contribution (P-060): the console sidebar entry lives in the
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
@@ -294,6 +302,7 @@ export const usersPanelPlugin = definePlugin({
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	usersServicesPlugin,
+	usersCqrsPlugin,
 	usersChromePlugin,
 	usersPanelPlugin,
 ];
@@ -303,6 +312,7 @@ export const plugins: readonly Plugin[] = [
 declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"users.services": true;
+		"users.cqrs": true;
 		"users.chrome": true;
 		"users.panel": true;
 	}

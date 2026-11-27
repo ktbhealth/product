@@ -26,6 +26,7 @@ import {
 	ConsultationsDashboardStats,
 } from "./views/ConsultationsDashboard.tsx";
 import { Consultations, ConsultationsLive } from "./service.ts";
+import { ConsultationsQueries } from "./api.ts";
 import { AUDIO_TRANSCRIPTION_JOB_KIND } from "./audio-jobs.ts";
 import type { AdminConsultationRow } from "./queries.ts";
 import {
@@ -142,6 +143,17 @@ export const consultationsServicesPlugin = definePlugin({
 				"Audio transcription — payload carries recording/object refs minted by the upload flow; consumed by the dedicated audio normalizer on AUDIO_QUEUE.",
 		}),
 	],
+});
+
+/** CQRS surface (E.20): the query group declared in ./api.ts, folded
+ * into the app-wide query bus by the host. The patients-owned groups
+ * this package also handles (`PatientRecordConsultationsQueries`,
+ * `PatientCascadeCommands`) are declared on patients.cqrs — the
+ * package-granular enable gate keys off the declaring package. */
+export const consultationsCqrsPlugin = definePlugin({
+	id: "consultations.cqrs",
+	meta: { keywords: ["consultations", "cqrs"] },
+	cqrs: { queries: [ConsultationsQueries] },
 });
 
 // Route subtree composed into the host's virtualRouteConfig (P-033):
@@ -301,6 +313,7 @@ export const consultationsPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	consultationsTablesPlugin,
 	consultationsServicesPlugin,
+	consultationsCqrsPlugin,
 	consultationsRoutesPlugin,
 	consultationsChromePlugin,
 	consultationsPanelPlugin,
@@ -312,6 +325,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"consultations.tables": true;
 		"consultations.services": true;
+		"consultations.cqrs": true;
 		"consultations.routes": true;
 		"consultations.chrome": true;
 		"consultations.panel": true;
