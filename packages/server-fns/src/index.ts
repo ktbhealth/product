@@ -30,7 +30,7 @@ export {
 	type QueueConsumer,
 	type QueueDepth,
 	type QueueInfo,
-	type QueueTransport,
+	type QueueTransportKind,
 	type EventTopicInfo,
 	type JobKindInfo,
 	type JsonValue,

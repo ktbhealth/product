@@ -94,9 +94,9 @@ export interface AudioStorageStats {
 }
 
 /** Transport family a bound queue belongs to — structural mirror of
- * `QueueTransport` in @ktb/queues-port (declared here so plugin code
+ * `QueueTransportKind` in @ktb/queues-port (declared here so plugin code
  * needs no new dependency). */
-export type QueueTransport = "cloudflare-queue" | "redis" | "sqlite" | "unknown";
+export type QueueTransportKind = "cloudflare-queue" | "redis" | "sqlite" | "unknown";
 
 /** Who drains a bound queue — structural mirror of `QueueConsumer` in
  * @ktb/queues-port. */
@@ -112,7 +112,7 @@ export type QueueConsumer = "in-app" | "jobs-worker" | "external" | "none";
 export interface QueueInfo {
 	readonly id: string;
 	readonly name: string;
-	readonly transport: QueueTransport;
+	readonly transport: QueueTransportKind;
 	readonly consumer: QueueConsumer;
 	readonly depth: QueueDepth | null;
 }

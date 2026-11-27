@@ -38,6 +38,7 @@
 		"@ktb/eval-consultation": "workspace:*",
 		"@ktb/flows": "workspace:*",
 		"@ktb/jobs-port": "workspace:*",
+		"@ktb/jobs-transport-redis": "workspace:*",
 		"@ktb/json-schema": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/observability": "workspace:*",

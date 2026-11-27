@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import { and, desc, eq, isNull, like, sql, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
+import type { QueueMessage } from "@ktb/queues-port";
 import { tenantStorageId, type TenantId } from "@ktb/tenant";
 
 import { jobRuns } from "./schema.ts";
@@ -272,17 +273,14 @@ export const JobsLive = (deps: JobsDeps): Layer.Layer<Jobs> => Layer.succeed(Job
 // Consumer side: kind-dispatched batch handler.
 // ---------------------------------------------------------------------------
 
-/** The slice of a queue message the consumer needs (workerd Message /
- * dev:node LocalQueueMessage both satisfy this). `attempts` is the
- * transport-reported delivery count when the broker tracks one
- * (Cloudflare Queues and the Redis list transport do; dev:node's
- * SQLite queue enforces its own attempt budget instead). */
-export interface JobMessageLike {
-	readonly body: unknown;
-	readonly attempts?: number;
-	ack(): void;
-	retry(): void;
-}
+/** The slice of a queue message the consumer needs — the
+ * `QueueMessage` contract from @ktb/queues-port (workerd Message /
+ * dev:node LocalQueueMessage / transport receive() batches all
+ * satisfy it). `attempts` is the transport-reported delivery count
+ * when the broker tracks one (Cloudflare Queues and the Redis list
+ * transport do; dev:node's SQLite queue enforces its own attempt
+ * budget instead). */
+export type JobMessageLike = QueueMessage;
 
 /** Result of normalizing a raw message body into a dispatchable job. */
 export interface NormalizedJob {

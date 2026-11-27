@@ -34,7 +34,13 @@ import {
 	type ScheduledJobDispatch,
 } from "@ktb/scheduler-port";
 import { notifySchedulerDo, type SchedulerDoNamespace } from "@ktb/scheduler-do";
-import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
+import {
+	makeQueueRegistry,
+	queueDescriptorFor,
+	type QueueTransport,
+	type QueueTransportKind,
+} from "@ktb/queues-port";
+import { DEFAULT_QUEUE } from "@ktb/jobs-transport-redis";
 import {
 	makeInProcessPubSub,
 	mergePubSubSources,
@@ -47,7 +53,6 @@ import {
 	type AudioQueueSender,
 	type AudioStore,
 	type JsonValue,
-	type QueueDepth,
 	type ScheduleEntryInfo,
 	type ScheduledJobInfo,
 	type ServerRuntime,
@@ -106,6 +111,14 @@ export interface ServerRuntimeDeps {
 	 * the corresponding queue binding is absent. */
 	readonly jobs?: JobsEnqueuer;
 	readonly themeJobs?: JobsEnqueuer;
+	/** QueueTransport instances the app edge adapted from its env
+	 * bindings (names are app-bound — queue-names.ts lives there).
+	 * The /platform/queue registry describes these; REDIS_JOBS_QUEUE
+	 * is read off the env bag directly. */
+	readonly queueTransports?: {
+		readonly audio?: QueueTransport;
+		readonly themeAssets?: QueueTransport;
+	};
 	/** Deploy-resolved AI runner (undefined unbound) and the
 	 * composition root's transcription model id. */
 	readonly ai?: ServerRuntime["ai"];
@@ -151,64 +164,54 @@ export const makeServerRuntime = (deps: ServerRuntimeDeps): ServerRuntimeBundle 
 	const env = deps.env;
 	const db = deps.db;
 
-	// Ops probes: the queue depth signal exists only when the bound
-	// queue exposes stats — the dev:node SQLite queue does; the
-	// workerd Queue binding doesn't (prod queues are managed in the
-	// Cloudflare dashboard, so the ops console reports them as
-	// externally managed). The storage probe paginates the bucket's
-	// list() with a page cap; a missing listing capability or a failed
-	// page resolves null → the page shows "unavailable", never a fake
-	// zero.
-	const queueDepthProbe = (env.AUDIO_QUEUE as { stats?: () => Promise<QueueDepth> } | undefined)
-		?.stats;
+	// The storage probe paginates the bucket's list() with a page cap;
+	// a missing listing capability or a failed page resolves null →
+	// the page shows "unavailable", never a fake zero.
 	const audioBucketLister = env.AUDIO_BUCKET as unknown as AudioObjectLister | undefined;
 
 	// Queue registry for /platform/queue: every queue transport this
-	// deployment binds. A stats() probe marks the dev:node SQLite
-	// stand-in ("sqlite"); the workerd Queue binding has none ->
-	// "cloudflare-queue" with null depth (managed in the Cloudflare
-	// dashboard). dev:node additionally publishes REDIS_JOBS_QUEUE —
-	// the ktb:jobs list apps/jobs-worker drains — as a
-	// "redis"/"jobs-worker" entry. Unbound queues are omitted rather
-	// than listed as fake rows.
-	const boundQueueTransport = (binding: unknown): "cloudflare-queue" | "sqlite" =>
-		(binding as { stats?: unknown } | undefined)?.stats === undefined
-			? "cloudflare-queue"
-			: "sqlite";
-	const themeQueueStats = (
-		env.THEME_ASSETS_QUEUE as { stats?: () => Promise<QueueDepth> } | undefined
-	)?.stats;
-	const redisJobsQueue = env.REDIS_JOBS_QUEUE as
-		| { stats?: () => Promise<QueueDepth | null> }
-		| undefined;
-	const queueDescriptors: (QueueDescriptor | undefined)[] = [
-		env.AUDIO_QUEUE === undefined
+	// deployment binds, described FROM the bound transports
+	// themselves — names and depth probes come off the QueueTransport
+	// instances, never hardcoded probe tables. The app edge adapts its
+	// bindings (queue-names live there) and hands them in via
+	// deps.queueTransports; dev:node additionally publishes
+	// REDIS_JOBS_QUEUE — the full lazy Redis transport
+	// apps/jobs-worker drains — read straight off the env bag as a
+	// "redis"/"jobs-worker" entry (a stats-only probe still satisfies
+	// the descriptor; nothing enqueues onto it from the web app).
+	// Unbound queues are omitted rather than listed as fake rows.
+	const queueKind = (queue: QueueTransport): QueueTransportKind =>
+		queue.stats === undefined ? "cloudflare-queue" : "sqlite";
+	const audioQueueTransport = deps.queueTransports?.audio;
+	const audioQueueStats = audioQueueTransport?.stats;
+	const themeQueueTransport = deps.queueTransports?.themeAssets;
+	const redisJobsQueue = env.REDIS_JOBS_QUEUE as QueueTransport | undefined;
+	const queueDescriptors = [
+		audioQueueTransport === undefined
 			? undefined
-			: {
+			: queueDescriptorFor(audioQueueTransport, {
 					id: "audio",
-					name: "ktb-transcription",
-					transport: boundQueueTransport(env.AUDIO_QUEUE),
-					consumer: "in-app" as const,
-					stats: queueDepthProbe,
-				},
-		env.THEME_ASSETS_QUEUE === undefined
+					kind: queueKind(audioQueueTransport),
+					consumer: "in-app",
+				}),
+		themeQueueTransport === undefined
 			? undefined
-			: {
+			: queueDescriptorFor(themeQueueTransport, {
 					id: "theme-assets",
-					name: "ktb-theme-assets",
-					transport: boundQueueTransport(env.THEME_ASSETS_QUEUE),
-					consumer: "in-app" as const,
-					stats: themeQueueStats,
-				},
-		redisJobsQueue?.stats === undefined
+					kind: queueKind(themeQueueTransport),
+					consumer: "in-app",
+				}),
+		redisJobsQueue === undefined
 			? undefined
-			: {
+			: queueDescriptorFor(redisJobsQueue, {
 					id: "jobs",
-					name: env.JOBS_QUEUE?.toString() ?? "ktb:jobs",
-					transport: "redis" as const,
-					consumer: "jobs-worker" as const,
-					stats: redisJobsQueue.stats,
-				},
+					kind: "redis",
+					consumer: "jobs-worker",
+					// Display-name fallback for stats-only probes; the real
+					// transport carries its own `name` (JOBS_QUEUE or the
+					// adapter default).
+					name: env.JOBS_QUEUE?.toString() ?? DEFAULT_QUEUE,
+				}),
 	];
 	const queueRegistry = makeQueueRegistry(queueDescriptors.filter((d) => d !== undefined));
 
@@ -410,7 +413,7 @@ export const makeServerRuntime = (deps: ServerRuntimeDeps): ServerRuntimeBundle 
 		themeJobs: deps.themeJobs,
 		jobs,
 		audioQueueDepth:
-			typeof queueDepthProbe === "function" ? () => queueDepthProbe().catch(() => null) : undefined,
+			audioQueueStats === undefined ? undefined : () => audioQueueStats().catch(() => null),
 		audioStorageStats:
 			audioBucketLister === undefined ? undefined : () => audioStorageStats(audioBucketLister),
 		queues: () => queueRegistry.list(),
