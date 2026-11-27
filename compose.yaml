@@ -51,3 +51,54 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  # Speaker diarization backend (P-118): Speaches >= 0.9 exposes
+  # POST /v1/audio/diarization (pyannote ONNX, CPU-only — do NOT steal
+  # the GPU whisper/qwen need). Kept separate from the ASR image on
+  # purpose: 0.9 dropped `vad_filter`, which is what gives us utterance
+  # segments, so transcription stays on the proven image while this one
+  # diarizes. Point the app at it with
+  #   AUDIO_DIARIZATION=1
+  #   AUDIO_DIARIZATION_URL=http://localhost:8001
+  #   AUDIO_DIARIZATION_API_KEY=<same value as SPEACHES_DIAR_API_KEY>
+  # When ASR also runs on a local server (AI_BASE_URL), remember
+  #   AUDIO_TRANSCRIBE_MODEL=<a repo id that server actually has>
+  # — the deploy default is the Cloudflare Workers AI id
+  # (@cf/openai/whisper-large-v3-turbo), which a local faster-whisper
+  # rejects with HTTP 500 → the job fails before ever diarizing.
+  # First use needs the diarization models pulled once (non-gated ONNX
+  # mirrors, no HF token):
+  #   curl -X POST -H "Authorization: Bearer $SPEACHES_DIAR_API_KEY" \
+  #     http://localhost:8001/v1/models/fedirz/segmentation_community_1
+  #   curl -X POST -H "Authorization: Bearer $SPEACHES_DIAR_API_KEY" \
+  #     http://localhost:8001/v1/models/Wespeaker/wespeaker-voxceleb-resnet34-LM
+  speaches-diarization:
+    image: ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu
+    container_name: ktb-speaches-diar
+    # Opt-in profile: `docker compose --profile diarization up -d` —
+    # plain `up` skips it so SPEACHES_DIAR_API_KEY is only required when
+    # the feature is actually wanted.
+    profiles: ["diarization"]
+    restart: unless-stopped
+    ports:
+      # Loopback only — the endpoint is unauthenticated without API_KEY.
+      - "127.0.0.1:${SPEACHES_DIAR_PORT:-8001}:8000"
+    environment:
+      # Speaches maps pydantic fields to uppercased env names — the
+      # diarization route 403s without it (never run an exposed
+      # instance without a key: the pyannote loader resolves model-repo
+      # class paths, see speaches#679). Dev default keeps the profile
+      # usable out of the box; the binding is loopback-only and the
+      # port is never published beyond 127.0.0.1 — override for any
+      # shared/remote deployment.
+      API_KEY: ${SPEACHES_DIAR_API_KEY:-dev-diarization-key}
+    volumes:
+      - speaches-diar-models:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  speaches-diar-models:

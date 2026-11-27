@@ -238,12 +238,18 @@ export const audioTranscribeModel =
  * >= 0.9 `/v1/audio/diarization`); unset falls back to `ai` — a single
  * OpenAI-compatible server can serve both, but a dedicated URL lets the
  * proven ASR image keep VAD segmentation while a newer backend does
- * the diarizing. Off by default: Workers AI has no such endpoint and
- * a wasted call per job is cost. */
+ * the diarizing. `AUDIO_DIARIZATION_API_KEY` maps to Speaches'
+ * `SPEACHES_API_KEY` — the diarization endpoint is unauthenticated by
+ * default and its pyannote loader resolves model-repo class paths, so
+ * any deployed instance must sit behind the key. Off by default:
+ * Workers AI has no such endpoint and a wasted call per job is cost. */
 export const audioDiarization = appEnv.AUDIO_DIARIZATION?.toString() === "1";
 const diarizationUrl = appEnv.AUDIO_DIARIZATION_URL?.toString();
+const diarizationApiKey = appEnv.AUDIO_DIARIZATION_API_KEY?.toString();
 export const audioDiarizationAi =
-	audioDiarization && diarizationUrl ? createLocalAi(diarizationUrl) : undefined;
+	audioDiarization && diarizationUrl
+		? createLocalAi(diarizationUrl, fetch, diarizationApiKey)
+		: undefined;
 
 /** Interop adapters behind the @ktb/interop port, one per supported standard. */
 const recordExporters: Record<ExportFormat, RecordExporter> = {

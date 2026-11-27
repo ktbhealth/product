@@ -99,6 +99,21 @@ describe("createLocalAi", () => {
 		expect(form.get("model")).toBeNull(); // rc.3 schema has no model field
 	});
 
+	it("sends Authorization when an apiKey is provided", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
+		const ai = createLocalAi("http://localhost:8080", fetchImpl, "secret-key");
+		await ai.run("whisper", { audio: "aGk=" });
+		const headers = fetchImpl.mock.calls[0]![1]?.headers as Record<string, string>;
+		expect(headers.authorization).toBe("Bearer secret-key");
+	});
+
+	it("omits Authorization without an apiKey", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
+		const ai = createLocalAi("http://localhost:8080", fetchImpl);
+		await ai.run("whisper", { audio: "aGk=" });
+		expect(fetchImpl.mock.calls[0]![1]?.headers).toEqual({});
+	});
+
 	it("accepts number[] audio payloads", async () => {
 		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "x" }));
 		const ai = createLocalAi("http://localhost:8080", fetchImpl);
