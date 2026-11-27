@@ -1,5 +1,6 @@
 import { getRouteApi } from "@tanstack/react-router";
 import type { PageI18nSlice } from "@ktb/kernel";
+import type { ChromeI18nKeys } from "@ktb/app-host/client";
 
 import { appCatalogT } from "./app-catalog.ts";
 
@@ -91,64 +92,6 @@ export function localeName(locale: string, slice?: PageI18nSlice): string {
 	return appMessage(slice, `locale_${locale.replaceAll("-", "_")}`, locale);
 }
 
-// Plugin nav labels are declared in plugin manifests (English-only data);
-// the host maps known destinations to localized chrome strings here.
-const NAV_LABELS: Record<string, string> = {
-	"/consultations": "nav_consultations",
-	"/patients": "nav_patients",
-};
-
-// Same deal for /platform console chrome: sidebar item labels are keyed
-// by route path, group headers by their manifest group name. Portal
-// sidebars share the map — the clinical Account items point at the
-// in-portal pages under each instance's base path.
-const PANEL_LABELS: Record<string, string> = {
-	"/platform": "panel_nav_dashboard",
-	"/platform/consultations": "nav_consultations",
-	"/platform/patients": "nav_patients",
-	"/platform/users": "panel_nav_users",
-	"/platform/groups": "panel_nav_groups",
-	"/platform/layouts": "panel_nav_layouts",
-	"/platform/ops": "panel_nav_ops",
-	"/platform/plugins": "panel_nav_plugins",
-	"/platform/queue": "panel_nav_queue",
-	"/platform/cron": "panel_nav_cron",
-	"/platform/pubsub": "panel_nav_pubsub",
-	"/platform/rich-text": "panel_nav_rich_text",
-	"/platform/schemas": "panel_nav_schemas",
-	"/platform/templates": "panel_nav_templates",
-	"/portal/doctor/activity": "panel_nav_activity",
-	"/portal/secretary/activity": "panel_nav_activity",
-	"/portal/doctor/switch-doctor": "nav_switch_doctor",
-	"/portal/secretary/switch-doctor": "nav_switch_doctor",
-	"/portal/doctor/secretaries": "nav_secretaries",
-};
-
-const PANEL_GROUPS: Record<string, string> = {
-	Account: "panel_group_account",
-	Assurance: "panel_group_assurance",
-	Concurrency: "panel_group_concurrency",
-	Console: "panel_group_console",
-	"Domain data": "panel_group_domain_data",
-	Evaluation: "panel_group_evaluation",
-	// Clinical portals still group the activity feed under "Governance"
-	// (plugins/clinician) — the key stays even though /platform no
-	// longer uses it.
-	Governance: "panel_group_governance",
-	Identity: "panel_group_identity",
-	Intelligence: "panel_group_intelligence",
-	Presentation: "panel_group_presentation",
-	Runtime: "panel_group_runtime",
-	Site: "panel_group_site",
-	Storage: "panel_group_storage",
-};
-
-// Footer notes are plugin-declared keys (English fallback in the
-// manifest); the host maps known keys to localized strings here.
-const FOOTER_NOTES: Record<string, string> = {
-	disclaimer: "footer_disclaimer",
-};
-
 /** Switch the UI locale: persist the cookie, then reload so SSR and
  * the client catalog stay in lockstep (hard-reload requirement). */
 export function changeLocale(locale: string): void {
@@ -157,26 +100,39 @@ export function changeLocale(locale: string): void {
 	if (typeof window !== "undefined") window.location.reload();
 }
 
-/** Localized label for a plugin-declared nav item, or its raw label. */
-export function pluginNavLabel(to: string, fallback: string, slice?: PageI18nSlice): string {
-	const key = NAV_LABELS[to];
+/** Localized label for a plugin-declared chrome item (`link` nav entry
+ * or `sidebarItem`), or its raw label. The `app.*` message key comes
+ * from the contributing plugin's `i18nKeys.labels` (merged by
+ * `collectI18nKeys`) — the host keeps no path→key map of its own. */
+export function pluginItemLabel(
+	to: string,
+	fallback: string,
+	slice: PageI18nSlice | undefined,
+	keys: ChromeI18nKeys,
+): string {
+	const key = keys.labels[to];
 	return key === undefined ? fallback : appMessage(slice, key, fallback);
 }
 
-/** Localized label for a plugin-declared /platform sidebar item. */
-export function pluginPanelLabel(to: string, fallback: string, slice?: PageI18nSlice): string {
-	const key = PANEL_LABELS[to];
-	return key === undefined ? fallback : appMessage(slice, key, fallback);
-}
-
-/** Localized label for a plugin-declared sidebar group, or its raw label. */
-export function pluginPanelGroup(group: string, slice?: PageI18nSlice): string {
-	const key = PANEL_GROUPS[group];
+/** Localized label for a plugin-declared sidebar group, or its raw
+ * label — key from `i18nKeys.groups`, same contract as item labels. */
+export function pluginGroupLabel(
+	group: string,
+	slice: PageI18nSlice | undefined,
+	keys: ChromeI18nKeys,
+): string {
+	const key = keys.groups[group];
 	return key === undefined ? group : appMessage(slice, key, group);
 }
 
-/** Localized text for a plugin-declared footer note, or its fallback. */
-export function pluginFooterNote(key: string, fallback: string, slice?: PageI18nSlice): string {
-	const messageKey = FOOTER_NOTES[key];
+/** Localized text for a plugin-declared footer note, or its fallback —
+ * key from `i18nKeys.notes`. */
+export function pluginFooterNote(
+	key: string,
+	fallback: string,
+	slice: PageI18nSlice | undefined,
+	keys: ChromeI18nKeys,
+): string {
+	const messageKey = keys.notes[key];
 	return messageKey === undefined ? fallback : appMessage(slice, messageKey, fallback);
 }

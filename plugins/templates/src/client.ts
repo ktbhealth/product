@@ -15,6 +15,12 @@ import { TemplatesAdminConsolePage } from "./platform-page.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const templatesChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/templates": "panel_nav_templates",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "templates.chrome",
 	meta: { keywords: ["templates", "ui"] },
 	requiredDeps: ["platform.panel"],

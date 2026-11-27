@@ -122,6 +122,9 @@ export const tenantServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const tenantChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "tenant.chrome",
 	meta: { keywords: ["tenant", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

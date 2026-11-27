@@ -13,6 +13,9 @@ import { SiteLocaleToggle } from "./chrome.tsx";
  * apps/web/src/plugins.test.ts.
  */
 export const siteChromePlugin = definePlugin({
+	i18nKeys: {
+		notes: { disclaimer: "footer_disclaimer" },
+	},
 	id: "site.chrome",
 	meta: { keywords: ["site", "ui"] },
 	chrome: [

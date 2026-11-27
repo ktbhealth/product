@@ -77,6 +77,9 @@ export const kvAdminServicesPlugin = definePlugin({
  * (Storage group), same slot as the other admin pages.
  */
 export const kvChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Storage: "panel_group_storage" },
+	},
 	id: "kv.chrome",
 	meta: { keywords: ["kv", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

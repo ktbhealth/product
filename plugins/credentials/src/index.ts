@@ -188,6 +188,9 @@ export const credentialsServicesPlugin = definePlugin({
 
 export const credentialsChromePlugin = definePlugin({
 	id: "credentials.chrome",
+	i18nKeys: {
+		groups: { Identity: "panel_group_identity" },
+	},
 	meta: { keywords: ["eval", "credentials", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

@@ -16,6 +16,9 @@ import { OrchestrationEditorPanelPage, PipelinesAdminPage } from "./platform-pag
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const pipelineAdminChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "pipeline.admin.chrome",
 	requiredDeps: ["platform.panel"],
 	meta: {

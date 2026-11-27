@@ -17,6 +17,9 @@ import { RbacPlatformPage } from "./platform-page.tsx";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const rbacChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "rbac.chrome",
 	meta: { keywords: ["rbac", "ui"] },
 	requiredDeps: ["platform.panel"],

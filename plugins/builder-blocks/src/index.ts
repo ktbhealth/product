@@ -36,6 +36,9 @@ export const builderBlocksServicesPlugin = definePlugin({
  * (Site group).
  */
 export const builderBlocksChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "builder-blocks.chrome",
 	meta: { keywords: ["site", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

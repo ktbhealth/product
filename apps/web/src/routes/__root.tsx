@@ -19,12 +19,13 @@ import {
 	changeLocale,
 	localeName,
 	pluginFooterNote,
-	pluginNavLabel,
+	pluginItemLabel,
 	useRootI18nSlice,
 } from "#/lib/i18n.ts";
 import {
 	boundaryEntries,
 	collectChrome,
+	collectI18nKeys,
 	enabledIdSet,
 	enabledPlugins,
 	KNOWN_CHROME_REGIONS,
@@ -176,13 +177,17 @@ const BOUNDARY_ACTION_LINK =
 
 /** Chrome entries allowed in the boundary CTA slots: links and
  * components only — the other content kinds belong to shells/pickers. */
-const renderBoundaryAction = (entry: ChromeContribution, chromeProps: ChromeProps): ReactNode => {
+const renderBoundaryAction = (
+	entry: ChromeContribution,
+	chromeProps: ChromeProps,
+	keys: ReturnType<typeof collectI18nKeys>,
+): ReactNode => {
 	const { content } = entry;
 	switch (content.kind) {
 		case "link":
 			return (
 				<Link key={entry.id} to={content.to} className={BOUNDARY_ACTION_LINK}>
-					{pluginNavLabel(content.to, content.label, chromeProps.i18n)}
+					{pluginItemLabel(content.to, content.label, chromeProps.i18n, keys)}
 				</Link>
 			);
 		case "component":
@@ -210,8 +215,9 @@ function useBoundarySelection(kind: BoundaryKind) {
 			? selectNotFoundBoundary(boundaryEntries, plugins, enabled)
 			: selectErrorBoundary(boundaryEntries, plugins, enabled);
 	const region = kind === "notFound" ? "app.notFound.actions" : "app.error.actions";
+	const keys = collectI18nKeys(chromeProps.plugins);
 	const actions = collectChrome(chromeProps.plugins, region, pathname, undefined, chromeProps.user)
-		.map((chromeEntry) => renderBoundaryAction(chromeEntry, chromeProps))
+		.map((chromeEntry) => renderBoundaryAction(chromeEntry, chromeProps, keys))
 		.filter((node): node is ReactNode => node !== null);
 	return {
 		entry,
@@ -341,6 +347,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	// Enabled-state filter (P-058): disabled plugins contribute nothing
 	// to any chrome region — chromeProps.plugins is already filtered.
 	const visiblePlugins = chromeProps.plugins;
+	// Plugin-declared chrome i18n keys (E.19): merged from the enabled
+	// registry — no host-side path→key maps.
+	const i18nKeys = collectI18nKeys(visiblePlugins);
 	// Chrome regions (P-060): the shell owns the slots; plugins fill
 	// them via `chrome` contributions filtered by `when` + pathname.
 	const slice = chromeProps.i18n;
@@ -358,7 +367,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 						className={NAV_LINK}
 						activeProps={{ className: `${NAV_LINK} ${NAV_ACTIVE}` }}
 					>
-						{pluginNavLabel(content.to, content.label, slice)}
+						{pluginItemLabel(content.to, content.label, slice, i18nKeys)}
 					</Link>
 				);
 			case "component":
@@ -396,7 +405,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		entry.content.kind === "note"
 			? [
 					<div key={entry.id}>
-						{pluginFooterNote(entry.content.key, entry.content.fallback, slice)}
+						{pluginFooterNote(entry.content.key, entry.content.fallback, slice, i18nKeys)}
 					</div>,
 				]
 			: [],

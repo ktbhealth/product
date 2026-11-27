@@ -241,6 +241,12 @@ export const usersServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const usersChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/users": "panel_nav_users",
+		},
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "users.chrome",
 	meta: { keywords: ["users", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

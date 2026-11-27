@@ -58,6 +58,9 @@ export const middlewarePanelPlugin = definePlugin({
 
 /** Console sidebar entry — Runtime group like the other infra pages. */
 export const middlewareChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "middleware.chrome",
 	meta: { keywords: ["platform", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

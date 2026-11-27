@@ -20,6 +20,9 @@ import {
  * apps/web/src/plugins.test.ts.
  */
 export const documentStoreChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Storage: "panel_group_storage" },
+	},
 	id: "document-store.chrome",
 	meta: { keywords: ["documents", "ui"] },
 	requiredDeps: ["platform.panel"],

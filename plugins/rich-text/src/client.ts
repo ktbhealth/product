@@ -18,6 +18,12 @@ import { richTextElement } from "./kind.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const richTextChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/rich-text": "panel_nav_rich_text",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "rich-text.chrome",
 	meta: { keywords: ["rich-text", "ui"] },
 	requiredDeps: ["platform.panel"],

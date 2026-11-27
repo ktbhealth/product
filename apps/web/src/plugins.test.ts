@@ -32,6 +32,9 @@ const clientView = (p: Plugin) => ({
 	system: p.system ?? null,
 	meta: p.meta ?? null,
 	priority: p.priority ?? null,
+	// Plugin-declared chrome i18n keys (E.19) — plain data the client
+	// shells merge via collectI18nKeys; must mirror across registries.
+	i18nKeys: p.i18nKeys ?? null,
 	requiredDeps: p.requiredDeps ?? [],
 	optionalDeps: p.optionalDeps ?? [],
 	chrome: p.chrome ?? [],

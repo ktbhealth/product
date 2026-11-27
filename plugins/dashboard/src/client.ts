@@ -15,6 +15,12 @@ import { DashboardPlatformPage } from "./platform-page.tsx";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const dashboardChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform": "panel_nav_dashboard",
+		},
+		groups: { Console: "panel_group_console" },
+	},
 	id: "dashboard.chrome",
 	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: ["platform.panel"],

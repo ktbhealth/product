@@ -28,6 +28,12 @@ export const pubsubServicesPlugin = definePlugin({
  * in the `portal.sidebar` chrome region under the Concurrency group.
  */
 export const pubsubChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/pubsub": "panel_nav_pubsub",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "pubsub.chrome",
 	meta: { keywords: ["pubsub", "ui"] },
 	requiredDeps: ["platform.panel"],

@@ -33,6 +33,9 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "ai.provider.chrome",
+		i18nKeys: {
+			groups: { Intelligence: "panel_group_intelligence" },
+		},
 		meta: { keywords: ["ai", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [

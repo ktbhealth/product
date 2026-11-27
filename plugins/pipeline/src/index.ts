@@ -145,6 +145,9 @@ interface EditorLoaderData {
  * apps/web/src/plugins.test.ts.
  */
 export const pipelineAdminChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "pipeline.admin.chrome",
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {

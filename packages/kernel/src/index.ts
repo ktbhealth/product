@@ -15,6 +15,7 @@ export type {
 	PluginConfigSchema,
 	PluginContribution,
 	PluginId,
+	PluginI18nKeys,
 	PluginMeta,
 	PluginRegistry,
 	PluginPriority,
@@ -156,6 +157,9 @@ export type ClientStubPlugin = Omit<MarkerPlugin, "contributions" | "configSchem
 	/** `orchestrations` packs carry kind handlers (Effects) —
 	 * server-manifest data that must never ride the client bundle. */
 	readonly orchestrations?: never;
+	/** `i18nKeys` labels chrome contributions — a stub carries none, so
+	 * the field is meaningless (and likely a copy/paste leak). */
+	readonly i18nKeys?: never;
 };
 
 export const clientStub = <const P extends ClientStubPlugin>(plugin: P): P => plugin;

@@ -85,6 +85,9 @@ export const themeHeaderPlugin = definePlugin({
 });
 
 export const themeChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "theme.chrome",
 	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["platform.panel", "theme.services"],

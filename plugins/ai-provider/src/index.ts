@@ -666,6 +666,9 @@ export const aiEndpointsServicesPlugin = definePlugin({
 
 export const aiEndpointsChromePlugin = definePlugin({
 	id: "ai.provider.chrome",
+	i18nKeys: {
+		groups: { Intelligence: "panel_group_intelligence" },
+	},
 	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

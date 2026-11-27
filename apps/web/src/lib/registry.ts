@@ -8,6 +8,7 @@ export {
 	appPages,
 	boundaryEntries,
 	collectChrome,
+	collectI18nKeys,
 	collectPortals,
 	defaultPageContext,
 	enabledIdSet,

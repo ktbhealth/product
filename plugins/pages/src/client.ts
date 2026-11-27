@@ -18,6 +18,9 @@ import { PageView } from "./views/PageView.tsx";
  * asserted by apps/web/src/plugins.test.ts.
  */
 export const pagesChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "pages.chrome",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["platform.panel"],
