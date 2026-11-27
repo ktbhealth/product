@@ -7,8 +7,8 @@
  * contract the worker queue delivers in production.
  *
  * Delivery semantics: at-least-once. `ack()` is a no-op (the entry is
- * already popped); `retry()` re-pushes the envelope onto the head of
- * the list so it is delivered again on the next poll. There is no
+ * already popped); `retry()` re-pushes the envelope onto the tail of
+ * the list (RPUSH) so BRPOP delivers it again on the next poll. There is no
  * broker-side attempt counter — poison jobs are bounded by the
  * job_runs projection and handler idempotency, same trust model as
  * the dev:node SQLite queue.
@@ -25,6 +25,7 @@ import type { QueueDepthStats } from "@ktb/queues-port";
 /** Minimal client surface the transport needs — injectable for tests. */
 export interface RedisLike {
 	lPush(key: string, value: string): Promise<unknown>;
+	rPush(key: string, value: string): Promise<unknown>;
 	brPop(key: string, timeoutSeconds: number): Promise<readonly [string, string] | null>;
 	lLen(key: string): Promise<number>;
 	quit(): Promise<unknown>;
@@ -82,10 +83,11 @@ export const createRedisJobsTransport = async (
 			const body = popped[1];
 			messages.push({
 				body: safeParse(body),
-				// Already popped — ack is a no-op; retry re-queues at head.
+				// Already popped — ack is a no-op; retry re-queues at the
+				// tail so BRPOP delivers it on the next poll.
 				ack: () => {},
 				retry: () => {
-					void client.lPush(queue, body).catch(() => {});
+					void client.rPush(queue, body).catch(() => {});
 				},
 			});
 		}
