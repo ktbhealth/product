@@ -31,7 +31,7 @@ import { makeTestD1 } from "@ktb/db-testing";
 
 import { Email, type EmailSender } from "@ktb/email";
 import { Invites } from "@ktb/invites";
-import { Outbox } from "@ktb/outbox";
+import { listOutboxRecords, Outbox } from "@ktb/outbox";
 
 import { PatientInviteRejected, PatientLinks } from "./index.ts";
 import {
@@ -89,8 +89,10 @@ const sent: Array<{ to: string; subject: string; text: string }> = [];
 let sender: EmailSender | null = null;
 /** The invites plugin's `issue`, or null when it is not deployed. */
 let issue: ReturnType<typeof vi.fn> | null = null;
-/** The outbox service's enqueue spy; null = service unbound (legacy
- * inline-send fallback). */
+/** The outbox service's enqueue spy; null = service unbound (the
+ * notify path then writes the row directly over Db). The default impl
+ * records the payload into `sent` — the messages that would be
+ * delivered — so assertions read the same either way. */
 let enqueue: ReturnType<typeof vi.fn> | null = null;
 const delivering: EmailSender = {
 	send: async (message) => {
@@ -103,7 +105,10 @@ beforeEach(() => {
 	sent.length = 0;
 	sender = delivering;
 	issue = null;
-	enqueue = null;
+	enqueue = vi.fn(async (write: { readonly payload: unknown }) => {
+		sent.push(write.payload as (typeof sent)[number]);
+		return { id: "ob1" };
+	});
 	mocks.getLocale.mockReturnValue("en");
 	mocks.getDoctorUser.mockResolvedValue(acting);
 	const provide = (effect: Effect.Effect<unknown, unknown, unknown>) => {
@@ -311,19 +316,16 @@ describe("invitePatientFn", () => {
 		logged.mockRestore();
 	});
 
-	it("still grants access, but says so, when the delivery fails", async () => {
-		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-		sender = {
-			send: async () => {
-				throw new Error("smtp down");
-			},
-		};
+	it("writes the outbox row directly when the Outbox service is unbound", async () => {
+		enqueue = null;
 		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({
 			ok: true,
-			emailed: false,
+			emailed: true,
 		});
-		expect(logged).toHaveBeenCalledWith("patient invite email failed", expect.any(Error));
-		logged.mockRestore();
+		expect(sent).toHaveLength(0);
+		const rows = await listOutboxRecords(db, { kind: "email" });
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.payload).toMatchObject({ to: "ana@ktb.test" });
 	});
 
 	it("grants access without an email when the record is gone mid-invite", async () => {
