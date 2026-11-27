@@ -125,11 +125,31 @@ export function ReviewModePage({
 	const nextAfter = (id: number | null) => pending.find((q) => q.id !== id)?.id ?? null;
 	const goNext = (id: number | null) => void navigate({ to: reviewHref(nextAfter(id)) });
 
+	// The review workspace pins to the viewport: the page itself never
+	// scrolls — the queue rail and the transcript list carry their own
+	// scroll instead. The available height is measured, not guessed:
+	// header/footer live in the app shell and their sizes vary.
+	const frameRef = useRef<HTMLDivElement>(null);
+	const hasItem = c !== null;
+	useEffect(() => {
+		const el = frameRef.current;
+		if (!el) return;
+		const fit = () => {
+			const footer = document.querySelector("footer");
+			const reserve = (footer?.getBoundingClientRect().height ?? 0) + 16;
+			el.style.height = `${Math.max(320, window.innerHeight - el.getBoundingClientRect().top - reserve)}px`;
+		};
+		fit();
+		window.addEventListener("resize", fit);
+		return () => window.removeEventListener("resize", fit);
+	}, [hasItem]);
+
 	// ---- queue overview / session summary (no item selected) ----
 	if (c === null) {
 		return (
-			<PageContainer className="max-w-none">
+			<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
 				<PageHeader
+					className="shrink-0"
 					title={t.review.title}
 					actions={
 						<Button
@@ -144,7 +164,7 @@ export function ReviewModePage({
 					}
 				/>
 				{pending.length === 0 ? (
-					<Empty className="border bg-card px-6 py-16">
+					<Empty className="min-h-0 flex-1 border bg-card px-6 py-16">
 						<EmptyHeader>
 							<EmptyMedia variant="icon">
 								<ClipboardCheckIcon />
@@ -167,14 +187,14 @@ export function ReviewModePage({
 						</EmptyContent>
 					</Empty>
 				) : (
-					<Card>
+					<Card className="flex min-h-0 flex-1 flex-col">
 						<CardHeader>
 							<CardTitle className="text-base">{t.review.queueLabel}</CardTitle>
 							<span className="text-xs text-muted-foreground">
 								{t.review.pendingCount(pending.length)}
 							</span>
 						</CardHeader>
-						<CardContent className="p-0">
+						<CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
 							<QueueList items={pending} href={reviewHref} t={t} />
 							{deferred.length > 0 ? (
 								<QueueList items={deferred} href={reviewHref} t={t} dimmed />
@@ -192,8 +212,9 @@ export function ReviewModePage({
 		c.anamnesisReviewedVersion != null && c.anamnesisReviewedVersion === c.anamnesisVersion;
 
 	return (
-		<PageContainer className="max-w-none">
+		<PageContainer ref={frameRef} className="max-w-none flex min-h-0 flex-col overflow-hidden">
 			<PageHeader
+				className="shrink-0"
 				title={c.patientName ?? `#${c.id}`}
 				actions={
 					<div className="flex items-center gap-2">
@@ -218,8 +239,8 @@ export function ReviewModePage({
 					</div>
 				}
 			/>
-			<div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-				<aside className="space-y-1">
+			<div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
+				<aside className="max-h-[30vh] min-h-0 shrink-0 space-y-1 overflow-y-auto lg:max-h-none lg:w-[280px]">
 					<p className="px-2 pb-2 text-xs font-medium text-muted-foreground">
 						{t.review.queueLabel} · {t.review.pendingCount(pending.length)}
 						{doneIds.length > 0 ? ` · ${t.review.sessionDone(doneIds.length)}` : ""}
@@ -418,9 +439,9 @@ function ReviewItem({
 	const anamnesis = v.anamnesis;
 
 	return (
-		<div className="space-y-4">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
 			{/* Step tabs — order suggested, never gated. */}
-			<div className="flex items-center gap-1 rounded-lg border bg-card p-1 w-fit">
+			<div className="flex w-fit shrink-0 items-center gap-1 rounded-lg border bg-card p-1">
 				{(["transcript", "anamnesis"] as const).map((s) => (
 					<button
 						key={s}
@@ -654,9 +675,9 @@ function TranscriptStep({
 	});
 
 	return (
-		<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-			<Card>
-				<CardHeader className="flex-row items-center justify-between gap-2">
+		<div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+			<Card className="flex min-h-0 flex-col overflow-hidden">
+				<CardHeader className="flex-row items-center justify-between gap-2 shrink-0">
 					<CardTitle className="text-base">{t.review.stepTranscript}</CardTitle>
 					<div className="flex items-center gap-2">
 						{hasAudio && !rich ? (
@@ -676,7 +697,7 @@ function TranscriptStep({
 						) : null}
 					</div>
 				</CardHeader>
-				<CardContent className="space-y-4">
+				<CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
 					{rich || hasAudio ? (
 						<ConsultationAudioPlayer
 							src={`/api/consultations/${c.id}/audio`}
@@ -700,7 +721,7 @@ function TranscriptStep({
 							{/* One stable frame across items — the box is always
 							 * here, only its contents vary: chips to drain, or
 							 * the high-confidence note. */}
-							<div className="space-y-2 rounded-md border p-2.5">
+							<div className="shrink-0 space-y-2 rounded-md border p-2.5">
 								<div className="flex items-center justify-between gap-2">
 									<span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
 										<TriangleAlertIcon className="size-3" />
@@ -765,7 +786,7 @@ function TranscriptStep({
 									</div>
 								)}
 							</div>
-							<ScrollArea className="h-[52vh]">
+							<ScrollArea className="min-h-0 flex-1">
 								<div className="space-y-0.5 pr-4">
 									{segments.map((s, i) => {
 										const edited = segEdits.get(i);
@@ -855,7 +876,7 @@ function TranscriptStep({
 					) : (
 						// Legacy / audio-less: read the projected transcript; a
 						// whole-doc correction still lands in the same edit log.
-						<div className="space-y-2">
+						<div className="flex min-h-0 flex-1 flex-col gap-2">
 							{editing === "full" ? (
 								<>
 									<textarea
@@ -879,7 +900,7 @@ function TranscriptStep({
 								</>
 							) : (
 								<>
-									<ScrollArea className="h-[42vh]">
+									<ScrollArea className="min-h-0 flex-1">
 										<p className="whitespace-pre-wrap pr-4 text-sm leading-relaxed">{projected}</p>
 									</ScrollArea>
 									{api?.saveTranscriptEdits ? (
@@ -887,6 +908,7 @@ function TranscriptStep({
 											type="button"
 											variant="ghost"
 											size="sm"
+											className="self-start"
 											onClick={() => {
 												setDraft(projected);
 												setEditing("full");
@@ -902,7 +924,7 @@ function TranscriptStep({
 					)}
 
 					{api?.reviewTranscript ? (
-						<div className="border-t pt-4">
+						<div className="shrink-0 border-t pt-4">
 							<Button type="button" disabled={busy} onClick={confirm}>
 								<CheckIcon data-icon="inline-start" />
 								{t.review.confirmAndContinue}
@@ -934,7 +956,7 @@ function ShortcutLegend({ t }: { t: Slice }) {
 	];
 	return (
 		<div
-			className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground"
+			className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground"
 			aria-label={t.review.shortcutsTitle}
 		>
 			<span className="font-medium">{t.review.shortcutsTitle}</span>
@@ -1096,7 +1118,7 @@ function AnamnesisStep({
 	}
 
 	return (
-		<div className="grid gap-4 xl:grid-cols-2">
+		<div className="grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2">
 			<Card>
 				<CardHeader>
 					<CardTitle className="text-base">{t.review.stepTranscript}</CardTitle>
