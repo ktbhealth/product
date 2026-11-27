@@ -214,9 +214,9 @@ const decisionInput = (
  * the `PlatformLlm` default endpoint (production path — resolves the
  * enabled platform `is_default` endpoint per call). Resolution and
  * layer-build failures degrade to `null` → `noPort`, matching the
- * app-host platform-llm fallback contract; defects inside the provided
- * layer also degrade (a broken platform endpoint must not kill the
- * run). Typed port errors still propagate as node failures. */
+ * @ktb/eval-core preferring-llm fallback contract; defects inside the
+ * provided layer also degrade (a broken platform endpoint must not
+ * kill the run). Typed port errors still propagate as node failures. */
 const callLlm = (call: AiCall): Effect.Effect<unknown, unknown, unknown> =>
 	Effect.gen(function* () {
 		const direct = yield* Effect.serviceOption(LlmPort);

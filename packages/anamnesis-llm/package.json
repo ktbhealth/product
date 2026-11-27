@@ -6,6 +6,7 @@
 		".": "./src/index.ts",
 		"./byok": "./src/byok.ts",
 		"./drivers": "./src/drivers.ts",
+		"./llm-port": "./src/llm-port.ts",
 		"./prompt": "./src/prompt.ts",
 		"./services": "./src/services.ts"
 	},
@@ -17,6 +18,7 @@
 		"@effect/ai-openai": "4.1.2",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/driver-framework": "workspace:*",
+		"@ktb/eval-core": "workspace:*",
 		"effect": "4.1.2"
 	}
 }

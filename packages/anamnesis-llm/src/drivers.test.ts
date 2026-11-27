@@ -1,9 +1,8 @@
 import * as Effect from "effect/Effect";
-import type * as Layer from "effect/Layer";
+import * as Layer from "effect/Layer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
-import { heuristicAnamnesisEngineLive } from "./services.ts";
 import {
 	anthropicAnamnesisDriver,
 	heuristicAnamnesisDriver,
@@ -16,35 +15,43 @@ import { DEFAULT_WORKERS_AI_MODEL, type WorkersAiBinding } from "./workers-ai.ts
 const mocks = vi.hoisted(() => ({
 	anthropicLive: vi.fn(),
 	openAiLive: vi.fn(),
-	workersAiEngine: vi.fn(),
+	lmPort: vi.fn(),
+	waiPort: vi.fn(),
 }));
 
 vi.mock("./llm.ts", async () => {
-	const { LanguageModel } = await import("effect/ai");
-	const Effect = await import("effect/Effect");
 	const Layer = await import("effect/Layer");
-	const failingModel = {
-		[LanguageModel.TypeId]: LanguageModel.TypeId,
-		generateText: () => Effect.die("unused"),
-		generateObject: () => Effect.fail(new Error("provider down")),
-		streamText: () => {
-			throw new Error("unused");
-		},
-	} as unknown as import("effect/ai").LanguageModel.LanguageModel;
-	const lmLayer = () => Layer.succeed(LanguageModel.LanguageModel, failingModel);
-	mocks.anthropicLive.mockImplementation(lmLayer);
-	mocks.openAiLive.mockImplementation(lmLayer);
+	mocks.anthropicLive.mockImplementation(() => Layer.empty);
+	mocks.openAiLive.mockImplementation(() => Layer.empty);
 	return {
 		anthropicLanguageModelLive: mocks.anthropicLive,
 		openAiLanguageModelLive: mocks.openAiLive,
 	};
 });
 
-vi.mock("./workers-ai.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("./workers-ai.ts")>();
+// The env→LlmPort adapters are unit-tested in llm-port.test.ts; here
+// they are stubbed to a failing port so driver wiring is asserted
+// without provider transports.
+vi.mock("./llm-port.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./llm-port.ts")>();
+	const { LlmPort, PortError } = await import("@ktb/eval-core");
+	const Effect = await import("effect/Effect");
 	const Layer = await import("effect/Layer");
-	mocks.workersAiEngine.mockReturnValue(Layer.empty);
-	return { ...actual, makeWorkersAiAnamnesisEngine: mocks.workersAiEngine };
+	const failing = () =>
+		Layer.succeed(
+			LlmPort,
+			LlmPort.of({
+				generate: () => Effect.fail(new PortError({ port: "llm", message: "provider down" })),
+				correct: () => Effect.fail(new PortError({ port: "llm", message: "provider down" })),
+			}),
+		);
+	mocks.lmPort.mockImplementation(failing);
+	mocks.waiPort.mockImplementation(failing);
+	return {
+		...actual,
+		makeLanguageModelLlmPort: mocks.lmPort,
+		makeWorkersAiLlmPort: mocks.waiPort,
+	};
 });
 
 const fakeWorkersAi: WorkersAiBinding = { run: async () => ({ response: "{}" }) };
@@ -52,12 +59,18 @@ const fakeWorkersAi: WorkersAiBinding = { run: async () => ({ response: "{}" }) 
 beforeEach(() => {
 	mocks.anthropicLive.mockClear();
 	mocks.openAiLive.mockClear();
-	mocks.workersAiEngine.mockClear();
+	mocks.lmPort.mockClear();
+	mocks.waiPort.mockClear();
 });
 
 describe("anamnesis engine drivers", () => {
 	it("all provide the AnamnesisEngine port", () => {
-		for (const d of [anthropicAnamnesisDriver, openAiAnamnesisDriver, heuristicAnamnesisDriver])
+		for (const d of [
+			anthropicAnamnesisDriver,
+			openAiAnamnesisDriver,
+			workersAiAnamnesisDriver,
+			heuristicAnamnesisDriver,
+		])
 			expect(d.port).toBe(AnamnesisEngine.key);
 	});
 
@@ -112,7 +125,7 @@ describe("anamnesis engine drivers", () => {
 				openAiModel: "m",
 			}),
 		).toBeDefined();
-		expect(heuristicAnamnesisDriver.provides({})).toBe(heuristicAnamnesisEngineLive);
+		expect(heuristicAnamnesisDriver.provides({})).toBeDefined();
 		expect(workersAiAnamnesisDriver.provides({ workersAi: fakeWorkersAi })).toBeDefined();
 		expect(
 			workersAiAnamnesisDriver.provides({
@@ -125,6 +138,7 @@ describe("anamnesis engine drivers", () => {
 	it("anthropic provides forwards key and model with documented defaults", () => {
 		anthropicAnamnesisDriver.provides({ anthropicApiKey: "k", anthropicModel: "m" });
 		expect(mocks.anthropicLive).toHaveBeenLastCalledWith({ apiKey: "k", model: "m" });
+		expect(mocks.lmPort).toHaveBeenLastCalledWith("anthropic", "m", expect.anything());
 		anthropicAnamnesisDriver.provides({});
 		expect(mocks.anthropicLive).toHaveBeenLastCalledWith({
 			apiKey: "",
@@ -153,9 +167,15 @@ describe("anamnesis engine drivers", () => {
 
 	it("workers-ai provides forwards the binding and model with the default", () => {
 		workersAiAnamnesisDriver.provides({ workersAi: fakeWorkersAi });
-		expect(mocks.workersAiEngine).toHaveBeenLastCalledWith(fakeWorkersAi, DEFAULT_WORKERS_AI_MODEL);
+		expect(mocks.waiPort).toHaveBeenLastCalledWith(fakeWorkersAi, DEFAULT_WORKERS_AI_MODEL);
 		workersAiAnamnesisDriver.provides({ workersAi: fakeWorkersAi, workersAiModel: "m" });
-		expect(mocks.workersAiEngine).toHaveBeenLastCalledWith(fakeWorkersAi, "m");
+		expect(mocks.waiPort).toHaveBeenLastCalledWith(fakeWorkersAi, "m");
+	});
+
+	it("heuristic provides binds no env LlmPort", () => {
+		heuristicAnamnesisDriver.provides({});
+		expect(mocks.lmPort).not.toHaveBeenCalled();
+		expect(mocks.waiPort).not.toHaveBeenCalled();
 	});
 
 	it("provided engines report their provider tag", async () => {
@@ -175,6 +195,21 @@ describe("anamnesis engine drivers", () => {
 		expect(
 			(await run(asEngineLayer(openAiAnamnesisDriver.provides({ openAiApiKey: "k" })))).engine,
 		).toBe("openai!fallback");
+		expect(
+			(
+				await run(
+					asEngineLayer(
+						workersAiAnamnesisDriver.provides({
+							workersAi: fakeWorkersAi,
+							workersAiModel: "m",
+						}),
+					),
+				)
+			).engine,
+		).toBe("workers-ai:m!fallback");
+		expect((await run(asEngineLayer(heuristicAnamnesisDriver.provides({})))).engine).toBe(
+			"heuristic",
+		);
 	});
 });
 

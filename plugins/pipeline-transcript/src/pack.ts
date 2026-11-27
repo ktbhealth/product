@@ -58,11 +58,13 @@ import {
  * catch→disabled): the pipeline NEVER fails a transcript cleanup —
  * worst case every stage lands disabled and the caller stores null.
  *
- * Port resolution mirrors packages/app-host/src/platform-llm.ts:
+ * Port resolution mirrors @ktb/eval-core's `preferringLlmPortLive`:
  * `Effect.serviceOption` probes the plugin capability, `defaultLayer()`
  * resolves the platform-default endpoint per call (admin changes apply
  * without restart), `Effect.provide(layer)` binds the concrete port for
  * the domain functions, and every failure degrades to null/disabled.
+ * (Anamnesis extraction routes through the same precedence inside the
+ * port itself — see packages/anamnesis-llm.)
  */
 
 /** Pipeline id — the contract app-host and eval drivers run by name. */
@@ -170,8 +172,9 @@ export class EnvCorrector extends Context.Service<
 export const ENV_CORRECTOR_KEY = "envCorrect";
 
 /** `defaultLayer()` declares R=unknown because the plugin impl may
- * read credentials bound by composition — same erasure platform-llm.ts
- * documents; tests stub the Platform* services anyway. */
+ * read credentials bound by composition — same erasure
+ * @ktb/eval-core's preferring-llm documents; tests stub the Platform*
+ * services anyway. */
 const decisionsLayer = (
 	platform: PlatformDecisions["Service"],
 ): Effect.Effect<Layer.Layer<DecisionsPort> | null> =>

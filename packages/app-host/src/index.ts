@@ -105,7 +105,6 @@ import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector }
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
-import { platformPreferringEngine } from "./platform-llm.ts";
 import { correctTranscript as envCorrectTranscript } from "@ktb/anamnesis-llm";
 import { correctTranscriptEffect } from "./transcript-cleanup.ts";
 import {
@@ -542,14 +541,13 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const EnvCorrectorLive = Layer.succeed(EnvCorrector, {
 		correct: (text: string) => envCorrectTranscript(llmConfig, text),
 	});
-	// F2: the ai-provider plugin's PlatformLlm capability wins over env
-	// providers when a platform-default endpoint is configured; the
-	// wrapped engine is the (b) env fallback → (c) heuristic path.
-	const AnamnesisEngineLive = Layer.unwrap(
-		Effect.map(AnamnesisEngine, (inner) =>
-			Layer.succeed(AnamnesisEngine, platformPreferringEngine(inner)),
-		),
-	).pipe(Layer.provide(envAnamnesisEngineLive));
+	// F2: every AnamnesisEngine driver binds the engine over an
+	// env-derived LlmPort routed through `preferringLlmPortLive` — the
+	// ai-provider plugin's PlatformLlm capability wins over env
+	// providers per call, env is the (b) fallback, the heuristic
+	// extractor the (c) floor. The platform-llm bridge is dissolved:
+	// the precedence lives inside the port itself (@ktb/eval-core).
+	const AnamnesisEngineLive = envAnamnesisEngineLive;
 	// Telemetry port: driver-selected exporter set (OTLP when configured,
 	// console JSON otherwise) — provides Logger/Tracer references, the
 	// Telemetry service, metric instrumentation and the LOG_LEVEL var.
