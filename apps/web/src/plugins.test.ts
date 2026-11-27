@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Plugin } from "@ktb/kernel";
+import { PLUGIN_KEYWORD_SET } from "@ktb/platform/keywords";
 
 import { plugins as serverPlugins } from "@ktb/app-host";
 import { plugins as clientPlugins } from "./plugins.ts";
@@ -152,13 +153,20 @@ describe("client plugin registry", () => {
 	});
 
 	it("declares manifest keywords on every plugin (P-082)", () => {
-		// Membership in PLUGIN_KEYWORDS is enforced at compile time —
-		// meta.keywords is typed `PluginKeyword[]`, so an unknown word
-		// fails `vp check` at the manifest itself. Runtime asserts the
-		// non-empty contract: the first keyword is the plugin's domain
-		// lane in the plugins map.
+		// meta.keywords is open strings in the kernel contract — the
+		// controlled vocabulary is product data (@ktb/platform/keywords)
+		// enforced here at runtime: an unknown word fails this test.
+		// The first keyword is the plugin's domain lane in the plugins
+		// map.
 		for (const p of serverPlugins) {
-			expect(p.meta?.keywords?.length ?? 0, `${p.id} has no meta.keywords`).toBeGreaterThan(0);
+			const keywords = p.meta?.keywords ?? [];
+			expect(keywords.length, `${p.id} has no meta.keywords`).toBeGreaterThan(0);
+			for (const keyword of keywords) {
+				expect(
+					PLUGIN_KEYWORD_SET.has(keyword),
+					`${p.id} declares unknown keyword "${keyword}"`,
+				).toBe(true);
+			}
 		}
 	});
 });

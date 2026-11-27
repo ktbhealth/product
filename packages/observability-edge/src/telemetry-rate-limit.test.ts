@@ -12,7 +12,11 @@ const post = (ip?: string) =>
 // Env slice the check resolves per call — the caller (the app's edge
 // route) reads its platform binding and hands it in. Mutable record:
 // tests rewrite the KTB_TELEMETRY_RATE_LIMIT_* keys between cases.
-const envBag: Record<string, string | undefined> = {};
+// OBSERVABILITY_ENV_PREFIX mirrors the apps/web binding ("KTB_") so the
+// prefixed var names resolve like they do in production.
+const envBag: Record<string, string | undefined> = {
+	OBSERVABILITY_ENV_PREFIX: "KTB_",
+};
 
 const check = (request: Request) => checkTelemetryIngestRateLimit(request, envBag);
 

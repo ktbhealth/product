@@ -23,7 +23,7 @@ const switchDoctorChrome = (portal: (typeof CLINICAL_PORTALS)[number]): ChromeCo
 	portal,
 	// Only meaningful when the account acts through more than one
 	// profile — an owner without delegations has nothing to switch to.
-	when: { minDoctorProfiles: 2 },
+	when: { minUserCounts: { doctorProfiles: 2 } },
 	content: {
 		kind: "sidebarItem",
 		item: {

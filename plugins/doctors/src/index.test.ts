@@ -283,7 +283,7 @@ describe("doctors plugins", () => {
 		for (const entry of entries) {
 			expect(entry.region).toBe("portal.sidebar");
 			// Hidden for single-profile accounts — nothing to switch to.
-			expect(entry.when).toEqual({ minDoctorProfiles: 2 });
+			expect(entry.when).toEqual({ minUserCounts: { doctorProfiles: 2 } });
 			expect(entry.content).toMatchObject({
 				kind: "sidebarItem",
 				item: {
