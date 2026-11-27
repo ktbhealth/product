@@ -89,6 +89,7 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/notifications": "workspace:*",
         "@ktb/observability": "workspace:*",
+        "@ktb/observability-edge": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patient-portal": "workspace:*",
@@ -675,6 +676,13 @@
       "dependencies": {
         "@ktb/driver-framework": "workspace:*",
         "effect": "4.1.2",
+      },
+    },
+    "packages/observability-edge": {
+      "name": "@ktb/observability-edge",
+      "dependencies": {
+        "@ktb/observability": "workspace:*",
+        "@tanstack/react-start": "1.169.5",
       },
     },
     "packages/observability-otlp": {
@@ -3105,6 +3113,8 @@
     "@ktb/notifications": ["@ktb/notifications@workspace:plugins/notifications"],
 
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
+
+    "@ktb/observability-edge": ["@ktb/observability-edge@workspace:packages/observability-edge"],
 
     "@ktb/observability-otlp": ["@ktb/observability-otlp@workspace:packages/observability-otlp"],
 

@@ -1,0 +1,12 @@
+{
+	"name": "@ktb/observability-edge",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/observability": "workspace:*",
+		"@tanstack/react-start": "1.169.5"
+	}
+}

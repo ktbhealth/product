@@ -14,7 +14,7 @@
  * - `ktb_session_context_load_duration_ms_{sum,count}{context}`.
  *
  * fn→plugin attribution is NOT derivable: the `fn` label is a sha256
- * of `file--export` (see apps/web/src/lib/server-fn.ts), so rows are
+ * of `file--export` (see packages/observability-edge/src/server-fn.ts), so rows are
  * keyed by the raw fn id. If plugin-labeled `ktb_plugin_*` series ever
  * land they can be folded in here without changing the wire shape.
  */
