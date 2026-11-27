@@ -3,15 +3,13 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 
 import { makeSqliteDatabase } from "@ktb/db-sqlite";
+import { loadDevVars, makeLocalAudioBucket, makeLocalQueue } from "@ktb/dev-node";
 import { connect as nodeSocketConnect } from "@ktb/email-smtp/node-connect";
 import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 import { createRedisPubSubTransport } from "@ktb/pubsub-transport-redis";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
-import { loadDevVars } from "./dev-vars.ts";
-import { makeLocalAudioBucket } from "./node-audio.ts";
-import { makeLocalQueue } from "./node-queue.ts";
 
 /**
  * Node/Bun stand-in for the `cloudflare:workers` module — aliased in
@@ -25,9 +23,9 @@ import { makeLocalQueue } from "./node-queue.ts";
  * dev path — with the drizzle migrations applied at boot.
  *
  * Bindings without a workerd runtime get local equivalents (see
- * node-audio.ts): AUDIO_BUCKET is a filesystem object store under
+ * @ktb/dev-node): AUDIO_BUCKET is a filesystem object store under
  * ./data/audio (gitignored; override with AUDIO_BUCKET_DIR), and
- * AUDIO_QUEUE is a SQLite-backed queue (node-queue.ts) dispatching to
+ * AUDIO_QUEUE is a SQLite-backed queue dispatching to
  * the same consumer handler server.ts exports as `queue` — jobs
  * survive restarts and exhausted deliveries sit as `failed` rows (the
  * DLQ) in the queue db. AI still resolves through
@@ -45,7 +43,7 @@ const MIGRATIONS_DIR = resolve(
 
 // apps/web/.dev.vars is what `dev:secrets` writes for workerd/miniflare;
 // under dev:node nothing loads it, so merge it here — real env vars win
-// (see dev-vars.ts). Key names only; values are never logged.
+// (see @ktb/dev-node's loadDevVars). Key names only; values are never logged.
 const devVarsFile = resolve(dirname(fileURLToPath(import.meta.url)), "../../.dev.vars");
 const devVarsKeys = loadDevVars(devVarsFile);
 if (devVarsKeys.length > 0) {

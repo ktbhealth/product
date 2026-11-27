@@ -41,6 +41,7 @@
 		"@ktb/cron-port": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/db-sqlite": "workspace:*",
+		"@ktb/dev-node": "workspace:*",
 		"@ktb/doctors": "workspace:*",
 		"@ktb/email": "workspace:*",
 		"@ktb/email-smtp": "workspace:*",
