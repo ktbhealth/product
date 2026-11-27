@@ -134,7 +134,8 @@ export interface PluginBase {
 	 * stubs reject it ({@link ClientStubPlugin}). */
 	readonly pipelines?: readonly PipelinePack[];
 	/** Orchestration packs this plugin contributes (event-driven node
-	 * DAGs — def + kind handlers, see @ktb/orchestrator). Additive like
+	 * DAGs — kind handlers + optional def, see @ktb/orchestrator).
+	 * Additive like
 	 * `pipelines`: may accompany any dedicated contribution field. The
 	 * host collects these into `OrchestratorRegistryLive` at
 	 * composition; kind handlers are Effects, so this is

@@ -132,10 +132,9 @@ export class EvalStorePort extends Context.Service<
 // surfaces (plugins/pipeline-transcript, app-host, ai-provider) depend
 // on this infra package instead of the evals/ workspace domain pack.
 // The service KEY strings deliberately keep their historical
-// `@ktb/eval-consultation/…` spelling: the orchestrator's ambient-port
-// mirrors (packages/orchestrator/src/kinds.ts) and any serialized
-// service references key on those strings, so they must not drift —
-// same precedent as `DecisionsPort`'s `@ktb/eval-core/EvalPort` key.
+// `@ktb/eval-consultation/…` spelling: serialized service references
+// key on those strings, so they must not drift — same precedent as
+// `DecisionsPort`'s `@ktb/eval-core/EvalPort` key.
 // ---------------------------------------------------------------------------
 
 /** Generative model port — ACP-delegated in live adapters.

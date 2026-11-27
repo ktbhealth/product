@@ -26,8 +26,10 @@ import {
  * runtime's service context IS the ambient context durable steps
  * need. `Effect.context` captures every bound service
  * (OrchestratorRegistry for `subworkflow`, EnvCorrector /
- * PlatformLlm / PlatformDecisions / LlmPort & friends for the `ai`
- * kind and the transcript pack's stages) — exactly what an
+ * PlatformLlm / PlatformDecisions / LlmPort / DecisionsPort / AsrPort
+ * & friends for the `ai` kind — contributed by @ktb/orchestrator-ai
+ * via ai.provider.services' pack — and the transcript pack's stages)
+ * — exactly what an
  * in-memory `registry.run` inside `run()` would see, which is the
  * contract `ambientContext` documents. Capturing under `run` (never
  * `runAs`) keeps Principal/Tenant request scope out of durable steps:

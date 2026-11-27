@@ -13,6 +13,7 @@
 		"@ktb/jobs-port": "workspace:*",
 		"@ktb/jobs-transport-redis": "workspace:*",
 		"@ktb/orchestrator": "workspace:*",
+		"@ktb/orchestrator-ai": "workspace:*",
 		"effect": "4.1.2"
 	},
 	"devDependencies": {

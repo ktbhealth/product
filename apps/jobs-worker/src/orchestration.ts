@@ -2,7 +2,9 @@
  * orchestration.ts — `orchestrator.step` wiring for the local jobs
  * worker. Mirrors apps/web/src/lib/orchestration.ts's lazy host, minus
  * the app runtime: this process composes no plugins, so the registry
- * is `builtinKinds` + `loadStoredDefs` only.
+ * is `builtinKinds` + the eval-port `ai` kind (@ktb/orchestrator-ai,
+ * imported directly — it is a package, not a plugin contribution) +
+ * `loadStoredDefs` only.
  *
  * KNOWN GAPS (honest dev-mode limits):
  * - Plugin-contributed `orchestrations` packs are NOT loaded — the
@@ -10,15 +12,17 @@
  *   manifests (e.g. pipeline.transcript's consultation-transcript def
  *   and its stage kinds) are absent. Stored defs or admin-started runs
  *   that reference pack kinds fail kind resolution and mark the run
- *   "failed"; defs using only builtin kinds (emit/gate/poll/ai/
- *   subworkflow) run end to end.
+ *   "failed"; defs using builtin kinds (emit/gate/poll/subworkflow)
+ *   or the `ai` kind run end to end.
  * - ambientContext carries ONLY the OrchestratorRegistry (so the
  *   `subworkflow` kind's serviceOption probe resolves for nested
  *   in-memory runs). EnvCorrector lives in @ktb/plugin-pipeline-transcript
- *   and the Ambient*Llm/Decisions/Asr/Platform* ports need provider
- *   bindings this process does not compose — the `ai` kind therefore
- *   degrades to `{skipped: true, reason: "no-port"}` by design (the
- *   configured event is still emitted, graphs keep routing).
+ *   and the eval AI ports (LlmPort/DecisionsPort/AsrPort and the
+ *   PlatformLlm/PlatformDecisions factories the `ai` kind probes via
+ *   @ktb/orchestrator-ai) need provider bindings this process does not
+ *   compose — the `ai` kind therefore degrades to
+ *   `{skipped: true, reason: "no-port"}` by design (the configured
+ *   event is still emitted, graphs keep routing).
  *
  * Requires the worker db (orchestration_* tables live beside
  * job_runs): callers register only when `openWorkerDb()` returned a
@@ -42,6 +46,7 @@ import {
 	type OrchestrationRunnerService,
 	type RunOptions,
 } from "@ktb/orchestrator";
+import { aiOrchestrationKind } from "@ktb/orchestrator-ai";
 
 export interface OrchestrationWorkerDeps {
 	/** The worker's DbClient — orchestration_runs/events/node_runs and
@@ -70,15 +75,21 @@ export const makeOrchestrationWorker = (deps: OrchestrationWorkerDeps): Orchestr
 	let runnerPromise: Promise<OrchestrationRunnerService> | undefined;
 	const runner = (): Promise<OrchestrationRunnerService> => {
 		runnerPromise ??= (async () => {
-			const registry = makeOrchestratorRegistry(builtinKinds);
+			// builtinKinds + the eval-port `ai` kind: the kind is a plain
+			// value in @ktb/orchestrator-ai (not a plugin pack), so the
+			// plugin-free worker can register it directly and keep the
+			// pre-refactor degrade contract — stored defs with `ai` nodes
+			// still run and degrade to no-port instead of failing kind
+			// resolution.
+			const registry = makeOrchestratorRegistry([...builtinKinds, aiOrchestrationKind]);
 			await loadStoredDefs(registry, deps.db);
 			return makeOrchestrationRunner({
 				db: deps.db,
 				jobs: deps.jobs,
 				registry,
 				// Only the registry is ambient — see the module doc for
-				// what is deliberately absent (EnvCorrector, Platform*/
-				// direct AI ports).
+				// what is deliberately absent (EnvCorrector, the eval
+				// LlmPort/DecisionsPort/AsrPort/Platform* services).
 				ambientContext: Context.make(OrchestratorRegistry, registry),
 			});
 		})().catch((error: unknown) => {

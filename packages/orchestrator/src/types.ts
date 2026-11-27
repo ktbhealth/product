@@ -261,13 +261,16 @@ export class UnknownNodeError extends Data.TaggedError("UnknownNodeError")<{
 	readonly orchestrationId?: string;
 }> {}
 
-/** A pack = def (data) + kind handlers (code), contributed by a
- * plugin — the {@link OrchestrationDef} analog of `@ktb/pipeline`'s
- * {@link PipelinePack}. `kinds` are the handlers the def's nodes
- * resolve by `node.kind`; they register into the same
- * {@link OrchestratorRegistry} as `builtinKinds`. */
+/** A pack = kind handlers (code) + an optional def (data), contributed
+ * by a plugin — the {@link OrchestrationDef} analog of `@ktb/pipeline`'s
+ * {@link PipelinePack}. `kinds` are the handlers a def's nodes resolve
+ * by `node.kind`; they register into the same {@link
+ * OrchestratorRegistry} as `builtinKinds`. `def` is OPTIONAL: a
+ * kinds-only pack contributes shared kind vocabulary (e.g. the
+ * eval-port `ai` kind from @ktb/orchestrator-ai) without shipping a
+ * runnable orchestration. */
 export interface OrchestrationPack {
-	readonly def: OrchestrationDef;
+	readonly def?: OrchestrationDef;
 	readonly kinds: readonly OrchestrationKind[];
 }
 
