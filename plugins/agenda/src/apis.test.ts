@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	updateAppointmentFn: vi.fn<Fn>(async (arg) => ({ tag: "update", arg })),
 	setAppointmentStatusFn: vi.fn<Fn>(async (arg) => ({ tag: "status", arg })),
 	startAppointmentFn: vi.fn<Fn>(async (arg) => ({ tag: "start", arg })),
+	listAppointmentsFn: vi.fn<Fn>(async (arg) => ({ tag: "list", arg })),
 }));
 
 vi.mock("./fns.ts", () => ({
@@ -14,6 +15,7 @@ vi.mock("./fns.ts", () => ({
 	updateAppointmentFn: mocks.updateAppointmentFn,
 	setAppointmentStatusFn: mocks.setAppointmentStatusFn,
 	startAppointmentFn: mocks.startAppointmentFn,
+	listAppointmentsFn: mocks.listAppointmentsFn,
 }));
 
 import { agendaApi } from "./apis.ts";
@@ -43,6 +45,15 @@ describe("agendaApi adapter", () => {
 		await expect(agendaApi.start(3)).resolves.toEqual({
 			tag: "start",
 			arg: { data: { id: 3 } },
+		});
+	});
+
+	it("fetches a calendar range through listAppointmentsFn", async () => {
+		const from = new Date(0);
+		const to = new Date(86_400_000);
+		await expect(agendaApi.list!(from, to)).resolves.toEqual({
+			tag: "list",
+			arg: { data: { from, to } },
 		});
 	});
 });

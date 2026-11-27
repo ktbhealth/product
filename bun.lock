@@ -40,6 +40,8 @@
         "@ktb/db-sqlite": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/jobs-transport-redis": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
+        "effect": "4.1.2",
       },
       "devDependencies": {
         "@types/node": "^22.10.2",
@@ -86,6 +88,7 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/notifications": "workspace:*",
         "@ktb/observability": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patient-portal": "workspace:*",
         "@ktb/patients": "workspace:*",
@@ -310,6 +313,7 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/plugin-pipeline": "workspace:*",
@@ -522,6 +526,7 @@
         "@ktb/driver-framework": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-core": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
@@ -642,6 +647,7 @@
       "name": "@ktb/kernel",
       "devDependencies": {
         "@ktb/json-schema": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "@tanstack/virtual-file-routes": "1.162.0",
         "@types/react": "^19.2.0",
@@ -662,6 +668,16 @@
       "dependencies": {
         "@ktb/driver-framework": "workspace:*",
         "@ktb/observability": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "packages/orchestrator": {
+      "name": "@ktb/orchestrator",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/jobs-port": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
       },
     },
@@ -1917,9 +1933,30 @@
     "plugins/pipeline": {
       "name": "@ktb/plugin-pipeline",
       "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "@ktb/views": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "@xyflow/react": "^12.12.1",
         "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@ktb/authz": "workspace:*",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
       },
     },
     "plugins/pipeline-transcript": {
@@ -1927,6 +1964,7 @@
       "dependencies": {
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "effect": "4.1.2",
       },
@@ -3050,6 +3088,8 @@
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
 
     "@ktb/observability-otlp": ["@ktb/observability-otlp@workspace:packages/observability-otlp"],
+
+    "@ktb/orchestrator": ["@ktb/orchestrator@workspace:packages/orchestrator"],
 
     "@ktb/pages": ["@ktb/pages@workspace:plugins/pages"],
 

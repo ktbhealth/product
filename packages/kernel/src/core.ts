@@ -3,6 +3,7 @@ import type * as JsonSchema from "effect/JsonSchema";
 import type { JsonObject } from "effect/Schema";
 import type * as Schema from "effect/Schema";
 import type { PipelinePack } from "@ktb/pipeline";
+import type { OrchestrationPack } from "@ktb/orchestrator";
 
 import type { PluginKeyword } from "./keywords.ts";
 
@@ -134,6 +135,14 @@ export interface PluginBase {
 	 * stage impls are Effects, so this is server-manifest data — client
 	 * stubs reject it ({@link ClientStubPlugin}). */
 	readonly pipelines?: readonly PipelinePack[];
+	/** Orchestration packs this plugin contributes (event-driven node
+	 * DAGs — def + kind handlers, see @ktb/orchestrator). Additive like
+	 * `pipelines`: may accompany any dedicated contribution field. The
+	 * host collects these into `OrchestratorRegistryLive` at
+	 * composition; kind handlers are Effects, so this is
+	 * server-manifest data — client stubs reject it
+	 * ({@link ClientStubPlugin}). */
+	readonly orchestrations?: readonly OrchestrationPack[];
 }
 
 type ContributionField =

@@ -9,10 +9,18 @@ import { afterAll, describe, expect, it } from "vitest";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import { EvalStorePort, PortError, ReportPort, type RunRecord } from "@ktb/eval-core";
 import {
+	makeOrchestratorRegistry,
+	OrchestratorRegistry,
+	type JsonObject,
+	type OrchestrationKind,
+	type OrchestratorRegistryService,
+} from "@ktb/orchestrator";
+import {
 	makePipelineRegistry,
 	PipelineRegistry,
 	PipelineStageError,
 	type PipelinePack,
+	type PipelineRegistryService,
 } from "@ktb/pipeline";
 import {
 	AsrPort,
@@ -845,6 +853,143 @@ describe("evalRunnerLocalDriver", () => {
 		// alongside tts + asr (3 total, no ambient LlmPort needed).
 		expect(outcomes[0]?.records?.map((x) => x.stage)).toEqual(["asr", "asr", "correct"]);
 		expect(outcomes[0]?.records?.every((x) => x.runId === "eval-7")).toBe(true);
+	});
+
+	/** OrchestratorRegistry stub under the real orchestration id — the
+	 * `consultation-transcript` def twin. `cleanup` lands at
+	 * state.cleanup verbatim (same contract the real kinds produce). */
+	const orchCleanupRegistry = (cleanup: JsonObject): OrchestratorRegistryService => {
+		const kind: OrchestrationKind = {
+			id: "stub.cleanup",
+			run: () => Effect.succeed({ state: { cleanup } }),
+		};
+		const registry = makeOrchestratorRegistry([kind]);
+		registry.registerDef({
+			id: "consultation-transcript",
+			nodes: [{ id: "n", kind: "stub.cleanup", on: ["input"], emits: [] }],
+		});
+		return registry;
+	};
+
+	const pipeCleanupRegistry = (cleanup: JsonObject): PipelineRegistryService => {
+		const pack: PipelinePack = {
+			def: { id: "consultation-transcript", stages: [{ id: "llm-cleanup" }] },
+			stages: {
+				"llm-cleanup": {
+					id: "llm-cleanup",
+					run: () => Effect.succeed({ state: { cleanup } }),
+				},
+			},
+		};
+		const registry = makePipelineRegistry();
+		registry.register(pack);
+		return registry;
+	};
+
+	it("prefers the OrchestratorRegistry def when both registries are bound", async () => {
+		const ambient = Layer.mergeAll(
+			Layer.succeed(
+				OrchestratorRegistry,
+				orchCleanupRegistry({
+					enabled: true,
+					corrected: "orch world",
+					edits: 1,
+					engine: "stub-orch",
+					records: [{ ...record, stage: "correct" }],
+				}),
+			),
+			Layer.succeed(
+				PipelineRegistry,
+				pipeCleanupRegistry({
+					enabled: true,
+					corrected: "pipe world",
+					edits: 9,
+					engine: "stub-pipe",
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 12, script: "hello world" }], ambient),
+		);
+		const r = outcomes[0]?.result as { cleanup: { edits: number; corrected: string } };
+		expect(r.cleanup).toMatchObject({ edits: 1, corrected: "orch world" });
+		// The orchestration's RunRecord rode the outcome — the pipeline
+		// registry never ran.
+		expect(outcomes[0]?.records?.map((x) => x.stage)).toEqual(["asr", "asr", "correct"]);
+	});
+
+	it("uses the pipeline when the orchestrator is bound without the def", async () => {
+		const ambient = Layer.mergeAll(
+			Layer.succeed(OrchestratorRegistry, makeOrchestratorRegistry()),
+			Layer.succeed(
+				PipelineRegistry,
+				pipeCleanupRegistry({
+					enabled: true,
+					corrected: "pipe world",
+					edits: 1,
+					engine: "stub-pipe",
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 13, script: "hello world" }], ambient),
+		);
+		const r = outcomes[0]?.result as { cleanup: { corrected: string } };
+		expect(r.cleanup.corrected).toBe("pipe world");
+	});
+
+	it("does not retry the pipeline after a completed orchestrator run", async () => {
+		// Orchestrator cleanup disabled is final — same stages on the
+		// pipeline would only repeat the probes.
+		const ambient = Layer.mergeAll(
+			Layer.succeed(OrchestratorRegistry, orchCleanupRegistry({ enabled: false })),
+			Layer.succeed(
+				PipelineRegistry,
+				pipeCleanupRegistry({
+					enabled: true,
+					corrected: "pipe world",
+					edits: 1,
+					engine: "stub-pipe",
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 14, script: "hello world" }], ambient),
+		);
+		const r = outcomes[0]?.result as { stages: string[] };
+		expect(r.stages).toEqual(["asr"]);
+	});
+
+	it("falls back to the pipeline when the orchestration run fails", async () => {
+		// A node that re-emits its own trigger event spins until the
+		// event budget fails the run — registry.run rejects typed, so
+		// the pipeline fallback still serves the item.
+		const spinKind: OrchestrationKind = {
+			id: "stub.spin",
+			run: () => Effect.succeed({ events: [{ type: "tick" }] }),
+		};
+		const spinRegistry = makeOrchestratorRegistry([spinKind]);
+		spinRegistry.registerDef({
+			id: "consultation-transcript",
+			nodes: [{ id: "n", kind: "stub.spin", on: ["input", "tick"], emits: ["tick"] }],
+		});
+		const ambient = Layer.mergeAll(
+			Layer.succeed(OrchestratorRegistry, spinRegistry),
+			Layer.succeed(
+				PipelineRegistry,
+				pipeCleanupRegistry({
+					enabled: true,
+					corrected: "pipe world",
+					edits: 1,
+					engine: "stub-pipe",
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 15, script: "hello world" }], ambient),
+		);
+		const r = outcomes[0]?.result as { cleanup: { corrected: string } };
+		expect(r.cleanup.corrected).toBe("pipe world");
 	});
 
 	it("falls back to the direct LlmPort cleanup when the pipeline disables it", async () => {

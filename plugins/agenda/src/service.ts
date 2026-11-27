@@ -1,7 +1,23 @@
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { and, asc, eq, gte, isNotNull, isNull, lte, or, inArray, type SQL } from "drizzle-orm";
+import {
+	and,
+	asc,
+	eq,
+	gt,
+	gte,
+	isNotNull,
+	isNull,
+	lt,
+	lte,
+	ne,
+	or,
+	inArray,
+	sql,
+	type SQL,
+} from "drizzle-orm";
 
 import { EventBus, Query } from "@effect-server-utils/cqrs";
 import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
@@ -44,6 +60,18 @@ export interface AppointmentPatch {
 	readonly durationMin?: number;
 	readonly note?: string | null;
 }
+
+/**
+ * The owner already has a live appointment overlapping the requested
+ * slot (P-119-A). Carries the clashing row id so the view can point at
+ * it; a double-booking is a logistics error, never a silent write.
+ */
+export class AppointmentConflict extends Data.TaggedError("AppointmentConflict")<{
+	readonly conflictingId: number;
+}> {}
+
+/** Statuses that occupy their slot — terminal rows free it. */
+const SLOT_HOLDING_STATUSES = ["scheduled", "confirmed"] as const;
 
 export const DEFAULT_DURATION_MIN = 30;
 /** "About to start" lead window — the v1 fixed lead (15 min). */
@@ -141,6 +169,37 @@ export async function updateAppointment(
 	return rows[0] ?? null;
 }
 
+/**
+ * First live appointment of `ownerId` overlapping [startsAt, startsAt +
+ * durationMin) — half-open, so back-to-back slots do not clash.
+ * Per-owner on purpose: in a clinic tenant two doctors may see patients
+ * at the same time. `excludeId` skips the row being edited.
+ */
+export async function findOverlappingAppointment(
+	db: DbClient,
+	ownerId: string,
+	startsAt: Date,
+	durationMin: number,
+	excludeId?: number,
+): Promise<AppointmentRow | null> {
+	const endsAt = new Date(startsAt.getTime() + durationMin * 60_000);
+	const rows = await db
+		.select()
+		.from(appointments)
+		.where(
+			and(
+				eq(appointments.ownerId, ownerId),
+				inArray(appointments.status, [...SLOT_HOLDING_STATUSES]),
+				lt(appointments.startsAt, endsAt),
+				gt(sql`${appointments.startsAt} + ${appointments.durationMin} * 60000`, startsAt.getTime()),
+				excludeId === undefined ? undefined : ne(appointments.id, excludeId),
+			),
+		)
+		.orderBy(asc(appointments.startsAt))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
 /** Rows whose reminder should fire now: live statuses, not yet sent,
  * entering the lead window but not so far past it that "about to
  * start" reads wrong (a missed sweep stays missed — a stale
@@ -201,15 +260,17 @@ export class Appointments extends Context.Service<
 			range: { readonly from: Date; readonly to: Date },
 		) => Effect.Effect<AppointmentListItem[], Forbidden>;
 		readonly get: (ownerId: string, id: number) => Effect.Effect<AppointmentRow | null, Forbidden>;
+		/** Fails `AppointmentConflict` when the slot overlaps a live row. */
 		readonly create: (
 			ownerId: string,
 			input: AppointmentInput,
-		) => Effect.Effect<AppointmentRow | null, Forbidden>;
+		) => Effect.Effect<AppointmentRow | null, Forbidden | AppointmentConflict>;
+		/** Re-checks overlap only when startsAt/durationMin move. */
 		readonly update: (
 			ownerId: string,
 			id: number,
 			patch: AppointmentPatch,
-		) => Effect.Effect<AppointmentRow | null, Forbidden>;
+		) => Effect.Effect<AppointmentRow | null, Forbidden | AppointmentConflict>;
 		readonly setStatus: (
 			ownerId: string,
 			id: number,
@@ -272,6 +333,21 @@ export const AppointmentsLive = Layer.effect(
 				yield* permissions.requireObject("patient", String(patientId), "owner");
 			});
 
+		const requireFreeSlot = (
+			ownerId: string,
+			startsAt: Date,
+			durationMin: number,
+			excludeId?: number,
+		) =>
+			Effect.gen(function* () {
+				const clash = yield* Effect.promise(() =>
+					findOverlappingAppointment(db, ownerId, startsAt, durationMin, excludeId),
+				);
+				if (clash !== null) {
+					return yield* Effect.fail(new AppointmentConflict({ conflictingId: clash.id }));
+				}
+			});
+
 		return Appointments.of({
 			list: Effect.fn("Appointments.list")(function* (
 				ownerId: string,
@@ -294,6 +370,8 @@ export const AppointmentsLive = Layer.effect(
 			) {
 				yield* requirePrincipalUser(ownerId, "appointment.create");
 				yield* requireOwnedPatient(input.patientId, "appointment.create");
+				const durationMin = input.durationMin ?? DEFAULT_DURATION_MIN;
+				yield* requireFreeSlot(ownerId, input.startsAt, durationMin);
 				const tenant = yield* Tenant;
 				const tenantId = tenantScopeId(tenant);
 				yield* Effect.annotateCurrentSpan({ ownerId, patientId: input.patientId });
@@ -303,7 +381,7 @@ export const AppointmentsLive = Layer.effect(
 						patientId: input.patientId,
 						tenantId,
 						startsAt: input.startsAt,
-						durationMin: input.durationMin ?? DEFAULT_DURATION_MIN,
+						durationMin,
 						note: input.note ?? null,
 					}),
 				);
@@ -337,6 +415,18 @@ export const AppointmentsLive = Layer.effect(
 				// deserves its own lead-window pass.
 				const rescheduled =
 					patch.startsAt !== undefined && patch.startsAt.getTime() !== row.startsAt.getTime();
+				const resized = patch.durationMin !== undefined && patch.durationMin !== row.durationMin;
+				// The slot is checked against the row's own owner — a tenant
+				// member editing a colleague's appointment moves it within
+				// the colleague's agenda.
+				if (rescheduled || resized) {
+					yield* requireFreeSlot(
+						row.ownerId,
+						patch.startsAt ?? row.startsAt,
+						patch.durationMin ?? row.durationMin,
+						id,
+					);
+				}
 				const updated = yield* Effect.promise(() =>
 					updateAppointment(db, id, {
 						...(patch.patientId !== undefined ? { patientId: patch.patientId } : {}),

@@ -30,6 +30,7 @@ import {
 	claimReminder,
 	createAppointment,
 	DEFAULT_DURATION_MIN,
+	findOverlappingAppointment,
 	getAppointment,
 	listAppointments,
 	listDueAppointments,
@@ -188,6 +189,31 @@ describe("agenda repo", () => {
 		expect(rows.map((r) => r.id)).not.toContain(cancelled?.id);
 	});
 
+	it("findOverlappingAppointment is per-owner, half-open and ignores freed slots", async () => {
+		const base = new Date(Date.now() + 30 * day);
+		const at = (min: number) => new Date(base.getTime() + min * 60_000);
+		const row = await createAppointment(db, {
+			ownerId: "u1",
+			patientId: 1,
+			tenantId: null,
+			startsAt: at(0),
+			durationMin: 30,
+		});
+		expect((await findOverlappingAppointment(db, "u1", at(15), 30))?.id).toBe(row!.id);
+		// Starting before and running into the slot also clashes.
+		expect((await findOverlappingAppointment(db, "u1", at(-20), 30))?.id).toBe(row!.id);
+		// Touching edges do not.
+		expect(await findOverlappingAppointment(db, "u1", at(30), 30)).toBeNull();
+		expect(await findOverlappingAppointment(db, "u1", at(-30), 30)).toBeNull();
+		// Another doctor's agenda is independent.
+		expect(await findOverlappingAppointment(db, "u2", at(0), 30)).toBeNull();
+		// The edited row never clashes with itself.
+		expect(await findOverlappingAppointment(db, "u1", at(0), 30, row!.id)).toBeNull();
+		// Terminal rows free their slot.
+		await updateAppointment(db, row!.id, { status: "no_show" });
+		expect(await findOverlappingAppointment(db, "u1", at(0), 30)).toBeNull();
+	});
+
 	it("claimReminder flips the marker exactly once", async () => {
 		const row = await createAppointment(db, {
 			ownerId: "u1",
@@ -260,10 +286,15 @@ describe("AppointmentsLive", () => {
 
 	const input = (startsAt: Date, patientId = 1) => ({ patientId, startsAt });
 
+	// The overlap guard (P-119-A) rejects double-bookings, and these cases
+	// share one DB — every slot() is a fresh hour, tomorrow onwards.
+	let slotSeq = 0;
+	const slot = (offset = 0) => new Date(Date.now() + day + offset + slotSeq++ * 60 * 60 * 1000);
+
 	it("creates an appointment scoped to the bound owner and stamps personal tenant", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		expect(row?.ownerId).toBe("u1");
 		expect(row?.tenantId).toBeNull();
@@ -282,7 +313,7 @@ describe("AppointmentsLive", () => {
 		);
 		await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		expect(seen).toEqual(["u1"]);
 	});
@@ -291,13 +322,13 @@ describe("AppointmentsLive", () => {
 		await expect(
 			asUser(
 				"u2",
-				call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+				call((p) => p.create("u1", input(slot()))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 		await expect(
 			asUser(
 				null,
-				call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+				call((p) => p.create("u1", input(slot()))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
@@ -307,14 +338,14 @@ describe("AppointmentsLive", () => {
 			// Patient 3 belongs to u2.
 			asUser(
 				"u1",
-				call((p) => p.create("u1", input(new Date(Date.now() + day), 3))),
+				call((p) => p.create("u1", input(slot(), 3))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 		await expect(
 			// Patient 999 does not exist — same denial shape (no probing).
 			asUser(
 				"u1",
-				call((p) => p.create("u1", input(new Date(Date.now() + day), 999))),
+				call((p) => p.create("u1", input(slot(), 999))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
@@ -325,7 +356,7 @@ describe("AppointmentsLive", () => {
 			call((p) =>
 				p.create("u1", {
 					patientId: 1,
-					startsAt: new Date(Date.now() + day),
+					startsAt: slot(),
 					durationMin: 30,
 					note: "v1",
 				}),
@@ -344,7 +375,7 @@ describe("AppointmentsLive", () => {
 			call((p) =>
 				p.update("u1", row!.id, {
 					patientId: 2,
-					startsAt: new Date(Date.now() + 2 * day),
+					startsAt: slot(day),
 					durationMin: 45,
 					note: "v3",
 				}),
@@ -360,7 +391,7 @@ describe("AppointmentsLive", () => {
 		await expect(
 			asUser(
 				"u1",
-				call((p) => p.create("u1", input(new Date(Date.now() + day), 4))),
+				call((p) => p.create("u1", input(slot(), 4))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
@@ -385,7 +416,7 @@ describe("AppointmentsLive", () => {
 	it("get returns null for missing rows and denies foreign owners", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		expect(
 			await asUser(
@@ -406,7 +437,7 @@ describe("AppointmentsLive", () => {
 			ownerId: "u2",
 			patientId: 3,
 			tenantId: null,
-			startsAt: new Date(Date.now() + day),
+			startsAt: slot(),
 			durationMin: 30,
 		});
 		await expect(
@@ -422,7 +453,7 @@ describe("AppointmentsLive", () => {
 	it("updates fields, re-arms the reminder on reschedule and emits AppointmentUpdated", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		await updateAppointment(db, row!.id, { reminderSentAt: new Date() });
 		const seen: number[] = [];
@@ -433,7 +464,7 @@ describe("AppointmentsLive", () => {
 				}),
 			),
 		);
-		const moved = new Date(Date.now() + 2 * day);
+		const moved = slot(day);
 		const updated = await asUser(
 			"u1",
 			call((p) => p.update("u1", row!.id, { startsAt: moved, note: "room 2" })),
@@ -466,7 +497,7 @@ describe("AppointmentsLive", () => {
 	it("setStatus walks the transition table and emits AppointmentCancelled", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		const seen: number[] = [];
 		await Effect.runPromise(
@@ -507,7 +538,7 @@ describe("AppointmentsLive", () => {
 	it("start creates the linked consultation once and reuses it", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		const first = await asUser(
 			"u1",
@@ -536,7 +567,7 @@ describe("AppointmentsLive", () => {
 	it("start refuses terminal appointments", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		await asUser(
 			"u1",
@@ -556,7 +587,7 @@ describe("AppointmentsLive", () => {
 		const shared = await asTenant(
 			"u1",
 			TENANT_A,
-			call((p) => p.create("u1", input(new Date(Date.now() + day), 4))),
+			call((p) => p.create("u1", input(slot(), 4))),
 		);
 		expect(shared?.tenantId).toBe(7);
 		// A tenant-7 member reads + mutates the shared row.
@@ -594,7 +625,7 @@ describe("AppointmentsLive", () => {
 	it("start denies a null principal and a foreign ownerId", async () => {
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+			call((p) => p.create("u1", input(slot()))),
 		);
 		await expect(
 			asUser(
@@ -612,9 +643,11 @@ describe("AppointmentsLive", () => {
 
 	it("dispatchDueReminders claims each due row once and emits AppointmentReminderDue", async () => {
 		const soon = new Date(Date.now() + 5 * 60 * 1000);
+		// Short slots so both reminder rows fit the lead window without
+		// tripping the overlap guard.
 		const row = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(soon))),
+			call((p) => p.create("u1", { patientId: 1, startsAt: soon, durationMin: 5 })),
 		);
 		const seen: { id: number; patientName: string | null }[] = [];
 		await Effect.runPromise(
@@ -633,7 +666,7 @@ describe("AppointmentsLive", () => {
 		// fiber wins each row; the loser exercises the !claimed skip.
 		const row2 = await asUser(
 			"u1",
-			call((p) => p.create("u1", input(new Date(Date.now() + 5 * 60 * 1000)))),
+			call((p) => p.create("u1", input(new Date(Date.now() + 11 * 60 * 1000)))),
 		);
 		const pair = await asUser(
 			null,
@@ -651,6 +684,77 @@ describe("AppointmentsLive", () => {
 		expect(opted).toBeGreaterThanOrEqual(0);
 		// Idempotent: nothing left to claim.
 		expect(await asUser(null, sweep)).toBe(0);
+	});
+
+	it("create rejects a slot overlapping the owner's live appointment", async () => {
+		const at = slot();
+		const first = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(at))),
+		);
+		await expect(
+			asUser(
+				"u1",
+				call((p) => p.create("u1", input(new Date(at.getTime() + 10 * 60 * 1000), 2))),
+			),
+		).rejects.toMatchObject({ _tag: "AppointmentConflict", conflictingId: first!.id });
+		// Back-to-back is fine — the slot is half-open.
+		const next = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(new Date(at.getTime() + DEFAULT_DURATION_MIN * 60_000)))),
+		);
+		expect(next).not.toBeNull();
+		// Cancelling frees the slot.
+		await asUser(
+			"u1",
+			call((p) => p.setStatus("u1", first!.id, "cancelled")),
+		);
+		const rebooked = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(at, 2))),
+		);
+		expect(rebooked?.patientId).toBe(2);
+	});
+
+	it("update re-checks overlap only when the slot moves", async () => {
+		const a = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(slot()))),
+		);
+		const b = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(slot()))),
+		);
+		// Moving b onto a clashes.
+		await expect(
+			asUser(
+				"u1",
+				call((p) => p.update("u1", b!.id, { startsAt: a!.startsAt })),
+			),
+		).rejects.toMatchObject({ _tag: "AppointmentConflict", conflictingId: a!.id });
+		// Stretching a over b clashes too.
+		await expect(
+			asUser(
+				"u1",
+				call((p) => p.update("u1", a!.id, { durationMin: 90 })),
+			),
+		).rejects.toMatchObject({ _tag: "AppointmentConflict", conflictingId: b!.id });
+		// Nudging a inside its own slot never conflicts with itself, and
+		// a same-slot patch skips the check entirely.
+		const nudged = await asUser(
+			"u1",
+			call((p) =>
+				p.update("u1", a!.id, { startsAt: new Date(a!.startsAt.getTime() + 5 * 60 * 1000) }),
+			),
+		);
+		expect(nudged?.startsAt.getTime()).toBe(a!.startsAt.getTime() + 5 * 60 * 1000);
+		const same = await asUser(
+			"u1",
+			call((p) =>
+				p.update("u1", a!.id, { startsAt: nudged!.startsAt, durationMin: nudged!.durationMin }),
+			),
+		);
+		expect(same?.id).toBe(a!.id);
 	});
 });
 

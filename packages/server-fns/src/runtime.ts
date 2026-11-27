@@ -426,6 +426,23 @@ export interface ServerRuntime {
 	 * picker's source of truth (jobHandlers registry keys). Undefined
 	 * outside the composed app. */
 	readonly jobKinds?: () => readonly string[];
+	/** Durable orchestration runner (P-120 phase 2): `startRun`
+	 * persists a run for `defId` and enqueues its first
+	 * `orchestrator.step` job through the shared queue transport.
+	 * Undefined when the jobs transport is unbound — orchestration
+	 * cannot be driven without it. `tenantId` stamps
+	 * `orchestration_runs.tenant_id` (and the step envelope's tenant);
+	 * callers resolve it from the bound `Tenant` — omit/null for
+	 * platform/personal scope. Reads stay admin-cross-tenant (the
+	 * PlatformAdmin gate is the boundary), so this remains a system
+	 * path, not a tenant-scoped service. */
+	readonly orchestration?: {
+		readonly startRun: (
+			defId: string,
+			input?: unknown,
+			tenantId?: number | null,
+		) => Promise<string>;
+	};
 	/** Enriched job-kind view: registered handler state merged with
 	 * `jobs.kind`/`jobs.schedulable` plugin declarations (P-094).
 	 * Undefined outside the composed app. */

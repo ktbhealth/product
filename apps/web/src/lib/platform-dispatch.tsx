@@ -88,6 +88,7 @@ const PLATFORM_SIDEBAR_ORDER: readonly string[] = [
 	"/platform/ai/prompts",
 	"/platform/ai/endpoints",
 	"/platform/ai/agents",
+	"/platform/pipelines",
 	"/platform/eval/personas",
 	"/platform/eval/instances",
 	"/platform/eval",

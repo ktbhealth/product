@@ -667,7 +667,7 @@ export const ConsultationsLive = Layer.effect(
 					yield* requireCipheredWhenZk(
 						db,
 						owner.tenantId,
-						[serializeAnamnesis(input.anamnesis)],
+						[serializeAnamnesis(input.anamnesis), input.transcript],
 						"consultation.update",
 					);
 				}

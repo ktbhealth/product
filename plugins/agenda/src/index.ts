@@ -11,6 +11,7 @@ import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import { appointments } from "@ktb/db/schema";
 import { AgendaPortalPage, type AgendaListItem } from "./views/index.ts";
 import { Appointments, AppointmentsLive } from "./service.ts";
+import { AGENDA_WINDOW } from "./window.ts";
 
 export {
 	APPOINTMENT_STATUSES,
@@ -22,10 +23,12 @@ export {
 	type AppointmentSyncState,
 } from "./schema.ts";
 export {
+	AppointmentConflict,
 	Appointments,
 	AppointmentsLive,
 	appointmentScope,
 	claimReminder,
+	findOverlappingAppointment,
 	createAppointment,
 	DEFAULT_DURATION_MIN,
 	getAppointment,
@@ -75,10 +78,6 @@ CREATE INDEX appointments_tenant_id_idx ON appointments (tenant_id);
 CREATE INDEX appointments_patient_idx ON appointments (patient_id);
 CREATE UNIQUE INDEX appointments_external_idx ON appointments (external_provider, external_calendar_id, external_event_id);
 `;
-
-/** Window the agenda loaders read — the current week plus margin so
- * the view can page one week either way without a refetch. */
-const AGENDA_WINDOW = { pastDays: 14, aheadDays: 21 } as const;
 
 const agendaLoader = () =>
 	Effect.gen(function* () {

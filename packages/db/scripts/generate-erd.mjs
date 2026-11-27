@@ -10,7 +10,9 @@
  * Usage: bun packages/db/scripts/generate-erd.mjs [--check] [--out <dir>]
  *        --check regenerates into a temp dir and diffs against the docs
  *        repo without writing; exits 1 on drift.
- *        --out overrides the docs content root (single target, no locales).
+ *        --out DIR writes a single (en) target tree — the plugins/ docs
+ *        dir itself, e.g. --out /tmp/plugins-docs. Hand-written content
+ *        is still read from the real docs repo for preservation.
  */
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -155,6 +157,19 @@ const DOMAINS = [
 		description:
 			"Generic jobs backbone status projection — one row per enqueued job (queued/processing/done/failed), read by the /platform jobs console.",
 		tables: ["job_runs"],
+	},
+	{
+		id: "orchestrator",
+		title: "Orchestrator",
+		owner: "`packages/db/src/orchestration.ts` + `packages/orchestrator`",
+		description:
+			"Durable orchestration runs — persisted run state, the pending-event queue, per-node run trace, and stored orchestration definitions.",
+		tables: [
+			"orchestration_defs",
+			"orchestration_events",
+			"orchestration_node_runs",
+			"orchestration_runs",
+		],
 	},
 	{
 		id: "scheduler",
@@ -308,6 +323,421 @@ const DOMAINS = [
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));
 
+// ── Plugin manifest scan ──────────────────────────────────────────
+// Second generation pass: every plugins/* registry citizen gets a
+// generated reference section — table-less plugins document their
+// contributions instead of an ER diagram. Manifests import
+// React/Effect and cannot be imported from this script, so
+// src/index.ts is scanned statically for definePlugin({...}) literals
+// (the same constraint tools/gen-db-schema.mjs works around for
+// schema.ts).
+
+const REPO_ROOT = resolve(PKG_DIR, "../..");
+const PLUGINS_DIR = join(REPO_ROOT, "plugins");
+
+// DOMAINS id → owning plugins/<pkg>, for entries that are plugin-owned.
+// auth/platform/orchestrator/scheduler are package-owned (no plugins/*
+// dir) and have no entry here. The values mark a pkg as already covered
+// by the table pass — pass 2 skips them.
+const DOMAIN_PKG = {
+	patients: "patients",
+	consultations: "consultations",
+	groups: "groups",
+	integrity: "integrity",
+	vault: "vault",
+	machines: "machines",
+	notifications: "notifications",
+	audit: "audit",
+	pages: "pages",
+	doctors: "doctors",
+	secretaries: "secretaries",
+	"patient-access": "patient-access",
+	invites: "invites",
+	"ai-endpoints": "ai-provider",
+	"ai-model": "ai-model",
+	"ai-prompt": "ai-prompt",
+	"eval-validator": "eval-validator",
+	"eval-persona": "eval-persona",
+	theme: "theme",
+	fonts: "fonts",
+	"rich-text": "rich-text",
+	images: "image",
+	schemas: "schemas",
+	layouts: "layouts",
+	templates: "templates",
+	i18n: "i18n",
+	kv: "kv",
+	agenda: "agenda",
+	"document-store": "document-store",
+	wizards: "wizards",
+	rbac: "rbac",
+	jobs: "jobs",
+};
+
+// docs section id overrides where the pkg name would collide with an
+// existing section: DOMAINS `auth` documents the better-auth core
+// tables (packages/db), while plugins/auth ships the auth routes and
+// chrome contributions.
+const PLUGIN_DOC_ID = { auth: "auth-plugin" };
+
+// Dedicated contribution fields on the Plugin union (kernel
+// contributions.ts) plus the additive generic channels. Order is the
+// display order on generated reference pages.
+const CONTRIBUTION_FIELDS = [
+	"tables",
+	"services",
+	"routes",
+	"landing",
+	"chrome",
+	"panel",
+	"pages",
+	"portals",
+	"boundaries",
+	"elementKinds",
+	"middleware",
+	"contributions",
+	"pipelines",
+	"orchestrations",
+];
+// String/comment/template-aware scanners — manifests embed JSX refs,
+// arrow fns and nested objects, so braces can't be matched naively.
+function skipString(src, i) {
+	const quote = src[i];
+	i++;
+	while (i < src.length) {
+		const c = src[i];
+		if (c === "\\") {
+			i += 2;
+			continue;
+		}
+		if (c === quote) return i + 1;
+		if (quote === "`" && c === "$" && src[i + 1] === "{") {
+			i = skipBalanced(src, i + 1);
+			continue;
+		}
+		i++;
+	}
+	return i;
+}
+
+function skipBalanced(src, i) {
+	// src[i] is an opening bracket; returns the index just past its match.
+	const CLOSERS = { "{": "}", "[": "]", "(": ")" };
+	const stack = [CLOSERS[src[i]]];
+	i++;
+	while (i < src.length && stack.length > 0) {
+		const c = src[i];
+		const n = src[i + 1];
+		if (c === "/" && n === "/") {
+			const e = src.indexOf("\n", i + 2);
+			i = e === -1 ? src.length : e + 1;
+			continue;
+		}
+		if (c === "/" && n === "*") {
+			const e = src.indexOf("*/", i + 2);
+			i = e === -1 ? src.length : e + 2;
+			continue;
+		}
+		if (c === '"' || c === "'" || c === "`") {
+			i = skipString(src, i);
+			continue;
+		}
+		if (c === "{" || c === "[" || c === "(") stack.push(CLOSERS[c]);
+		else if (c === "}" || c === "]" || c === ")") {
+			if (stack.pop() !== c) return src.length; // unbalanced — bail
+		}
+		i++;
+	}
+	return i;
+}
+
+function skipWsComments(src, i) {
+	while (i < src.length) {
+		const c = src[i];
+		if (/\s/.test(c)) {
+			i++;
+			continue;
+		}
+		if (c === "/" && src[i + 1] === "/") {
+			const e = src.indexOf("\n", i + 2);
+			i = e === -1 ? src.length : e + 1;
+			continue;
+		}
+		if (c === "/" && src[i + 1] === "*") {
+			const e = src.indexOf("*/", i + 2);
+			i = e === -1 ? src.length : e + 2;
+			continue;
+		}
+		break;
+	}
+	return i;
+}
+
+// Depth-1 `key: value` pairs of the object literal opening at `open`
+// (src[open] === "{"). Values are raw source slices.
+function topLevelEntries(src, open) {
+	const entries = [];
+	let i = open + 1;
+	while (i < src.length) {
+		const c = src[i];
+		if (c === "}") break;
+		if (c === '"' || c === "'" || c === "`") {
+			i = skipString(src, i);
+			continue;
+		}
+		if (c === "/" && src[i + 1] === "/") {
+			const e = src.indexOf("\n", i + 2);
+			i = e === -1 ? src.length : e + 1;
+			continue;
+		}
+		if (c === "/" && src[i + 1] === "*") {
+			const e = src.indexOf("*/", i + 2);
+			i = e === -1 ? src.length : e + 2;
+			continue;
+		}
+		if (!/[A-Za-z_$]/.test(c)) {
+			i++;
+			continue;
+		}
+		const key = /^[A-Za-z_$][\w$]*/.exec(src.slice(i, i + 80))[0];
+		const colon = skipWsComments(src, i + key.length);
+		if (src[colon] !== ":") {
+			i += key.length;
+			continue;
+		}
+		const vstart = skipWsComments(src, colon + 1);
+		let vend = vstart;
+		while (vend < src.length) {
+			const vc = src[vend];
+			if (vc === '"' || vc === "'" || vc === "`") {
+				vend = skipString(src, vend);
+				continue;
+			}
+			if (vc === "/" && src[vend + 1] === "/") {
+				const e = src.indexOf("\n", vend + 2);
+				vend = e === -1 ? src.length : e + 1;
+				continue;
+			}
+			if (vc === "/" && src[vend + 1] === "*") {
+				const e = src.indexOf("*/", vend + 2);
+				vend = e === -1 ? src.length : e + 2;
+				continue;
+			}
+			if (vc === "{" || vc === "[" || vc === "(") {
+				vend = skipBalanced(src, vend);
+				continue;
+			}
+			if (vc === "," || vc === "}") break;
+			vend++;
+		}
+		entries.push({ key, value: src.slice(vstart, vend).trim() });
+		i = vend;
+	}
+	return entries;
+}
+
+// Every `const name = definePlugin({...})` in a manifest file.
+function scanManifests(file) {
+	const src = readFileSync(file, "utf8");
+	const out = [];
+	const re = /\b(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*definePlugin\s*\(\s*\{/g;
+	let m;
+	while ((m = re.exec(src))) {
+		const open = m.index + m[0].length - 1;
+		const end = skipBalanced(src, open);
+		out.push({ name: m[1], entries: topLevelEntries(src, open) });
+		re.lastIndex = end;
+	}
+	return out;
+}
+
+// First string literal at the start of `v` ('...', "..." or `...`).
+function stringLiteral(v) {
+	const m = /^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/.exec(v);
+	if (!m) return null;
+	const raw = m[1];
+	if (raw.includes("${")) return null; // interpolated — not static text
+	return raw.slice(1, -1).replace(/\\(["'`\\])/g, "$1");
+}
+
+function entryValue(entries, key) {
+	return entries.find((e) => e.key === key)?.value;
+}
+
+// name/description inside a `meta: {...}` value (raw object source).
+function metaString(metaSrc, field) {
+	if (!metaSrc) return null;
+	const m = new RegExp(`(?:^|[{,\\s])${field}\\s*:`).exec(metaSrc);
+	if (!m) return null;
+	return stringLiteral(metaSrc.slice(m.index + m[0].length).trimStart());
+}
+
+// Plugin ids out of a deps array: `"literal.id"` strings and
+// `somePlugin.id` references resolved through the const-name map.
+function depIds(value, nameToId) {
+	if (!value) return [];
+	const ids = [];
+	for (const m of value.matchAll(/["']([^"']+)["']|\b([A-Za-z_$][\w$]*)\.id\b/g)) {
+		ids.push(m[1] ?? nameToId.get(m[2]) ?? `${m[2]}.id`);
+	}
+	return [...new Set(ids)];
+}
+
+const humanize = (s) =>
+	s
+		.split(/[-_\s]+/)
+		.filter(Boolean)
+		.map((w) => w[0].toUpperCase() + w.slice(1))
+		.join(" ");
+
+// Pass 1: scan every registry citizen's src/index.ts plus package-level
+// manifest files (packages/*/src/index.ts — e.g. @ktb/platform ships
+// platformAdminPlugin) to build the const-name → plugin-id map used to
+// resolve `xPlugin.id` dependency references.
+const manifestFiles = [];
+{
+	const pluginPkgs = readdirSync(PLUGINS_DIR, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.map((d) => d.name)
+		.sort();
+	for (const pkg of pluginPkgs) {
+		const f = join(PLUGINS_DIR, pkg, "src/index.ts");
+		if (existsSync(f)) manifestFiles.push({ pkg, file: f });
+	}
+	const packagesDir = join(REPO_ROOT, "packages");
+	for (const d of readdirSync(packagesDir, { withFileTypes: true })) {
+		if (!d.isDirectory()) continue;
+		const f = join(packagesDir, d.name, "src/index.ts");
+		if (existsSync(f) && readFileSync(f, "utf8").includes("definePlugin(")) {
+			manifestFiles.push({ pkg: null, file: f });
+		}
+	}
+}
+
+const nameToId = new Map();
+const manifestsByPkg = new Map();
+for (const { pkg, file } of manifestFiles) {
+	const manifests = scanManifests(file);
+	for (const man of manifests) {
+		const id = stringLiteral(entryValue(man.entries, "id") ?? "");
+		if (id) nameToId.set(man.name, id);
+	}
+	if (pkg) manifestsByPkg.set(pkg, manifests);
+}
+
+// Pass 2: aggregate per plugin package. Pkgs covered by a DOMAINS
+// table section are skipped — they already have the full ER docs.
+const coveredPkgs = new Set(Object.values(DOMAIN_PKG));
+const PLUGIN_DOCS = [];
+for (const pkg of [...manifestsByPkg.keys()].sort((a, b) => a.localeCompare(b))) {
+	if (coveredPkgs.has(pkg)) continue;
+	const manifests = manifestsByPkg.get(pkg);
+	const srcDir = join(PLUGINS_DIR, pkg, "src");
+
+	const pluginIds = [];
+	const names = new Set();
+	const descriptions = [];
+	const kinds = new Set();
+	const contributionHelpers = new Set();
+	const requiredDeps = new Set();
+	const optionalDeps = new Set();
+	let priority = null;
+	let system = false;
+
+	for (const man of manifests) {
+		const id = stringLiteral(entryValue(man.entries, "id") ?? "");
+		if (id) pluginIds.push(id);
+		const meta = entryValue(man.entries, "meta");
+		const name = metaString(meta, "name");
+		const description = metaString(meta, "description");
+		if (name) names.add(name);
+		if (description && !descriptions.includes(description)) descriptions.push(description);
+		for (const e of man.entries) {
+			if (CONTRIBUTION_FIELDS.includes(e.key)) {
+				kinds.add(e.key);
+				if (e.key === "contributions") {
+					for (const h of e.value.matchAll(/\b([A-Za-z_$][\w$]*?)Contribution\s*\(/g)) {
+						contributionHelpers.add(h[1]);
+					}
+				}
+			}
+		}
+		for (const id2 of depIds(entryValue(man.entries, "requiredDeps"), nameToId)) {
+			requiredDeps.add(id2);
+		}
+		for (const id2 of depIds(entryValue(man.entries, "optionalDeps"), nameToId)) {
+			optionalDeps.add(id2);
+		}
+		const prio = stringLiteral(entryValue(man.entries, "priority") ?? "");
+		if (prio) priority = prio;
+		if (entryValue(man.entries, "system") === "true") system = true;
+	}
+
+	// Tables declared in src/schema.ts (if any) are already owned by a
+	// DOMAINS section — cross-link rather than duplicate.
+	const schemaTables = [];
+	const schemaFile = join(srcDir, "schema.ts");
+	if (existsSync(schemaFile)) {
+		const schemaSrc = readFileSync(schemaFile, "utf8");
+		for (const m of schemaSrc.matchAll(
+			/\b(?:sqliteTable|tenantTable|pgTable)\s*\(\s*["'`]([\w$]+)["'`]/g,
+		)) {
+			schemaTables.push(m[1]);
+		}
+	}
+	const ownedDomains = DOMAINS.filter((d) => d.tables.some((t) => schemaTables.includes(t))).map(
+		(d) => d.id,
+	);
+
+	const apiFile = join(srcDir, "api.ts");
+	const hasApi = existsSync(apiFile);
+	const apiGroups = hasApi
+		? [
+				...readFileSync(apiFile, "utf8").matchAll(
+					/export const (\w+) = (Query|Command|Event)\.group\(/g,
+				),
+			].map((m) => ({ name: m[1], kind: m[2] }))
+		: [];
+
+	const sourceFiles = ["index.ts"];
+	if (hasApi) sourceFiles.push("api.ts");
+	if (existsSync(join(srcDir, "schema.ts"))) sourceFiles.push("schema.ts");
+	if (existsSync(join(srcDir, "fns.ts"))) sourceFiles.push("fns.ts");
+	if (existsSync(join(srcDir, "routes"))) sourceFiles.push("routes/");
+	if (existsSync(join(srcDir, "api-routes"))) sourceFiles.push("api-routes/");
+	if (existsSync(join(srcDir, "views"))) sourceFiles.push("views/");
+
+	const kindList = CONTRIBUTION_FIELDS.filter((k) => kinds.has(k));
+	PLUGIN_DOCS.push({
+		pkg,
+		docsId: PLUGIN_DOC_ID[pkg] ?? pkg,
+		title: names.size === 1 ? [...names][0] : humanize(pkg),
+		description: descriptions[0] ?? null,
+		pluginIds,
+		kinds: kindList,
+		contributionHelpers: [...contributionHelpers],
+		requiredDeps: [...requiredDeps],
+		optionalDeps: [...optionalDeps],
+		priority,
+		system,
+		ownedDomains,
+		hasApi,
+		apiGroups,
+		sourceFiles,
+	});
+}
+PLUGIN_DOCS.sort((a, b) => a.docsId.localeCompare(b.docsId));
+{
+	const seen = new Set();
+	for (const p of PLUGIN_DOCS) {
+		if (seen.has(p.docsId) || DOMAINS.some((d) => d.id === p.docsId)) {
+			console.error(`plugin docs id collision: ${p.docsId} (${p.pkg})`);
+			process.exit(1);
+		}
+		seen.add(p.docsId);
+	}
+}
+
 const args = process.argv.slice(2);
 const check = args.includes("--check");
 const outFlag = args.indexOf("--out");
@@ -408,7 +838,10 @@ function renderTarget(root, locale, existingBase) {
 	writeFileSync(
 		join(base, "meta.json"),
 		JSON.stringify(
-			{ title: "Plugins", pages: ["index", ...DOMAINS.map((d) => d.id)] },
+			{
+				title: "Plugins",
+				pages: ["index", ...DOMAINS.map((d) => d.id), ...PLUGIN_DOCS.map((p) => p.docsId)],
+			},
 			null,
 			"\t",
 		) + "\n",
@@ -451,17 +884,18 @@ function renderTarget(root, locale, existingBase) {
 			join(tablesDir, "meta.json"),
 			JSON.stringify({ title: qt.tables, pages: d.tables }, null, "\t") + "\n",
 		);
-		// how-to guides are hand-written: keep the existing pages list so
-		// regen never drops them (and --check compares like-for-like).
+		// how-to guides are hand-written: the pages list is derived from
+		// the *.mdx files actually present in the docs tree (slug =
+		// filename minus .mdx, sorted) so regen never drops them and
+		// --check compares like-for-like.
 		let howToPages = [];
 		if (existingBase) {
-			const existing = join(existingBase, d.id, "how-to", "meta.json");
-			if (existsSync(existing)) {
-				try {
-					howToPages = JSON.parse(readFileSync(existing, "utf8")).pages ?? [];
-				} catch {
-					/* malformed — regenerate empty */
-				}
+			const howToRoot = join(existingBase, d.id, "how-to");
+			if (existsSync(howToRoot)) {
+				howToPages = readdirSync(howToRoot)
+					.filter((f) => f.endsWith(".mdx"))
+					.map((f) => f.slice(0, -".mdx".length))
+					.sort();
 			}
 		}
 		writeFileSync(
@@ -498,17 +932,128 @@ function renderTarget(root, locale, existingBase) {
 			);
 		}
 	}
+
+	// Pass 2 — one reference-only section per plugins/* citizen that has
+	// no DOMAINS table section. No tables/ dir and no schema.mmd: these
+	// plugins own no DB tables (table-owning pkgs are all DOMAINS-covered).
+	for (const p of PLUGIN_DOCS) {
+		const dir = join(base, p.docsId);
+		const refDir = join(dir, "reference");
+		mkdirSync(refDir, { recursive: true });
+
+		// Same quadrant convention as DOMAINS sections, minus the
+		// always-present how-to/: reference/ is generated, the rest only
+		// when a hand-written dir already exists in the docs tree.
+		const QUADRANTS = ["tutorials", "how-to", "explanation", "reference"];
+		const hasIndex =
+			existingBase !== undefined && existsSync(join(existingBase, p.docsId, "index.mdx"));
+		const quadrants = QUADRANTS.filter(
+			(q) =>
+				q === "reference" ||
+				(existingBase !== undefined && existsSync(join(existingBase, p.docsId, q))),
+		);
+		writeFileSync(
+			join(dir, "meta.json"),
+			JSON.stringify(
+				{ title: p.title, pages: [...(hasIndex ? ["index"] : []), ...quadrants] },
+				null,
+				"\t",
+			) + "\n",
+		);
+		writeFileSync(
+			join(refDir, "meta.json"),
+			JSON.stringify({ title: qt.reference, pages: ["index"] }, null, "\t") + "\n",
+		);
+
+		const kindLabels = p.kinds.map((k) => (k === "contributions" ? "generic contributions" : k));
+		const description =
+			p.description ??
+			`Plugin package \`plugins/${p.pkg}\` — contributes ${kindLabels.join(", ") || "registry entries"}.`;
+		const lines = [
+			`---`,
+			`title: ${JSON.stringify(p.title)}`,
+			`description: ${JSON.stringify(description)}`,
+			`icon: Plug`,
+			`---`,
+			``,
+			`{/* Generated by ${GENERATED_BY} — do not edit. */}`,
+			``,
+			`Plugin package \`plugins/${p.pkg}\` — ${p.pluginIds.length} manifest(s) in \`plugins/${p.pkg}/src/index.ts\`.`,
+		];
+		if (p.system || p.priority) {
+			const flags = [
+				...(p.system ? ["system plugin (cannot be disabled)"] : []),
+				...(p.priority ? [`priority: \`${p.priority}\``] : []),
+			];
+			lines.push(``, `Flags: ${flags.join(" · ")}.`);
+		}
+		lines.push(``, `## Plugin ids`, ``);
+		for (const id of p.pluginIds) lines.push(`- \`${id}\``);
+		lines.push(``, `## Contributions`, ``);
+		if (p.kinds.length === 0) {
+			lines.push(`- (marker plugin — declares no contributions)`);
+		}
+		for (const k of p.kinds) {
+			if (k === "contributions" && p.contributionHelpers.length > 0) {
+				lines.push(
+					`- \`contributions\` — generic kinds via ${p.contributionHelpers.map((h) => `\`${h}Contribution\``).join(", ")}`,
+				);
+			} else {
+				lines.push(`- \`${k}\``);
+			}
+		}
+		if (p.requiredDeps.length > 0 || p.optionalDeps.length > 0) {
+			lines.push(``, `## Dependencies`, ``);
+			if (p.requiredDeps.length > 0) {
+				lines.push(`- required: ${p.requiredDeps.map((d) => `\`${d}\``).join(", ")}`);
+			}
+			if (p.optionalDeps.length > 0) {
+				lines.push(`- optional: ${p.optionalDeps.map((d) => `\`${d}\``).join(", ")}`);
+			}
+		}
+		if (p.hasApi) {
+			lines.push(``, `## CQRS`, ``);
+			if (p.apiGroups.length > 0) {
+				lines.push(
+					`\`plugins/${p.pkg}/src/api.ts\` defines ${p.apiGroups.length} group(s): ` +
+						p.apiGroups.map((g) => `\`${g.name}\` (${g.kind})`).join(", ") +
+						`.`,
+				);
+			} else {
+				lines.push(
+					`\`plugins/${p.pkg}/src/api.ts\` defines the CQRS surface (queries/commands/events).`,
+				);
+			}
+		}
+		if (p.ownedDomains.length > 0) {
+			lines.push(``, `## Database`, ``);
+			lines.push(
+				`Tables owned by this package are documented under ` +
+					p.ownedDomains.map((id) => `[\`${id}\`](${docsBase}/${id}/reference/)`).join(", ") +
+					`.`,
+			);
+		}
+		lines.push(``, `## Source`, ``);
+		for (const f of p.sourceFiles) {
+			lines.push(`- \`plugins/${p.pkg}/src/${f}\``);
+		}
+		writeFileSync(join(refDir, "index.mdx"), lines.join("\n") + "\n");
+	}
 }
 
 // 4. Render each target into staging, then copy into the docs repo or diff.
 //    A target is the plugins/ dir that receives the per-plugin sections.
-//    --out DIR uses the same semantics.
+//    `preserve` is the docs tree hand-written content (how-to guides,
+//    plugin index.mdx, extra quadrants) is read from — normally the same
+//    as `dir`; with --out it stays pointed at the real docs repo so the
+//    scratch output matches what a real regen would produce.
+const realEnPlugins = join(DOCS_REPO, "content/docs/en/developers/plugins");
 const targets = outOverride
-	? [{ dir: outOverride, locale: "en" }]
-	: LOCALES.map((l) => ({
-			dir: join(DOCS_REPO, "content/docs", l, "developers/plugins"),
-			locale: l,
-		}));
+	? [{ dir: outOverride, locale: "en", preserve: realEnPlugins }]
+	: LOCALES.map((l) => {
+			const dir = join(DOCS_REPO, "content/docs", l, "developers/plugins");
+			return { dir, locale: l, preserve: dir };
+		});
 
 function collectFiles(dir, prefix = "") {
 	const out = new Map();
@@ -522,9 +1067,10 @@ function collectFiles(dir, prefix = "") {
 	return out;
 }
 
-const staged = targets.map(({ dir: checkBase, locale }, i) => {
+const staged = targets.map(({ dir: checkBase, locale, preserve }, i) => {
 	const renderRoot = join(tmp, `target-${i}`);
-	renderTarget(renderRoot, locale, checkBase);
+	const existingBase = existsSync(preserve) ? preserve : checkBase;
+	renderTarget(renderRoot, locale, existingBase);
 	return { checkBase, renderRoot };
 });
 
@@ -577,12 +1123,19 @@ if (check) {
 	for (const { checkBase, renderRoot } of staged) {
 		// wipe only generated artifacts; hand-written files survive:
 		// plugins/index.mdx, and everything under plugins/<id>/how-to/
-		// (only its meta.json is regenerated, preserving the pages list).
+		// (its meta.json is regenerated with pages derived from the
+		// *.mdx files present in the docs tree).
 		rmSync(join(checkBase, "schema.mmd"), { force: true });
 		rmSync(join(checkBase, "meta.json"), { force: true });
 		for (const d of DOMAINS) {
 			rmSync(join(checkBase, d.id, "reference"), { recursive: true, force: true });
 			rmSync(join(checkBase, d.id, "meta.json"), { force: true });
+		}
+		// Pass-2 sections: same contract — generated reference/ + meta.json
+		// are wiped, hand-written quadrants/index survive the merge copy.
+		for (const p of PLUGIN_DOCS) {
+			rmSync(join(checkBase, p.docsId, "reference"), { recursive: true, force: true });
+			rmSync(join(checkBase, p.docsId, "meta.json"), { force: true });
 		}
 		for (const e of readdirSync(renderRoot, { withFileTypes: true })) {
 			const src = join(renderRoot, e.name);
