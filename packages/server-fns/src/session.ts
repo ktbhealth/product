@@ -325,6 +325,15 @@ declare module "@ktb/kernel" {
 		 * profiles the patient portal would offer. Chrome hides the
 		 * patient-portal entry when this is 0. */
 		readonly patientProfiles?: number;
+		/** Rank of the account's role in the tenant bound to the current
+		 * request (owner > admin > member, per TENANT_ROLE_RANK in
+		 * @ktb/tenant). Portal shells resolve it per navigation from the
+		 * same TenantResolver pipeline page loaders use — it is request
+		 * state, not a session-account field, so getSessionAccount does
+		 * not populate it. Chrome `when.minUserCounts` gates tenant-admin
+		 * surfaces on it; hosts that resolve no bound tenant leave it
+		 * undefined, which those gates treat as failing closed. */
+		readonly tenantRoleRank?: number;
 	}
 }
 

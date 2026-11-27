@@ -33,6 +33,11 @@ export const vaultChromePlugin = definePlugin({
 		id: `vault.${instance}.nav`,
 		region: "portal.sidebar" as const,
 		portal: instance,
+		// Mirrors index.ts — tenant admins only. `tenantRoleRank` is the
+		// ChromeUser facet portal shells fill from the bound tenant's
+		// TENANT_ROLE_RANK ordinal (admin = 2; the client mirror cannot
+		// import @ktb/tenant, so the literal is restated here).
+		when: { minUserCounts: { tenantRoleRank: 2 } },
 		content: {
 			kind: "sidebarItem" as const,
 			item: {

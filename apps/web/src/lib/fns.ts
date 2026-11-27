@@ -31,7 +31,13 @@ import {
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
 import { PortalAudience } from "@ktb/portal";
-import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
+import {
+	TENANT_ROLE_RANK,
+	Tenant,
+	TenantResolver,
+	tenantSelectorFromHeaders,
+	tenantScopeId,
+} from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
 import {
 	doctorHandler,
@@ -452,6 +458,29 @@ export const portalPageDataFn = createServerFn({ method: "GET" })
 	// boundary; the wire type is whatever each page's loader returns
 	// (serializable rows — same shape the retired per-page fns sent).
 	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "portal"));
+
+/**
+ * The tenant bound to this request — selector headers → directory →
+ * single-membership default, the same resolution `runAs` applies to
+ * page loaders — as `{ id, role, roleRank }`, or null in personal
+ * scope / anonymous. `roleRank` is the TENANT_ROLE_RANK ordinal portal
+ * shells feed into chrome `when.minUserCounts` gates (as the
+ * `tenantRoleRank` facet) so tenant-admin surfaces (e.g. the clinic
+ * vault) stay hidden from members, secretaries and patient accounts.
+ */
+export const boundTenantFn = createServerFn({ method: "GET" }).handler(
+	optionalSessionHandler(
+		() => null,
+		async ({ run }) =>
+			run(
+				Effect.map(Tenant, (tenant) =>
+					tenant === null
+						? null
+						: { id: tenant.id, role: tenant.role, roleRank: TENANT_ROLE_RANK[tenant.role] },
+				),
+			),
+	),
+);
 
 /**
  * Audience rule ids the session user satisfies (P-081) — feeds the

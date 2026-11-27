@@ -9,7 +9,7 @@ import { Db, makeDb, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import { makeTestD1 } from "@ktb/db-testing";
-import { Tenant, type TenantRole } from "@ktb/tenant";
+import { TENANT_ROLE_RANK, Tenant, type TenantRole } from "@ktb/tenant";
 import {
 	approveClinicDevice,
 	deviceByWrapPubkey,
@@ -588,5 +588,33 @@ describe("vault plugins", () => {
 		]);
 		expect(vaultChromePlugin.id).toBe("vault.chrome");
 		expect(vaultChromePlugin.chrome.map((c) => c.portal)).toEqual(["doctor", "secretary"]);
+	});
+
+	it("gates the page and sidebar entry to tenant admins", async () => {
+		for (const page of vaultPagesPlugin.pages) {
+			expect(page.guard).toBeDefined();
+		}
+		const guard = vaultPagesPlugin.pages[0]!.guard!;
+		const asRole = (role: TenantRole) =>
+			Effect.runPromise(
+				guard().pipe(
+					Effect.provideService(Tenant, {
+						id: TENANT_ID,
+						kind: "clinic",
+						slug: "clinic-7",
+						role,
+					}),
+				),
+			);
+		// No bound tenant (personal scope) and member-or-below → denied.
+		await expect(Effect.runPromise(guard())).resolves.toBe(false);
+		await expect(asRole("member")).resolves.toBe(false);
+		await expect(asRole("admin")).resolves.toBe(true);
+		await expect(asRole("owner")).resolves.toBe(true);
+		for (const contribution of vaultChromePlugin.chrome) {
+			expect(contribution.when?.minUserCounts).toEqual({
+				tenantRoleRank: TENANT_ROLE_RANK.admin,
+			});
+		}
 	});
 });

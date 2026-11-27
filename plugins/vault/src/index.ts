@@ -9,7 +9,14 @@ import { Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { requireTenantRole, Tenant, TenantForbidden, tenantScopeId } from "@ktb/tenant";
+import {
+	TENANT_ROLE_RANK,
+	requireTenantRole,
+	Tenant,
+	TenantForbidden,
+	tenantRoleAtLeast,
+	tenantScopeId,
+} from "@ktb/tenant";
 
 import { VaultClinicPage } from "./vault-page.tsx";
 
@@ -591,10 +598,20 @@ export const vaultSecretsPlugin = definePlugin({
 /**
  * The clinical instances the vault page mounts under, coupled by URL
  * only — the same ids the clinician plugin registers its portals with.
- * Both run loaders under the acting doctor (`subject: "doctor"`), so a
- * secretary manages the clinic vault of the doctor they act for.
+ * Both run loaders under the acting doctor (`subject: "doctor"`); the
+ * page and its sidebar entry are gated to tenant admins
+ * (`when.minUserCounts` + `guard`), so secretaries and members never
+ * reach the clinic vault.
  */
 const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
+
+/** Tenant-admin gate for the vault page — the sidebar's
+ * `when.minUserCounts: { tenantRoleRank }` hides the entry from
+ * members/secretaries, and
+ * this guard is the hard server-side check: personal scope (no bound
+ * tenant) and member-or-below roles get a 404, not a degraded page. */
+const vaultAdminGuard = () =>
+	Effect.map(Tenant, (tenant) => tenant !== null && tenantRoleAtLeast(tenant.role, "admin"));
 
 /**
  * Clinic vault page (T-143): /portal/<doctor|secretary>/vault — key
@@ -611,6 +628,7 @@ export const vaultPagesPlugin = definePlugin({
 		id: `vault.${instance}`,
 		path: `/portal/${instance}/vault`,
 		component: VaultClinicPage,
+		guard: vaultAdminGuard,
 		loader: () =>
 			Effect.gen(function* () {
 				const tenant = yield* Tenant;
@@ -658,6 +676,11 @@ export const vaultChromePlugin = definePlugin({
 		id: `vault.${instance}.nav`,
 		region: "portal.sidebar" as const,
 		portal: instance,
+		// Tenant admins only — secretaries, members and patient accounts
+		// never see the entry (the page guard 404s them regardless).
+		// `tenantRoleRank` is the ChromeUser facet portal shells fill
+		// from the bound tenant's TENANT_ROLE_RANK ordinal.
+		when: { minUserCounts: { tenantRoleRank: TENANT_ROLE_RANK.admin } },
 		content: {
 			kind: "sidebarItem" as const,
 			item: {
