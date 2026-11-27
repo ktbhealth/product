@@ -166,6 +166,36 @@ describe("api delegates forward to the server fns", () => {
 	});
 });
 
+describe("consultationDetailApi.generateAnamnesis", () => {
+	const generate = () =>
+		consultationDetailApi.generateAnamnesis!({
+			data: { consultationId: 9, transcript: "paciente relata dor", patientId: 4 },
+		});
+
+	it("extracts then attaches the draft for the record", async () => {
+		const fns = await import("./fns.ts");
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue({
+			anamnesis: "v1.draft",
+			engine: "stub",
+		} as never);
+		vi.mocked(fns.attachAnamnesisFn).mockResolvedValue({ ok: true } as never);
+		await expect(generate()).resolves.toEqual({ ok: true });
+		expect(fns.extractAnamnesisFn).toHaveBeenCalledWith({
+			data: { transcript: "paciente relata dor", patientId: 4 },
+		});
+		expect(fns.attachAnamnesisFn).toHaveBeenCalledWith({
+			data: { consultationId: 9, anamnesis: "v1.draft", engine: "stub" },
+		});
+	});
+
+	it("fails without attaching when the extract returns null (ZK tenant)", async () => {
+		const fns = await import("./fns.ts");
+		vi.mocked(fns.extractAnamnesisFn).mockResolvedValue(null as never);
+		await expect(generate()).resolves.toEqual({ ok: false });
+		expect(fns.attachAnamnesisFn).not.toHaveBeenCalled();
+	});
+});
+
 describe("consultationsZkApi", () => {
 	it("binds the vault device/envelope/grant fns", async () => {
 		mocks.vaultDevicesFn.mockResolvedValue([{ id: "dev-1" }]);

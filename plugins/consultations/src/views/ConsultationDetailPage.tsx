@@ -248,7 +248,8 @@ export function ConsultationDetailPage({
 				api!.generateAnamnesis!({
 					data: {
 						consultationId: c.id,
-						transcript: v.transcript ?? "",
+						// Non-null: the button only renders when v.transcript?.trim().
+						transcript: v.transcript!,
 						...(v.patientId === null ? {} : { patientId: v.patientId }),
 					},
 				}),

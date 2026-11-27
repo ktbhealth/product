@@ -1059,4 +1059,74 @@ describe("review stamps (PL-022)", () => {
 		});
 		await waitFor(() => expect(routerMocks.invalidate).toHaveBeenCalled());
 	});
+
+	it("leaves the record unstamped when the review call is refused", async () => {
+		const user = userEvent.setup();
+		const reviewTranscript = vi.fn(async () => ({ ok: false }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), reviewTranscript }}
+			/>,
+		);
+		await user.click(screen.getByText("Confirm transcript"));
+		await waitFor(() => expect(reviewTranscript).toHaveBeenCalledWith({ data: 10 }));
+		await act(async () => {});
+		expect(screen.queryByText(/Confirmed/)).toBeNull();
+		expect(screen.getByText("Confirm transcript")).toBeTruthy();
+	});
+
+	it("approves an anamnesis whose version column is unset", async () => {
+		const user = userEvent.setup();
+		const approveAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), approveAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Approve anamnesis"));
+		expect(approveAnamnesis).toHaveBeenCalledWith({ data: 10 });
+		expect(await screen.findByText("Anamnesis approved")).toBeTruthy();
+	});
+
+	it("omits patientId from the generate call on unlinked records", async () => {
+		const user = userEvent.setup();
+		const generateAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesis: null, patientId: null })}
+				history={null}
+				api={{ getConsultation: vi.fn(), generateAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Generate anamnesis"));
+		expect(generateAnamnesis).toHaveBeenCalledWith({
+			data: { consultationId: 10, transcript: BASE.transcript },
+		});
+	});
+
+	it("does not re-defer when the calendar day is deselected", async () => {
+		const user = userEvent.setup();
+		const deferConsultation = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ deferredUntil: new Date(Date.now() + 86_400_000) })}
+				history={null}
+				api={{ getConsultation: vi.fn(), deferConsultation }}
+			/>,
+		);
+		await user.click(screen.getAllByText(/Deferred until/)[0]!);
+		// Clicking the already-selected day deselects it — onSelect gets
+		// undefined and the defer call must not fire again.
+		const selected = document.querySelector<HTMLButtonElement>(
+			'[data-slot="popover-content"] button[data-day][data-selected-single="true"]',
+		);
+		expect(selected).toBeTruthy();
+		await user.click(selected!);
+		await act(async () => {});
+		expect(deferConsultation).not.toHaveBeenCalled();
+	});
 });
