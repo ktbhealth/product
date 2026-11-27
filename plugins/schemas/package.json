@@ -10,6 +10,7 @@
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
+		"@ktb/admin-store": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",

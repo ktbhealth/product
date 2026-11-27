@@ -3,12 +3,12 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Schema } from "effect";
 
 import { Forbidden } from "@ktb/authz";
-import { Db, type DbClient } from "@ktb/db";
-import { PlatformAdmin } from "@ktb/platform";
+import { type DbClient } from "@ktb/db";
+import { defineAdminStore } from "@ktb/admin-store";
 import { RichTexts } from "@ktb/rich-text/service";
 import {
 	RichTextDeleteHooks,
@@ -30,29 +30,13 @@ export type { LayoutRow } from "./schema.ts";
  * `getById` and `resolveForPage` are public reads other plugins (the
  * pages plugin rendering `pages.layout_id`) use — they need no
  * principal.
+ *
+ * The CRUD core (list/get/create/update/remove + the name natural
+ * key) comes from `@ktb/admin-store`'s `defineAdminStore`; this module
+ * keeps the layout-config contract, the builder-document write, the
+ * public `resolveForPage` read, the rich-text delete-hook
+ * participation and the plugin's error tags.
  */
-
-/** `adminUpdate`/`adminRemove` targeted a missing row. */
-export class LayoutNotFound extends Data.TaggedError("LayoutNotFound")<{
-	readonly id: number;
-}> {}
-
-/** `adminCreate`/`adminUpdate` received a blank `name`. */
-export class InvalidLayoutName extends Data.TaggedError("InvalidLayoutName")<{
-	readonly name: string;
-}> {}
-
-/** `name` is already registered to a different row. */
-export class LayoutNameTaken extends Data.TaggedError("LayoutNameTaken")<{
-	readonly name: string;
-}> {}
-
-/** `adminCreate`/`adminUpdate` received a `config` payload that is not
- * valid JSON or does not match the layout config contract — the
- * rejected input is carried for debugging. */
-export class InvalidLayoutConfig extends Data.TaggedError("InvalidLayoutConfig")<{
-	readonly config: string;
-}> {}
 
 /** `adminSetBuilderJson` received a `builderJson` payload that is not
  * valid JSON or not a JSON object — same handled-failure contract as
@@ -60,14 +44,6 @@ export class InvalidLayoutConfig extends Data.TaggedError("InvalidLayoutConfig")
 export class InvalidBuilderDoc extends Data.TaggedError("InvalidBuilderDoc")<{
 	readonly builderJson: string;
 }> {}
-
-export type LayoutError =
-	| Forbidden
-	| LayoutNotFound
-	| InvalidLayoutName
-	| LayoutNameTaken
-	| InvalidLayoutConfig
-	| InvalidBuilderDoc;
 
 /**
  * Frozen config contract (P-102 phase 2):
@@ -131,13 +107,6 @@ export interface ResolvedLayoutSection {
 	readonly content: unknown;
 }
 
-/** Seed written by `adminCreate` when no config text is supplied. */
-const EMPTY_CONFIG = '{"sections":[]}';
-
-/** Console route this plugin owns — the referencer `path` target the
- * rich-text delete dialog links to. */
-const LAYOUTS_CONSOLE = "/platform/layouts";
-
 /** Tolerant config parse: stored JSON that fails the contract
  * resolves null (corrupt rows degrade instead of breaking reads). */
 const parseConfig = (json: string): LayoutConfig | null => {
@@ -164,14 +133,6 @@ const toDoc = (row: LayoutRow): LayoutDoc => ({
 	builderJson: row.builderJson,
 });
 
-/** `description` wire values: absent stays untouched on update, a
- * blank/whitespace string clears the column (stored as NULL). */
-const toDescription = (value: string | undefined): string | null | undefined => {
-	if (value === undefined) return undefined;
-	const trimmed = value.trim();
-	return trimmed === "" ? null : trimmed;
-};
-
 /** True when `json` parses and conforms to the layout config contract —
  * the gate every stored config passes through on write. */
 const isStorableConfig = (json: string): boolean => {
@@ -184,19 +145,57 @@ const isStorableConfig = (json: string): boolean => {
 	}
 };
 
-/** Normalize a write input's config text: undefined stays undefined
- * (unchanged on update / default on create), anything else must be
- * storable contract JSON or the write fails `InvalidLayoutConfig`. */
-const checkedConfig = (
-	config: string | undefined,
-): Effect.Effect<string | undefined, InvalidLayoutConfig> =>
-	config !== undefined && !isStorableConfig(config)
-		? Effect.fail(new InvalidLayoutConfig({ config }))
-		: Effect.succeed(config);
-
 /** True when the stored config references `docId` in any section slot. */
 const configReferencesDoc = (json: string, docId: number): boolean =>
 	parseConfig(json)?.sections.some((section) => section.refId === docId) ?? false;
+
+const store = defineAdminStore({
+	serviceName: "Layouts",
+	payloadField: "config",
+	defaultPayload: '{"sections":[]}',
+	table: layouts,
+	columns: { id: layouts.id, name: layouts.name, updatedAt: layouts.updatedAt },
+	errors: {
+		notFound: "LayoutNotFound",
+		invalidName: "InvalidLayoutName",
+		nameTaken: "LayoutNameTaken",
+		invalidPayload: "InvalidLayoutConfig",
+	},
+	toMeta,
+	toDoc,
+	validatePayload: isStorableConfig,
+	naturalKey: {
+		columns: [layouts.name],
+		values: (name) => [name],
+	},
+});
+
+/** `adminUpdate`/`adminRemove`/`adminSetBuilderJson` targeted a missing
+ * row. */
+export const LayoutNotFound = store.errors.notFound;
+export type LayoutNotFound = InstanceType<typeof LayoutNotFound>;
+
+/** `adminCreate`/`adminUpdate` received a blank `name`. */
+export const InvalidLayoutName = store.errors.invalidName;
+export type InvalidLayoutName = InstanceType<typeof InvalidLayoutName>;
+
+/** `name` is already registered to a different row. */
+export const LayoutNameTaken = store.errors.nameTaken;
+export type LayoutNameTaken = InstanceType<typeof LayoutNameTaken>;
+
+/** `adminCreate`/`adminUpdate` received a `config` payload that is not
+ * valid JSON or does not match the layout config contract — the
+ * rejected input is carried for debugging. */
+export const InvalidLayoutConfig = store.errors.invalidPayload;
+export type InvalidLayoutConfig = InstanceType<typeof InvalidLayoutConfig>;
+
+export type LayoutError =
+	| Forbidden
+	| LayoutNotFound
+	| InvalidLayoutName
+	| LayoutNameTaken
+	| InvalidLayoutConfig
+	| InvalidBuilderDoc;
 
 export class Layouts extends Context.Service<
 	Layouts,
@@ -252,6 +251,10 @@ export class Layouts extends Context.Service<
 		) => Effect.Effect<readonly ResolvedLayoutSection[] | null>;
 	}
 >()("@ktb/layouts/Layouts") {}
+
+/** Console route this plugin owns — the referencer `path` target the
+ * rich-text delete dialog links to. */
+const LAYOUTS_CONSOLE = "/platform/layouts";
 
 /**
  * Rich-text delete-hook participation: this plugin references
@@ -314,129 +317,28 @@ export const layoutsRichTextDeleteHook = (db: DbClient): RichTextDeleteHook => (
 export const LayoutsLive = Layer.effect(
 	Layouts,
 	Effect.gen(function* () {
-		const db = yield* Db;
-		const platformAdmin = yield* PlatformAdmin;
 		// Optional edge: the rich-text plugin's delete-hook registry is
 		// absent when rich-text (or its service layer) is not installed —
 		// layouts then simply register nothing. The `optionalDeps` edge on
 		// layouts.services keeps the registry built first when present.
 		const deleteHooks = yield* Effect.serviceOption(RichTextDeleteHooks);
-		if (Option.isSome(deleteHooks)) {
-			yield* deleteHooks.value.register(layoutsRichTextDeleteHook(db));
-		}
 		// Optional edge: slot content resolves through the rich-text
 		// service — absent it, resolveForPage skips every slot instead
 		// of failing. The `optionalDeps` edge keeps it built first when
 		// present.
 		const richTexts = yield* Effect.serviceOption(RichTexts);
-
-		const requireAdmin = platformAdmin.requireAdmin();
-
-		const byId = (id: number) => eq(layouts.id, id);
-
-		/** First row matching `name`, optionally excluding `excludeId`
-		 * (update path — the row's own name is not a conflict). */
-		const findByName = (name: string, excludeId?: number) =>
-			db
-				.select({ id: layouts.id })
-				.from(layouts)
-				.where(
-					excludeId === undefined
-						? eq(layouts.name, name)
-						: and(eq(layouts.name, name), ne(layouts.id, excludeId)),
-				)
-				.limit(1);
+		const { methods, helpers } = yield* store.build;
+		if (Option.isSome(deleteHooks)) {
+			yield* deleteHooks.value.register(layoutsRichTextDeleteHook(helpers.db));
+		}
 
 		return Layouts.of({
-			adminList: Effect.fn("Layouts.adminList")(function* () {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(layouts).orderBy(desc(layouts.updatedAt)),
-				);
-				return rows.map(toMeta);
-			}),
-			adminGet: Effect.fn("Layouts.adminGet")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(layouts).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminCreate: Effect.fn("Layouts.adminCreate")(function* (input: {
-				readonly name: string;
-				readonly description?: string;
-				readonly config?: string;
-			}) {
-				yield* requireAdmin;
-				const name = input.name.trim();
-				if (name === "") return yield* new InvalidLayoutName({ name: input.name });
-				const configJson = yield* checkedConfig(input.config);
-				const taken = yield* Effect.promise(() => findByName(name));
-				if (taken.length > 0) return yield* new LayoutNameTaken({ name });
-				const now = new Date();
-				const rows = yield* Effect.promise(() =>
-					db
-						.insert(layouts)
-						.values({
-							name,
-							description: toDescription(input.description) ?? null,
-							config: configJson ?? EMPTY_CONFIG,
-							createdAt: now,
-							updatedAt: now,
-						})
-						.returning(),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminUpdate: Effect.fn("Layouts.adminUpdate")(function* (
-				id: number,
-				input: {
-					readonly name?: string;
-					readonly description?: string;
-					readonly config?: string;
-				},
-			) {
-				yield* requireAdmin;
-				let name: string | undefined;
-				if (input.name !== undefined) {
-					const trimmed = input.name.trim();
-					if (trimmed === "") return yield* new InvalidLayoutName({ name: input.name });
-					const taken = yield* Effect.promise(() => findByName(trimmed, id));
-					if (taken.length > 0) return yield* new LayoutNameTaken({ name: trimmed });
-					name = trimmed;
-				}
-				const configJson = yield* checkedConfig(input.config);
-				const description = toDescription(input.description);
-				const set: {
-					name?: string;
-					description?: string | null;
-					config?: string;
-					updatedAt: Date;
-				} = { updatedAt: new Date() };
-				if (name !== undefined) set.name = name;
-				if (description !== undefined) set.description = description;
-				if (configJson !== undefined) set.config = configJson;
-				const rows = yield* Effect.promise(() =>
-					db.update(layouts).set(set).where(byId(id)).returning(),
-				);
-				const row = rows[0];
-				if (row === undefined) return yield* new LayoutNotFound({ id });
-				return toDoc(row);
-			}),
-			adminRemove: Effect.fn("Layouts.adminRemove")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.delete(layouts).where(byId(id)).returning({ id: layouts.id }),
-				);
-				if (rows.length === 0) return yield* new LayoutNotFound({ id });
-			}),
+			...methods,
 			adminSetBuilderJson: Effect.fn("Layouts.adminSetBuilderJson")(function* (
 				id: number,
 				builderJson: string | null,
 			) {
-				yield* requireAdmin;
+				yield* helpers.requireAdmin;
 				if (builderJson !== null) {
 					let parsed: unknown;
 					try {
@@ -449,26 +351,19 @@ export const LayoutsLive = Layer.effect(
 					}
 				}
 				const rows = yield* Effect.promise(() =>
-					db
+					helpers.db
 						.update(layouts)
 						.set({ builderJson, updatedAt: new Date() })
-						.where(byId(id))
+						.where(helpers.byId(id))
 						.returning(),
 				);
 				const row = rows[0];
 				if (row === undefined) return yield* new LayoutNotFound({ id });
 				return toDoc(row);
 			}),
-			getById: Effect.fn("Layouts.getById")(function* (id: number) {
-				const rows = yield* Effect.promise(() =>
-					db.select().from(layouts).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
 			resolveForPage: Effect.fn("Layouts.resolveForPage")(function* (layoutId: number) {
 				const rows = yield* Effect.promise(() =>
-					db.select().from(layouts).where(byId(layoutId)).limit(1),
+					helpers.db.select().from(layouts).where(helpers.byId(layoutId)).limit(1),
 				);
 				const row = rows[0];
 				if (row === undefined) return null;

@@ -1,14 +1,11 @@
 import * as Context from "effect/Context";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { and, desc, eq, ne } from "drizzle-orm";
 
 import { assertSchema, compileSchema, SchemaDefinitionError } from "@ktb/json-schema";
 import type { ValidationIssue } from "@ktb/json-schema";
 import { Forbidden } from "@ktb/authz";
-import { Db } from "@ktb/db";
-import { PlatformAdmin } from "@ktb/platform";
+import { defineAdminStore } from "@ktb/admin-store";
 
 import { schemas, type SchemaRow } from "./schema.ts";
 
@@ -21,36 +18,12 @@ export type { SchemaRow } from "./schema.ts";
  * depth — the panel guard and the server fns gate too); `getById` and
  * `validate` are public reads used by other plugins (e.g. the pages
  * plugin validating search params) — they need no principal.
+ *
+ * The CRUD core (list/get/create/update/remove + the name natural
+ * key) comes from `@ktb/admin-store`'s `defineAdminStore`; this module
+ * keeps the schema-payload contract (`isStorableSchema`), the
+ * `validate` public read and the plugin's error tags.
  */
-
-/** `adminUpdate`/`adminRemove` targeted a missing row. */
-export class SchemaNotFound extends Data.TaggedError("SchemaNotFound")<{
-	readonly id: number;
-}> {}
-
-/** `adminCreate`/`adminUpdate` received a `schema` payload that is not
- * valid JSON or falls outside the `@ktb/json-schema` subset — the
- * rejected input is carried for debugging. */
-export class InvalidSchema extends Data.TaggedError("InvalidSchema")<{
-	readonly schema: string;
-}> {}
-
-/** `adminCreate`/`adminUpdate` received a blank `name`. */
-export class InvalidSchemaName extends Data.TaggedError("InvalidSchemaName")<{
-	readonly name: string;
-}> {}
-
-/** `name` is already registered to a different row. */
-export class SchemaNameTaken extends Data.TaggedError("SchemaNameTaken")<{
-	readonly name: string;
-}> {}
-
-export type SchemaError =
-	| Forbidden
-	| SchemaNotFound
-	| InvalidSchema
-	| InvalidSchemaName
-	| SchemaNameTaken;
 
 /** Admin-facing row without the schema payload — list endpoints. */
 export interface SchemaMeta {
@@ -72,10 +45,6 @@ export interface SchemaValidationResult {
 	readonly issues: readonly ValidationIssue[];
 }
 
-/** Seed written by `adminCreate` when no schema text is supplied —
- * the permissive "anything" schema. */
-const EMPTY_SCHEMA = "{}";
-
 const toMeta = (row: SchemaRow): SchemaMeta => ({
 	id: row.id,
 	name: row.name,
@@ -89,14 +58,6 @@ const toDoc = (row: SchemaRow): SchemaDoc => ({
 	schema: row.schema,
 });
 
-/** `description` wire values: absent stays untouched on update, a
- * blank/whitespace string clears the column (stored as NULL). */
-const toDescription = (value: string | undefined): string | null | undefined => {
-	if (value === undefined) return undefined;
-	const trimmed = value.trim();
-	return trimmed === "" ? null : trimmed;
-};
-
 /** True when `json` parses and conforms to the `@ktb/json-schema`
  * subset — the gate every stored schema passes through on write. */
 const isStorableSchema = (json: string): boolean => {
@@ -109,15 +70,51 @@ const isStorableSchema = (json: string): boolean => {
 	}
 };
 
-/** Normalize a write input's schema text: undefined stays undefined
- * (unchanged on update / default on create), anything else must be
- * storable JSON or the write fails `InvalidSchema`. */
-const checkedSchema = (
-	json: string | undefined,
-): Effect.Effect<string | undefined, InvalidSchema> =>
-	json !== undefined && !isStorableSchema(json)
-		? Effect.fail(new InvalidSchema({ schema: json }))
-		: Effect.succeed(json);
+const store = defineAdminStore({
+	serviceName: "Schemas",
+	payloadField: "schema",
+	defaultPayload: "{}",
+	table: schemas,
+	columns: { id: schemas.id, name: schemas.name, updatedAt: schemas.updatedAt },
+	errors: {
+		notFound: "SchemaNotFound",
+		invalidName: "InvalidSchemaName",
+		nameTaken: "SchemaNameTaken",
+		invalidPayload: "InvalidSchema",
+	},
+	toMeta,
+	toDoc,
+	validatePayload: isStorableSchema,
+	naturalKey: {
+		columns: [schemas.name],
+		values: (name) => [name],
+	},
+});
+
+/** `adminUpdate`/`adminRemove` targeted a missing row. */
+export const SchemaNotFound = store.errors.notFound;
+export type SchemaNotFound = InstanceType<typeof SchemaNotFound>;
+
+/** `adminCreate`/`adminUpdate` received a `schema` payload that is not
+ * valid JSON or falls outside the `@ktb/json-schema` subset — the
+ * rejected input is carried for debugging. */
+export const InvalidSchema = store.errors.invalidPayload;
+export type InvalidSchema = InstanceType<typeof InvalidSchema>;
+
+/** `adminCreate`/`adminUpdate` received a blank `name`. */
+export const InvalidSchemaName = store.errors.invalidName;
+export type InvalidSchemaName = InstanceType<typeof InvalidSchemaName>;
+
+/** `name` is already registered to a different row. */
+export const SchemaNameTaken = store.errors.nameTaken;
+export type SchemaNameTaken = InstanceType<typeof SchemaNameTaken>;
+
+export type SchemaError =
+	| Forbidden
+	| SchemaNotFound
+	| InvalidSchema
+	| InvalidSchemaName
+	| SchemaNameTaken;
 
 export class Schemas extends Context.Service<
 	Schemas,
@@ -161,129 +158,13 @@ export class Schemas extends Context.Service<
 export const SchemasLive = Layer.effect(
 	Schemas,
 	Effect.gen(function* () {
-		const db = yield* Db;
-		const platformAdmin = yield* PlatformAdmin;
-
-		const requireAdmin = platformAdmin.requireAdmin();
-
-		const byId = (id: number) => eq(schemas.id, id);
-
-		/** First row matching `name`, optionally excluding `excludeId`
-		 * (update path — the row's own name is not a conflict). */
-		const findByName = (name: string, excludeId?: number) =>
-			db
-				.select({ id: schemas.id })
-				.from(schemas)
-				.where(
-					excludeId === undefined
-						? eq(schemas.name, name)
-						: and(eq(schemas.name, name), ne(schemas.id, excludeId)),
-				)
-				.limit(1);
+		const { methods, helpers } = yield* store.build;
 
 		return Schemas.of({
-			adminList: Effect.fn("Schemas.adminList")(function* () {
-				yield* requireAdmin;
-				return yield* Effect.promise(() =>
-					db
-						.select({
-							id: schemas.id,
-							name: schemas.name,
-							description: schemas.description,
-							createdAt: schemas.createdAt,
-							updatedAt: schemas.updatedAt,
-						})
-						.from(schemas)
-						.orderBy(desc(schemas.updatedAt)),
-				);
-			}),
-			adminGet: Effect.fn("Schemas.adminGet")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(schemas).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminCreate: Effect.fn("Schemas.adminCreate")(function* (input: {
-				readonly name: string;
-				readonly description?: string;
-				readonly schema?: string;
-			}) {
-				yield* requireAdmin;
-				const name = input.name.trim();
-				if (name === "") return yield* new InvalidSchemaName({ name: input.name });
-				const schemaJson = yield* checkedSchema(input.schema);
-				const taken = yield* Effect.promise(() => findByName(name));
-				if (taken.length > 0) return yield* new SchemaNameTaken({ name });
-				const now = new Date();
-				const rows = yield* Effect.promise(() =>
-					db
-						.insert(schemas)
-						.values({
-							name,
-							description: toDescription(input.description) ?? null,
-							schema: schemaJson ?? EMPTY_SCHEMA,
-							createdAt: now,
-							updatedAt: now,
-						})
-						.returning(),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminUpdate: Effect.fn("Schemas.adminUpdate")(function* (
-				id: number,
-				input: {
-					readonly name?: string;
-					readonly description?: string;
-					readonly schema?: string;
-				},
-			) {
-				yield* requireAdmin;
-				let name: string | undefined;
-				if (input.name !== undefined) {
-					const trimmed = input.name.trim();
-					if (trimmed === "") return yield* new InvalidSchemaName({ name: input.name });
-					const taken = yield* Effect.promise(() => findByName(trimmed, id));
-					if (taken.length > 0) return yield* new SchemaNameTaken({ name: trimmed });
-					name = trimmed;
-				}
-				const schemaJson = yield* checkedSchema(input.schema);
-				const description = toDescription(input.description);
-				const set: {
-					name?: string;
-					description?: string | null;
-					schema?: string;
-					updatedAt: Date;
-				} = { updatedAt: new Date() };
-				if (name !== undefined) set.name = name;
-				if (description !== undefined) set.description = description;
-				if (schemaJson !== undefined) set.schema = schemaJson;
-				const rows = yield* Effect.promise(() =>
-					db.update(schemas).set(set).where(byId(id)).returning(),
-				);
-				const row = rows[0];
-				if (row === undefined) return yield* new SchemaNotFound({ id });
-				return toDoc(row);
-			}),
-			adminRemove: Effect.fn("Schemas.adminRemove")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.delete(schemas).where(byId(id)).returning({ id: schemas.id }),
-				);
-				if (rows.length === 0) return yield* new SchemaNotFound({ id });
-			}),
-			getById: Effect.fn("Schemas.getById")(function* (id: number) {
-				const rows = yield* Effect.promise(() =>
-					db.select().from(schemas).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
+			...methods,
 			validate: Effect.fn("Schemas.validate")(function* (schemaId: number, data: unknown) {
 				const rows = yield* Effect.promise(() =>
-					db.select().from(schemas).where(byId(schemaId)).limit(1),
+					helpers.db.select().from(schemas).where(helpers.byId(schemaId)).limit(1),
 				);
 				const row = rows[0];
 				if (row === undefined) {

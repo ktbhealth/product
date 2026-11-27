@@ -1,0 +1,21 @@
+{
+	"name": "@ktb/admin-store",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/authz": "workspace:*",
+		"@ktb/db": "workspace:*",
+		"@ktb/platform": "workspace:*",
+		"@ktb/server-fns": "workspace:*",
+		"drizzle-orm": "^0.45.1",
+		"effect": "4.1.2"
+	},
+	"devDependencies": {
+		"@ktb/db-testing": "workspace:*",
+		"@types/node": "^22.10.2",
+		"vitest": "5.1.0"
+	}
+}

@@ -3,8 +3,8 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { getServerRuntime, pluginHandler, runAs, sessionHandler } from "@ktb/server-fns";
-import { PlatformAdmin } from "@ktb/platform";
+import { asAdmin, orHandled } from "@ktb/admin-store";
+import { getServerRuntime, pluginHandler, sessionHandler } from "@ktb/server-fns";
 
 import { ImageDeleteHooks, type ImageUsageOwner } from "./delete-hooks.ts";
 import { Images, type ImageRecord } from "./service.ts";
@@ -56,20 +56,6 @@ const toWire = (row: ImageRecord): ImageWire => ({
 	src: `/api/images/${row.id}`,
 });
 
-/** Run `eff` as the session user after the PlatformAdmin gate. */
-const asAdmin = <A, E>(
-	user: { readonly id: string; readonly email?: string },
-	eff: Effect.Effect<A, E, unknown>,
-): Promise<A> =>
-	runAs(
-		user,
-		Effect.gen(function* () {
-			const platformAdmin = yield* PlatformAdmin;
-			yield* platformAdmin.requireAdmin();
-			return yield* eff;
-		}),
-	);
-
 const UpdateInput = Schema.Struct({
 	id: Schema.Number,
 	title: Schema.optionalKey(Schema.String),
@@ -89,12 +75,6 @@ const decodeDelete = Schema.decodeUnknownSync(DeleteInput);
 
 const HANDLED_TAGS = ["Forbidden", "ImageNotFound", "InvalidImageInput"] as const;
 
-const isHandled = (error: unknown): boolean =>
-	typeof error === "object" &&
-	error !== null &&
-	"_tag" in error &&
-	(HANDLED_TAGS as readonly string[]).includes(String((error as { _tag?: unknown })._tag));
-
 /** Admin image list for the console grid and the element-kind picker —
  * full wire rows (thumbs resolve through `src`). Handled failures
  * collapse to an empty list. */
@@ -109,10 +89,7 @@ export const listImagesFn = createServerFn({ method: "GET" }).handler(
 					const rows = yield* images.adminList();
 					return rows.map(toWire);
 				}),
-			).catch((error: unknown) => {
-				if (isHandled(error)) return [] as readonly ImageWire[];
-				throw error;
-			});
+			).catch(orHandled(HANDLED_TAGS, [] as readonly ImageWire[]));
 		}),
 	),
 );
@@ -132,10 +109,7 @@ export const updateImageFn = createServerFn({ method: "POST" })
 						const { id, ...input } = data;
 						return toWire(yield* images.adminUpdate(id, input));
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return null;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, null));
 			}),
 		),
 	);
@@ -155,10 +129,7 @@ export const imageUsageFn = createServerFn({ method: "POST" })
 						const hooks = yield* ImageDeleteHooks;
 						return yield* hooks.usage(data.id);
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return [] as ImageUsageWire;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, [] as ImageUsageWire));
 			}),
 		),
 	);
@@ -208,10 +179,7 @@ export const deleteImageFn = createServerFn({ method: "POST" })
 						}
 						return true;
 					})
-					.catch((error: unknown) => {
-						if (isHandled(error)) return false;
-						throw error;
-					});
+					.catch(orHandled(HANDLED_TAGS, false));
 			}),
 		),
 	);
