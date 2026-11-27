@@ -36,6 +36,8 @@ vi.mock("@tanstack/react-router", async () => {
 import type { Anamnesis } from "@ktb/anamnesis";
 import type { ConsultationDetail, ConsultationDetailApi } from "./ConsultationDetailPage.tsx";
 import { ConsultationDetailPage } from "./ConsultationDetailPage.tsx";
+import { serializeTranscriptEdits } from "../transcript-edits.ts";
+import { bytesToB64, genesisUpdate } from "../transcript-projection.ts";
 
 const SECTION = { content: "", confidence: "baixa" as const, evidence: [] as string[] };
 const ANAMNESIS = {
@@ -1219,6 +1221,178 @@ describe("review stamps (PL-022)", () => {
 		);
 		expect(screen.queryByTitle("Edit line")).toBeNull();
 		expect(screen.queryByText("Edit transcript")).toBeNull();
+	});
+
+	it("a rejected confirm leaves the transcript unstamped", async () => {
+		const user = userEvent.setup();
+		const reviewTranscript = vi.fn(async () => ({ ok: false }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), reviewTranscript }}
+			/>,
+		);
+		await user.click(screen.getByText("Confirm transcript"));
+		await waitFor(() => expect(reviewTranscript).toHaveBeenCalledWith({ data: 10 }));
+		// Still offered — the stamp only lands on ok.
+		expect(screen.getByText("Confirm transcript")).toBeTruthy();
+	});
+
+	it("generate anamnesis omits patientId for unlinked records", async () => {
+		const user = userEvent.setup();
+		const generateAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesis: null, patientId: null })}
+				history={null}
+				api={{ getConsultation: vi.fn(), generateAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Generate anamnesis"));
+		expect(generateAnamnesis).toHaveBeenCalledWith({
+			data: { consultationId: 10, transcript: expect.any(String) },
+		});
+	});
+
+	it("a rejected transcript edit keeps the editor open", async () => {
+		const user = userEvent.setup();
+		const saveTranscriptEdits = vi.fn(async (_input: { data: { id: number; edits: string } }) => ({
+			ok: false,
+		}));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), saveTranscriptEdits }}
+			/>,
+		);
+		await user.click(screen.getByText("Edit transcript"));
+		await user.type(screen.getByRole("textbox"), "x");
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(saveTranscriptEdits).toHaveBeenCalledTimes(1));
+		expect(screen.getByRole("textbox")).toBeTruthy();
+	});
+
+	it("cancels a full-text transcript edit", async () => {
+		const user = userEvent.setup();
+		const saveTranscriptEdits = vi.fn(async (_input: { data: { id: number; edits: string } }) => ({
+			ok: true,
+		}));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), saveTranscriptEdits }}
+			/>,
+		);
+		await user.click(screen.getByText("Edit transcript"));
+		await user.click(screen.getByText("Cancel"));
+		expect(screen.queryByRole("textbox")).toBeNull();
+		expect(saveTranscriptEdits).not.toHaveBeenCalled();
+	});
+
+	it("cancels an inline segment edit from the player panel", async () => {
+		const user = userEvent.setup();
+		const saveTranscriptEdits = vi.fn(async (_input: { data: { id: number; edits: string } }) => ({
+			ok: true,
+		}));
+		render(
+			<ConsultationDetailPage
+				c={detail({
+					audioKey: "k1",
+					audioStatus: "done",
+					serverTranscript: "dor no peito",
+					transcriptSegments: JSON.stringify([{ start: 0, end: 2, text: "dor no peito" }]),
+				})}
+				history={null}
+				api={{ getConsultation: vi.fn(), saveTranscriptEdits }}
+			/>,
+		);
+		await user.click(screen.getAllByTitle("Edit line")[0]!);
+		expect(screen.getByRole("textbox")).toBeTruthy();
+		await user.click(screen.getByText("Cancel"));
+		expect(screen.queryByRole("textbox")).toBeNull();
+		expect(saveTranscriptEdits).not.toHaveBeenCalled();
+	});
+
+	it("dedupes re-saved entries against the stored edit log", async () => {
+		const user = userEvent.setup();
+		const saveTranscriptEdits = vi.fn(async (_input: { data: { id: number; edits: string } }) => ({
+			ok: true,
+		}));
+		const stored = serializeTranscriptEdits([
+			{
+				at: "2026-01-01T00:00:00Z",
+				by: "u1",
+				u: bytesToB64(genesisUpdate("dor no peito")),
+			},
+		]);
+		render(
+			<ConsultationDetailPage
+				c={detail({
+					audioKey: "k1",
+					audioStatus: "done",
+					serverTranscript: "dor no peito",
+					transcriptSegments: JSON.stringify([{ start: 0, end: 2, text: "dor no peito" }]),
+					transcriptEdits: stored,
+					transcriptEditsBase: "transcript",
+				})}
+				history={null}
+				api={{ getConsultation: vi.fn(), saveTranscriptEdits }}
+			/>,
+		);
+		await user.click(screen.getAllByTitle("Edit line")[0]!);
+		const box = screen.getByRole("textbox");
+		await user.clear(box);
+		await user.type(box, "dor corrigido");
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(saveTranscriptEdits).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(routerMocks.invalidate).toHaveBeenCalled());
+	});
+});
+
+describe("ConsultationDetailPage — residual branches", () => {
+	it("approves a record whose anamnesis carries no stored version", async () => {
+		const user = userEvent.setup();
+		const approveAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), approveAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Approve anamnesis"));
+		expect(approveAnamnesis).toHaveBeenCalledWith({ data: 10 });
+	});
+
+	it("ignores a deselected day in the defer calendar", async () => {
+		const user = userEvent.setup();
+		const deferConsultation = vi.fn(async () => ({ ok: true }));
+		const deferredUntil = new Date(Date.now() + 86_400_000);
+		render(
+			<ConsultationDetailPage
+				c={detail({ deferredUntil })}
+				history={null}
+				api={{ getConsultation: vi.fn(), deferConsultation }}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: /Deferred until/ }));
+		// The deferred day renders pre-selected; clicking it deselects,
+		// so onSelect fires with undefined and no defer call happens.
+		const selected =
+			document.querySelector<HTMLButtonElement>(
+				'[data-slot="popover-content"] button[data-selected-single]',
+			) ??
+			[
+				...document.querySelectorAll<HTMLButtonElement>(
+					'[data-slot="popover-content"] button[data-day]',
+				),
+			].find((b) => b.dataset.day === deferredUntil.toLocaleDateString());
+		expect(selected).toBeTruthy();
+		await user.click(selected!);
+		expect(deferConsultation).not.toHaveBeenCalled();
 	});
 });
 

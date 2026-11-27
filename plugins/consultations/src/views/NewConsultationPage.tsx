@@ -557,6 +557,7 @@ export function NewConsultationPage({
 	);
 
 	const restoreDraft = () => {
+		/* v8 ignore next -- the restore button only renders while a draft is loaded */
 		if (!draft) return;
 		pendingUploadBlob.current = draft.audio;
 		setTranscript(draft.transcript);

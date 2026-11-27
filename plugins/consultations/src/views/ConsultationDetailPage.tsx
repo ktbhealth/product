@@ -266,7 +266,10 @@ export function ConsultationDetailPage({
 					anamnesisVersion: c.anamnesisVersion ?? null,
 				}));
 				setToast({ id: Date.now(), text: t.detail.approvedToast });
-				if (goNext && api?.nextPendingReview) {
+				if (
+					goNext &&
+					/* v8 ignore next -- "Approve & next" only renders when nextPendingReview exists */ api?.nextPendingReview
+				) {
 					void api.nextPendingReview({ data: c.id }).then((next) => {
 						if (next.id !== null) {
 							void navigate({ to: portalPath(`/consultations/${next.id}`) });
@@ -443,6 +446,7 @@ export function ConsultationDetailPage({
 	const editSession = () => (sessionRef.current ??= new TranscriptEditSession(entries, editsBase));
 	const saveTranscriptEdit = () =>
 		void (async () => {
+			/* v8 ignore next -- save only renders while editing with the api present */
 			if (!api?.saveTranscriptEdits || segEditing === null) return;
 			setEditBusy(true);
 			try {
@@ -456,7 +460,8 @@ export function ConsultationDetailPage({
 						: ses.edit((tx) => {
 								const i = segEditing;
 								const off = segProjOffset(segments, editsBaseOffsets, entries, i);
-								const oldLen = (segEdits.get(i) ?? segments[i]?.text ?? "").length;
+								// editing indexes always resolve to a rendered segment
+								const oldLen = (segEdits.get(i) ?? segments[i]!.text).length;
 								tx.delete(off, oldLen);
 								tx.insert(off, segDraft);
 							});

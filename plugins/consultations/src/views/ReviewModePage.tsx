@@ -384,7 +384,7 @@ function QueueList({
 											</Badge>
 										))}
 									</div>
-								) : null}
+								) : /* v8 ignore next -- pending/deferred rows always carry at least one step chip */ null}
 							</div>
 							<span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
 								<LocalDateTime value={q.createdAt} />
@@ -610,6 +610,8 @@ function TranscriptStep({
 		setChecked((prev) => (prev.has(i) ? prev : new Set(prev).add(i)));
 	const unverify = (i: number) =>
 		setChecked((prev) => {
+			/* v8 ignore next -- the unverify control only renders on checked chips */
+			if (!prev.has(i)) return prev;
 			const next = new Set(prev);
 			next.delete(i);
 			return next;
@@ -1140,6 +1142,7 @@ function AnamnesisStep({
 
 	const saveSection = () =>
 		void (async () => {
+			/* v8 ignore next -- save only renders while a section editor is open with the api */
 			if (!api?.editAnamnesis || doc === null || editingKey === null) return;
 			setBusy(true);
 			try {

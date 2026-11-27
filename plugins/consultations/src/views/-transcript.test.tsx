@@ -375,6 +375,21 @@ describe("AudioTranscriptPanel", () => {
 		fireEvent.click(screen.getByText("Primeira fala."));
 	});
 
+	it("swallows a rejected play() promise on karaoke seek", () => {
+		HTMLMediaElement.prototype.play = vi.fn().mockRejectedValue(new Error("autoplay blocked"));
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[{ start: 0, end: 2, text: "Primeira fala." }]}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Primeira fala."));
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+	});
+
 	it("segment editing swaps a row for a textarea and reports edits", () => {
 		HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
 		Element.prototype.scrollIntoView = vi.fn();
@@ -736,5 +751,47 @@ describe("ConsultationAudioPlayer", () => {
 			{ start: 2.5, end: 4, text: "b" },
 		]);
 		expect(screen.queryByRole("button", { name: "Skip silence" })).toBeNull();
+	});
+
+	it("restores the persisted skip-silence preference on mount", () => {
+		localStorage.setItem("ktb.audio.skipSilence", "0");
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		// Preference "0" = skip off — the playhead stays inside the gap.
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("cycles the skip toggle back on and persists it", () => {
+		const { audio } = renderPlayer(GAPS);
+		const btn = screen.getByRole("button", { name: "Skip silence" });
+		fireEvent.click(btn); // on → off ("0")
+		fireEvent.click(btn); // off → on ("1")
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("1");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("does not skip when the playhead sits before the first gap", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 1; // inside seg 0–2, ahead of the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(1);
+	});
+
+	it("survives a throwing localStorage (private mode / SSR shim)", () => {
+		const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new Error("denied");
+		});
+		try {
+			const { audio } = renderPlayer();
+			expect(audio.playbackRate).toBe(1);
+		} finally {
+			getItem.mockRestore();
+		}
 	});
 });

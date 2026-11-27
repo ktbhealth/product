@@ -1208,6 +1208,47 @@ describe("NewConsultationPage", () => {
 			await screen.findByText("Anamnesis saved successfully");
 			await waitFor(() => expect(draftMock.store.clear).toHaveBeenCalled());
 		});
+
+		it("saving after a draft restore revokes the restored audio url", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			const api = makeApi();
+			renderPage(api);
+			await screen.findByText(/Draft recovered/);
+			await user.click(screen.getByText("Restore draft"));
+			await consent(user);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:draft-audio"));
+		});
+
+		it("draft without blob URL support still restores and discards", async () => {
+			draftMock.state.draft = DRAFT;
+			// jsdom default: no URL.createObjectURL — the banner renders
+			// without the audio preview.
+			URL.createObjectURL = undefined as unknown as typeof URL.createObjectURL;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			expect(document.querySelector('audio[src="blob:draft-audio"]')).toBeNull();
+			await user.click(screen.getByText("Discard"));
+			expect(draftMock.store.clear).toHaveBeenCalled();
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("ignores a draft that resolves after unmount", async () => {
+			let resolve!: (d: unknown) => void;
+			draftMock.store.load.mockImplementationOnce(
+				() =>
+					new Promise((r) => {
+						resolve = r as (d: unknown) => void;
+					}),
+			);
+			const { unmount } = renderPage();
+			unmount();
+			resolve(DRAFT);
+		});
 	});
 
 	describe("patient portal access, decided up front (T-258)", () => {

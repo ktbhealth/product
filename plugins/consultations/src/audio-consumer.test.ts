@@ -13,6 +13,7 @@ import { jobHandlers, registerJobHandler } from "@ktb/jobs-port";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import type { AudioJobMessage } from "@ktb/server-fns";
 
+import { ConsultationAudioUpdated } from "./api.ts";
 import { AUDIO_TRANSCRIPTION_JOB_KIND, attachAudioRecord } from "./audio-jobs.ts";
 import {
 	assignSpeakers,
@@ -216,6 +217,9 @@ describe("audio-consumer pure helpers", () => {
 		expect(
 			extractDiarizedSegments({
 				segments: [
+					null,
+					42,
+					"SPEAKER_00",
 					{ start: 0.5, end: 4.2, speaker: "SPEAKER_00" },
 					{ start: "bad", end: 9, speaker: "SPEAKER_01" },
 					{ start: 5, end: 6, speaker: "" },
@@ -1028,6 +1032,52 @@ describe("handleAudioQueueBatch", () => {
 				audioTranscribeModel: TEST_MODEL,
 				getLocale: () => "en",
 			} as unknown as ServerRuntime);
+		}
+	});
+
+	it("default publish dispatches ConsultationAudioUpdated through the runtime EventBus", async () => {
+		const busRuntime = ManagedRuntime.make(makeEventBus());
+		const bus = await busRuntime.runPromise(EventBus);
+		const seen: { consultationId: number; audioStatus: string }[] = [];
+		await Effect.runPromise(
+			bus.subscribe(ConsultationAudioUpdated, (e) =>
+				Effect.sync(() => {
+					seen.push({ consultationId: e.consultationId, audioStatus: e.audioStatus });
+				}),
+			),
+		);
+		const plainRun = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+			Effect.runPromise(effect as Effect.Effect<A, E, never>);
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				plainRun((effect as Effect.Effect<A, E, never>).pipe(Effect.provideService(EventBus, bus))),
+			runAs: () => Promise.reject(new Error("unused")),
+			audioTranscribeModel: TEST_MODEL,
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+		try {
+			const { db, deps } = makeDeps();
+			const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+			const log: string[] = [];
+			// deps carry no publishAudioUpdate → the default side-effect
+			// dispatches through the bound runtime's EventBus.
+			await handleAudioQueueBatch([msg(job(id), log)], deps);
+			expect(log).toEqual(["ack"]);
+			// notify() defers the publish — flush microtasks until it lands.
+			for (let i = 0; i < 50 && seen.length === 0; i++) {
+				await new Promise((r) => setTimeout(r, 5));
+			}
+			expect(seen.map((e) => e.audioStatus)).toContain("done");
+			expect(seen.find((e) => e.audioStatus === "done")?.consultationId).toBe(id);
+		} finally {
+			setServerRuntime({
+				run: plainRun,
+				runAs: () => Promise.reject(new Error("unused")),
+				audioTranscribeModel: TEST_MODEL,
+				getLocale: () => "en",
+			} as unknown as ServerRuntime);
+			await busRuntime.dispose();
 		}
 	});
 });

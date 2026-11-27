@@ -16,7 +16,7 @@ export interface AudioObject {
 }
 
 /** Metadata-only view (R2Object-compatible) — size without the body. */
-export interface AudioHead {
+interface AudioHead {
 	readonly size: number;
 	readonly httpMetadata?: { readonly contentType?: string } | null;
 }
@@ -24,7 +24,7 @@ export interface AudioHead {
 /** Byte-range get (R2Range-compatible): offset+length, or suffix = the
  * last N bytes. Lets the download route honor HTTP Range so browsers
  * treat stored audio as seekable media. */
-export interface AudioRange {
+interface AudioRange {
 	readonly offset?: number;
 	readonly length?: number;
 	readonly suffix?: number;

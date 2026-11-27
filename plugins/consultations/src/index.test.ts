@@ -1351,6 +1351,46 @@ describe("ConsultationsLive", () => {
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
+
+	it("reviewTranscript stamps the edit-log op count (PL-023)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		const reviewedEdits = async () =>
+			(
+				await testDb
+					.select({ n: consultationsTable.transcriptReviewedEdits })
+					.from(consultationsTable)
+					.where(eq(consultationsTable.id, id!))
+			)[0]!.n;
+
+		// A two-entry log binds the stamp to its op count.
+		const two = JSON.stringify([
+			{ at: "t", by: "u1", u: "QUJD" },
+			{ at: "t", by: "u1", u: "REVG" },
+		]);
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", two)),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(id!, "u1")),
+		);
+		expect(await reviewedEdits()).toBe(2);
+
+		// An unparseable/empty log still counts as "edits present" (1).
+		await asUser(
+			"u1",
+			call((c) => c.saveTranscriptEdits(id!, "u1", "{}")),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(id!, "u1")),
+		);
+		expect(await reviewedEdits()).toBe(1);
+	});
 });
 
 describe("anamnesis integrity versioning (T-138)", () => {

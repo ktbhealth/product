@@ -129,6 +129,14 @@ describe("editsBaseText / segment offsets (PL-023)", () => {
 			}),
 		).toBe("raw");
 		expect(
+			editsBaseText({
+				correctedTranscript: null,
+				serverTranscript: null,
+				transcript: null,
+				transcriptEditsBase: "corrected",
+			}),
+		).toBe("");
+		expect(
 			editsBaseText({ correctedTranscript: null, serverTranscript: null, transcript: null }),
 		).toBe("");
 		expect(editsBaseText({ ...c, transcriptEditsBase: "server" })).toBe("srv");

@@ -12,7 +12,7 @@ export const CONF_BAR: Record<Confidence, string> = {
 	baixa: "border-l-border",
 };
 
-export const SPEAKER_STYLE: Record<string, string> = {
+const SPEAKER_STYLE: Record<string, string> = {
 	Doctor: "bg-info/10 text-info ring-info/20",
 	Patient: "bg-primary/10 text-primary ring-primary/20",
 	// legacy pt-BR speaker labels from bot/dictation transcripts

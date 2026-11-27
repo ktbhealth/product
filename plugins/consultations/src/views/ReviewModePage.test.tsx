@@ -3,6 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const zkMocks = vi.hoisted(() => ({
+	decryptConsultation: vi.fn(async () => null as unknown),
+}));
+vi.mock("../zk.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../zk.ts")>()),
+	...zkMocks,
+}));
+
 const routerMocks = vi.hoisted(() => ({
 	navigate: vi.fn<() => void>(),
 	invalidate: vi.fn<() => void>(),
