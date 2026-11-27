@@ -147,6 +147,11 @@ export const plugins: readonly Plugin[] = orderPlugins(
 // safe on both edges.
 export * from "./namespaces.ts";
 
+// ServerRuntime capability factory — the generic console-capability
+// block every composition root wires identically (queues, crons,
+// schedules, job kinds, pub/sub, plugin-state probe).
+export * from "./server-runtime.ts";
+
 /**
  * CQRS groups are enumerated by convention, not by plugin objects: every
  * plugin api module (`plugins/<name>/src/api.ts`) may export query/command

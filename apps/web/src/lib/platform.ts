@@ -2,18 +2,7 @@ import { env } from "cloudflare:workers";
 import { connect as socketConnect } from "cloudflare:sockets";
 import { fileURLToPath } from "node:url";
 
-import {
-	audioStorageStats,
-	getSessionAccount,
-	getTenantSelector,
-	setServerRuntime,
-	type AudioObjectLister,
-	type AudioStore,
-	type JsonValue,
-	type QueueDepth,
-	type ScheduleEntryInfo,
-	type ScheduledJobInfo,
-} from "@ktb/server-fns";
+import { getSessionAccount, getTenantSelector, setServerRuntime } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
 import {
 	makeTenantResolver,
@@ -23,50 +12,8 @@ import {
 } from "@ktb/tenant";
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
-import { PluginStates } from "@ktb/platform/plugin-states";
-import {
-	collectEventTopicDeclarations,
-	collectJobKindDeclarations,
-	collectSchedulableDeclarations,
-} from "@ktb/platform/capabilities";
-import {
-	compileSchedulableValidators,
-	eventTopicInfos,
-	jobKindInfos,
-	scheduleKindDispatchable,
-	scheduleParamsError,
-	schedulableKindInfos,
-} from "./platform-capabilities.ts";
-import {
-	dispatchJobInline,
-	makeJobHandlerRegistry,
-	makeJobs,
-	upsertJobRun,
-	listJobRuns,
-} from "@ktb/jobs-port";
-import type { JobRecord, JobStatus } from "@ktb/jobs-port";
-import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
-import {
-	deleteScheduledJob,
-	insertScheduledJob,
-	InvalidScheduleError,
-	listScheduleEntries,
-	listScheduledJobs,
-	runScheduledJobNow,
-	runSchedulerSweep,
-	updateScheduledJob,
-	type ScheduleEntry,
-	type ScheduledJob,
-	type ScheduledJobDispatch,
-} from "@ktb/scheduler-port";
-import { notifySchedulerDo, type SchedulerDoNamespace } from "@ktb/scheduler-do";
-import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
-import {
-	makeInProcessPubSub,
-	mergePubSubSources,
-	type PubSubBus,
-	type PubSubTopicSource,
-} from "@ktb/pubsub-port";
+import { makeJobHandlerRegistry, makeJobs } from "@ktb/jobs-port";
+import { runSchedulerSweep } from "@ktb/scheduler-port";
 import { APP_CRON_JOBS } from "./cron-jobs.ts";
 import { runScheduledAgendaReminders } from "./agenda-reminders.ts";
 import { runScheduledAuditVerification } from "./audit-chain.ts";
@@ -99,8 +46,7 @@ import {
 	requestTelemetryContext,
 	setAccessLogSink,
 } from "@ktb/observability-edge";
-import { createApp } from "@ktb/app-host";
-import { packageLive } from "@ktb/kernel";
+import { createApp, makeServerRuntime } from "@ktb/app-host";
 import type { ExportFormat, RecordExporter } from "@ktb/interop";
 import { fhirR4Exporter } from "@ktb/interop-fhir";
 import { openEhrExporter } from "@ktb/interop-openehr";
@@ -245,17 +191,6 @@ const recordExporters: Record<ExportFormat, RecordExporter> = {
 	openehr: openEhrExporter,
 };
 
-// Ops probes (T-035): the queue depth signal exists only when the bound
-// queue exposes stats — the dev:node SQLite queue does; the workerd
-// Queue binding doesn't (prod queues are managed in the Cloudflare
-// dashboard, so the ops console reports them as externally managed).
-// The storage probe paginates the bucket's list() with a page cap; a
-// missing listing capability or a failed page resolves null → the page
-// shows "unavailable", never a fake zero.
-const queueDepthProbe = (env.AUDIO_QUEUE as { stats?: () => Promise<QueueDepth> } | undefined)
-	?.stats;
-const audioBucketLister = env.AUDIO_BUCKET as unknown as AudioObjectLister | undefined;
-
 // PL-007: the generic jobs port rides the same AUDIO_QUEUE transport —
 // enqueue writes the job_runs projection (via `db`) then sends the
 // kind-dispatched envelope. Undefined when the queue is unbound; the
@@ -312,236 +247,11 @@ const themeJobs =
 		? undefined
 		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
 
-// Queue registry for /platform/queue (PL-007 follow-up): every queue
-// transport this deployment binds. A stats() probe marks the dev:node
-// SQLite stand-in ("sqlite"); the workerd Queue binding has none ->
-// "cloudflare-queue" with null depth (managed in the Cloudflare
-// dashboard). dev:node additionally publishes REDIS_JOBS_QUEUE — the
-// ktb:jobs list apps/jobs-worker drains — as a "redis"/"jobs-worker"
-// entry. Unbound queues are omitted rather than listed as fake rows.
-const envRecord = env as unknown as Record<string, unknown>;
-const boundQueueTransport = (binding: unknown): "cloudflare-queue" | "sqlite" =>
-	(binding as { stats?: unknown } | undefined)?.stats === undefined ? "cloudflare-queue" : "sqlite";
-const themeQueueStats = (
-	env.THEME_ASSETS_QUEUE as { stats?: () => Promise<QueueDepth> } | undefined
-)?.stats;
-const redisJobsQueue = envRecord.REDIS_JOBS_QUEUE as
-	| { stats?: () => Promise<QueueDepth | null> }
-	| undefined;
-const queueDescriptors: (QueueDescriptor | undefined)[] = [
-	env.AUDIO_QUEUE === undefined
-		? undefined
-		: {
-				id: "audio",
-				name: "ktb-transcription",
-				transport: boundQueueTransport(env.AUDIO_QUEUE),
-				consumer: "in-app" as const,
-				stats: queueDepthProbe,
-			},
-	env.THEME_ASSETS_QUEUE === undefined
-		? undefined
-		: {
-				id: "theme-assets",
-				name: "ktb-theme-assets",
-				transport: boundQueueTransport(env.THEME_ASSETS_QUEUE),
-				consumer: "in-app" as const,
-				stats: themeQueueStats,
-			},
-	redisJobsQueue?.stats === undefined
-		? undefined
-		: {
-				id: "jobs",
-				name: envRecord.JOBS_QUEUE?.toString() ?? "ktb:jobs",
-				transport: "redis" as const,
-				consumer: "jobs-worker" as const,
-				stats: redisJobsQueue.stats,
-			},
-];
-const queueRegistry = makeQueueRegistry(queueDescriptors.filter((d) => d !== undefined));
-
-// Pub/sub for /platform/pubsub: the in-process bus is always bound (it
-// is the zero-dependency default transport — one instance per isolate);
-// dev:node additionally publishes REDIS_PUBSUB, a lazy Redis pub/sub
-// transport whose PUBSUB CHANNELS/NUMSUB enumeration surfaces real
-// cross-process topics. Sources merge dynamically at query time —
-// topics appear when first published/subscribed, never from a static
-// list that could drift. Plugin code reaches publish/list through the
-// `pubsub` ServerRuntime capability below; adapters stay at this edge.
-const memoryPubSub = makeInProcessPubSub();
-const redisPubSub = envRecord.REDIS_PUBSUB as
-	| (PubSubBus & { listTopics?: PubSubTopicSource["list"] })
-	| undefined;
-const pubsubSources: PubSubTopicSource[] = [
-	{ id: "memory", list: async () => memoryPubSub.listTopics() },
-	...(redisPubSub?.listTopics === undefined ? [] : [{ id: "redis", list: redisPubSub.listTopics }]),
-];
-const pubSubTopics = mergePubSubSources(pubsubSources);
-
-// Cron registry for /platform/cron + the worker's `scheduled` handler:
-// every scheduled job declared in lib/cron-jobs.ts gets a fire routine
-// here. Each fire is projected into job_runs under kind `cron.<id>`
-// (two-phase: processing → done/failed) so the console reads lifecycle
-// through the same transport-agnostic projection as queues. Projection
-// writes are best-effort — a bookkeeping miss must never fail or retry
-// the sweep itself, so failures are logged and swallowed.
-const projectCronRun =
-	(jobId: string, fire: () => Promise<CronRunOutcome>) => async (): Promise<CronRunOutcome> => {
-		const id = crypto.randomUUID();
-		const kind = `cron.${jobId}`;
-		const write = (status: JobStatus, error?: string | null) =>
-			upsertJobRun(db, { id, kind, status, error: error ?? null }).catch((e: unknown) => {
-				console.error("cron projection write failed", { kind, status, error: String(e) });
-			});
-		await write("processing");
-		// Real producer for the /platform/pubsub console: every cron fire
-		// also lands on the in-process `cron.fires` topic, so the page
-		// shows live traffic instead of an empty registry. Fire-and-
-		// forget — a bus failure must never affect the sweep.
-		const announce = (outcome: CronRunOutcome) =>
-			void memoryPubSub
-				.publish("cron.fires", { jobId, ok: outcome.ok, summary: outcome.summary ?? null })
-				.catch(
-					/* v8 ignore next -- the in-process publish promise never rejects: listener failures are caught inside the bus */
-					() => {},
-				);
-		try {
-			const outcome = await fire();
-			await write(outcome.ok ? "done" : "failed", outcome.error);
-			announce(outcome);
-			return outcome;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			await write("failed", message);
-			const outcome: CronRunOutcome = { ok: false, error: message };
-			announce(outcome);
-			return outcome;
-		}
-	};
-
-// P-094: plugin capability declarations — `jobs.kind` metadata,
-// `jobs.schedulable` schedule-ability, `events.topic` catalog. Collected
-// once at composition like the other definition registries; invalid
-// entries or duplicate ids fail boot loudly (route-contribution
-// contract). `jobs.schedulable.paramsSchema` documents are compiled
-// here too — a malformed schema fails boot rather than every create.
-const jobKindDecls = collectJobKindDeclarations(serverPlugins);
-const schedulableDecls = collectSchedulableDeclarations(serverPlugins);
-const eventTopicDecls = collectEventTopicDeclarations(serverPlugins);
-const schedulableParamsValidators = compileSchedulableValidators(schedulableDecls);
-
-// Scheduler dispatch (P-094): a claimed scheduled_jobs row becomes a
-// job envelope on the shared transport — queue retry, payload
-// validation and the job_runs projection all come from jobs-port.
-// When no queue is bound (exotic dev setups), fall back to the
-// canonical inline kind-dispatch (@ktb/jobs-port dispatchJobInline —
-// same handler registry, decode and projection writes, minus queue
-// retry).
-const dispatchScheduledJob: ScheduledJobDispatch = async (job) => {
-	const payload = job.params ?? {};
-	if (jobs !== undefined) {
-		await jobs.enqueue(job.kind, payload, { tenantId: job.tenantId });
-		return;
-	}
-	await dispatchJobInline(
-		{ handlers: jobHandlerRegistry.handlers(), db },
-		{ kind: job.kind, payload, tenantId: job.tenantId },
-	);
-};
-
-// scheduled_jobs row → console shape: drops the lease internals and
-// narrows `params` to the JSON-serializable view the server-fn
-// boundary requires.
-const toScheduleInfo = (job: ScheduledJob): ScheduledJobInfo => ({
-	id: job.id,
-	kind: job.kind,
-	params: (job.params ?? null) as JsonValue | null,
-	cronExpr: job.cronExpr,
-	runAt: job.runAt,
-	nextRunAt: job.nextRunAt,
-	lastRunAt: job.lastRunAt,
-	status: job.status,
-	tenantId: job.tenantId,
-	createdBy: job.createdBy,
-	createdAt: job.createdAt,
-	updatedAt: job.updatedAt,
-});
-
-// Unified schedule entry → console shape: same JSON narrowing as
-// toScheduleInfo (params may be any decoded JSON; the wire type is
-// JsonValue).
-const toScheduleEntryInfo = (entry: ScheduleEntry): ScheduleEntryInfo => ({
-	...entry,
-	params: (entry.params ?? null) as JsonValue | null,
-	lastRun:
-		entry.lastRun === null
-			? null
-			: {
-					ok: entry.lastRun.ok,
-					running: entry.lastRun.running,
-					error: entry.lastRun.error ?? null,
-					at: entry.lastRun.at,
-				},
-});
-
-const cronRunners: Record<string, () => Promise<CronRunOutcome>> = {
-	"scheduler-heartbeat": async () => {
-		const result = await runSchedulerSweep(db, dispatchScheduledJob);
-		return {
-			ok: result.failed === 0,
-			summary: `${result.fired} scheduled job${result.fired === 1 ? "" : "s"} fired${result.failed > 0 ? `, ${result.failed} failed` : ""}`,
-			...(result.failed > 0 ? { error: `${result.failed} dispatch(es) failed` } : {}),
-		};
-	},
-	"agenda-reminders": async () => {
-		const count = await runScheduledAgendaReminders();
-		return count === null
-			? { ok: false, error: "reminder sweep failed" }
-			: { ok: true, summary: `${count} reminder${count === 1 ? "" : "s"} dispatched` };
-	},
-	"audit-chain-verify": async () => {
-		const result = await runScheduledAuditVerification();
-		if (result === null) return { ok: false, error: "audit chain verification failed" };
-		return {
-			ok: true,
-			summary:
-				result.status === "tampered"
-					? `chain tampered at entry ${result.brokenAt}`
-					: `chain verified (${result.entries} entries)`,
-		};
-	},
-};
-
-const cronRegistry = makeCronRegistry(
-	APP_CRON_JOBS.map((meta): CronDescriptor => ({
-		id: meta.id,
-		schedules: meta.schedules,
-		description: meta.description,
-		run: projectCronRun(
-			meta.id,
-			cronRunners[meta.id] ?? (async () => ({ ok: false, error: "no runner registered" })),
-		),
-	})),
-);
-
-/**
- * `scheduled()` entry point (src/server.ts): fire every cron job bound
- * to the controller's cron expression through the registry — same code
- * path as the console's "run now", including the job_runs projection.
- * Unknown expressions are a no-op.
- */
-export const runScheduledCron = (schedule: string) => cronRegistry.dispatch(schedule);
-
-/** Latest `cron.<id>` projection row per registered job — one bounded
- * prefix read, grouped client-side. Null rows mean "never ran or the
- * projection is unreadable"; the console renders that honestly. */
-const cronLastRuns = async () => {
-	const runs = await listJobRuns(db, { kindPrefix: "cron.", limit: 500 }).catch(() => null);
-	const latest = new Map<string, JobRecord>();
-	for (const run of runs ?? []) {
-		if (!latest.has(run.kind)) latest.set(run.kind, run);
-	}
-	return latest;
-};
+// The generic console-capability block (queue/cron/schedule/pubsub
+// registries, job-kind declarations, scheduled-job dispatch, the
+// plugin-state probe) lives in @ktb/app-host's makeServerRuntime —
+// this file keeps only app-bound wiring (env reads, cron fire
+// routines, i18n scope resolution, AI/auth/bridge capabilities).
 
 /**
  * Request scope chain for the i18n capability (PL-008): the same
@@ -605,35 +315,6 @@ const sanitizeScopeChain = (chain: ScopeChain, request: ScopeChain): ScopeChain 
 	return { scopes };
 };
 
-// F3b: the AcpBridge durable-object namespace (workerd binding —
-// declared in the Alchemy stack). Structural slice only; the plugin
-// route reaches it through ServerRuntime.acpBridge, never the env.
-const acpBridgeNs = env.ACP_BRIDGE as unknown as
-	| {
-			readonly idFromName: (name: string) => unknown;
-			readonly get: (id: unknown) => { fetch(request: Request): Promise<Response> };
-	  }
-	| undefined;
-
-// P-094: the SchedulerDo durable-object namespace — precision backstop
-// for one-off scheduled_jobs run_at times. The * * * * * heartbeat
-// sweeps at minute granularity; the DO's alarm fires the same sweep at
-// the exact instant. Absent binding (dev without DO) degrades to
-// heartbeat-only timing.
-const schedulerDoNs = env.SCHEDULER as unknown as SchedulerDoNamespace | undefined;
-
-/** Mirror a scheduled_jobs row's timing state into the DO: active
- * one-offs arm an alarm at runAt; everything else clears the entry.
- * Fire-and-forget safe — notifySchedulerDo swallows DO failures and
- * the heartbeat backstops any missed notification. */
-const syncSchedulerDo = async (job: ScheduledJob | null, id: string): Promise<void> => {
-	if (job !== null && job.status === "active" && job.runAt !== null) {
-		await notifySchedulerDo(schedulerDoNs, "/schedule", { id, runAt: job.runAt });
-	} else {
-		await notifySchedulerDo(schedulerDoNs, "/unschedule", { id });
-	}
-};
-
 // F3b: argv prefix for the `connect` command createBridgeLinkFn mints
 // (see lib/ai-bridge-cli.ts — unpublished package, dev resolves the
 // repo source, prod the published bunx path). import.meta.env is a
@@ -657,165 +338,55 @@ const aiBridgeCli = resolveAiBridgeCli({
 
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
-// without importing this module. Env reads stay here — the registry
-// only hands out already-resolved capabilities.
-setServerRuntime({
+// without importing this module. The generic console-capability block
+// (queues, crons, schedules, job kinds, pub/sub, plugin-state) is
+// composed by @ktb/app-host's makeServerRuntime; this file hands it
+// the app-bound pieces — env bindings, the job-handler registry, cron
+// fire routines, orchestration host, i18n scope resolution, AI/auth.
+const serverRuntime = makeServerRuntime({
+	env: appEnv,
+	db,
+	plugins: serverPlugins,
+	jobHandlers: jobHandlerRegistry,
 	run,
 	runAs,
-	audio: env.AUDIO_BUCKET,
-	audioQueue: env.AUDIO_QUEUE,
-	themeAssets: env.THEME_ASSETS_BUCKET as unknown as AudioStore | undefined,
-	// Media library (P-111): dedicated image bucket — same store shape;
-	// the plugin's /api/images routes resolve rows through Images and
-	// stream objects through this capability.
-	images: env.IMAGES_BUCKET as unknown as AudioStore | undefined,
-	themeJobs,
 	jobs,
-	audioQueueDepth:
-		typeof queueDepthProbe === "function" ? () => queueDepthProbe().catch(() => null) : undefined,
-	audioStorageStats:
-		audioBucketLister === undefined ? undefined : () => audioStorageStats(audioBucketLister),
-	queues: () => queueRegistry.list(),
-	// Cron registry capability: `list` joins each job with its latest
-	// `cron.<id>` projection row; `runNow`/`runSchedule` fire through
-	// the same projected path the worker's `scheduled` handler uses.
-	crons: {
-		list: async () => {
-			const latest = await cronLastRuns();
-			return cronRegistry.list().map((job) => {
-				const row = latest.get(`cron.${job.id}`);
-				return {
-					...job,
-					lastRun:
-						row === undefined
-							? null
-							: {
-									id: row.id,
-									ok: row.status === "done",
-									running: row.status === "processing",
-									error: row.error,
-									startedAt: row.createdAt,
-									finishedAt: row.updatedAt,
-								},
-				};
-			});
+	themeJobs,
+	ai: aiBinding,
+	audioTranscribeModel,
+	recordExporters,
+	getLocale: currentLocale,
+	cronJobs: APP_CRON_JOBS,
+	cronRunners: (dispatchScheduledJob) => ({
+		"scheduler-heartbeat": async () => {
+			const result = await runSchedulerSweep(db, dispatchScheduledJob);
+			return {
+				ok: result.failed === 0,
+				summary: `${result.fired} scheduled job${result.fired === 1 ? "" : "s"} fired${result.failed > 0 ? `, ${result.failed} failed` : ""}`,
+				...(result.failed > 0 ? { error: `${result.failed} dispatch(es) failed` } : {}),
+			};
 		},
-		runNow: async (id) => {
-			const result = await cronRegistry.runById(id);
-			return result === null
-				? null
-				: {
-						id: result.id,
-						ok: result.outcome.ok,
-						summary: result.outcome.summary,
-						error: result.outcome.error,
-					};
+		"agenda-reminders": async () => {
+			const count = await runScheduledAgendaReminders();
+			return count === null
+				? { ok: false, error: "reminder sweep failed" }
+				: { ok: true, summary: `${count} reminder${count === 1 ? "" : "s"} dispatched` };
 		},
-		runSchedule: async (schedule) =>
-			(await cronRegistry.dispatch(schedule)).map((r) => ({
-				id: r.id,
-				ok: r.outcome.ok,
-				summary: r.outcome.summary,
-				error: r.outcome.error,
-			})),
-	},
-	// Runtime scheduler capability (P-094): the scheduled_jobs table
-	// behind /platform/cron's dynamic-schedules section. Writes go
-	// through @ktb/scheduler-port validation; runNow claims the row
-	// (schedule advances — no double-fire) and dispatches through the
-	// same path the heartbeat sweep uses.
-	schedules: {
-		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
-		// Unified schedules read model: deploy-time cron registry jobs
-		// (joined with their latest `cron.<id>` job_runs row) merged
-		// with runtime scheduled_jobs rows — one list for the console.
-		entries: async () => {
-			const latest = await cronLastRuns();
-			const runSlices = new Map(
-				[...latest].map(([kind, run]) => [
-					kind.slice("cron.".length),
-					{
-						ok: run.status === "done",
-						running: run.status === "processing",
-						error: run.error,
-						at: run.createdAt,
-					},
-				]),
-			);
-			return listScheduleEntries({
-				cronJobs: cronRegistry.list(),
-				scheduledJobs: await listScheduledJobs(db),
-				cronLastRuns: runSlices,
-			}).map(toScheduleEntryInfo);
+		"audit-chain-verify": async () => {
+			const result = await runScheduledAuditVerification();
+			if (result === null) return { ok: false, error: "audit chain verification failed" };
+			return {
+				ok: true,
+				summary:
+					result.status === "tampered"
+						? `chain tampered at entry ${result.brokenAt}`
+						: `chain verified (${result.entries} entries)`,
+			};
 		},
-		create: async (input) => {
-			try {
-				// Kind must be dispatchable: a registered handler
-				// entry or a jobs.schedulable declaration (declared kinds
-				// may ride transports with special normalizers). Anything
-				// else can only ever fail at fire time — reject early.
-				if (
-					!scheduleKindDispatchable(input.kind, jobHandlerRegistry.handlers(), schedulableDecls)
-				) {
-					throw new InvalidScheduleError(`unknown job kind: ${input.kind}`);
-				}
-				// Declared paramsSchemas gate schedule params: the value
-				// must satisfy at least one schema declared for the kind.
-				const paramsError = scheduleParamsError(
-					input.kind,
-					input.params,
-					schedulableParamsValidators,
-				);
-				if (paramsError !== null) {
-					throw new InvalidScheduleError(paramsError);
-				}
-				const job = await insertScheduledJob(db, input);
-				await syncSchedulerDo(job, job.id);
-				return { ok: true as const, job: toScheduleInfo(job) };
-			} catch (error) {
-				return error instanceof InvalidScheduleError
-					? { ok: false as const, reason: "invalid" as const, error: error.message }
-					: { ok: false as const, reason: "unavailable" as const, error: String(error) };
-			}
-		},
-		update: async (id, patch) => {
-			try {
-				const job = await updateScheduledJob(db, id, patch);
-				if (job === null) {
-					return { ok: false as const, reason: "not-found" as const };
-				}
-				await syncSchedulerDo(job, id);
-				return { ok: true as const, job: toScheduleInfo(job) };
-			} catch (error) {
-				return error instanceof InvalidScheduleError
-					? { ok: false as const, reason: "invalid" as const, error: error.message }
-					: { ok: false as const, reason: "unavailable" as const, error: String(error) };
-			}
-		},
-		remove: async (id) => {
-			const removed = await deleteScheduledJob(db, id);
-			if (removed) await syncSchedulerDo(null, id);
-			return removed ? { ok: true as const } : { ok: false as const, reason: "not-found" as const };
-		},
-		runNow: async (id) => {
-			const result = await runScheduledJobNow(db, id, dispatchScheduledJob);
-			// The claim already advanced the schedule — mirror the new
-			// state so a fired one-off clears its DO alarm entry.
-			if (result !== null) await syncSchedulerDo(result.job, id);
-			return result === null
-				? null
-				: {
-						id: result.job.id,
-						ok: result.error === null,
-						summary: `fired ${result.job.kind}`,
-						error: result.error ?? undefined,
-					};
-		},
-	},
-	jobKinds: () => jobHandlerRegistry.kinds(),
-	// P-120 phase 2: durable orchestration start surface — plugin fns
-	// (pipeline admin) reach runner.start through this capability; the
-	// consumer side is the orchestrator.step registration above.
+	}),
+	// P-120 phase 2: the orchestration host is app-bound (it builds the
+	// runner lazily inside `run`); only its start surface crosses into
+	// the runtime capability.
 	orchestration:
 		orchestration === undefined
 			? undefined
@@ -823,44 +394,6 @@ setServerRuntime({
 					startRun: (defId, input, tenantId) =>
 						orchestration.startRun(defId, input, undefined, tenantId),
 				},
-	// P-094: capability-declaration views — handler registration merged
-	// with jobs.kind/jobs.schedulable declarations, plus the
-	// events.topic catalog for the pub/sub console.
-	jobKindInfo: () => jobKindInfos(jobHandlerRegistry.handlers(), jobKindDecls, schedulableDecls),
-	schedulableKinds: () => schedulableKindInfos(schedulableDecls),
-	// Pub/sub capability: `topics` merges the in-process bus's known
-	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
-	// `publish` routes by the console-facing id prefix — `memory:` to
-	// the in-process bus, `redis:` to the Redis transport. Payloads
-	// must be JSON-serializable; transports serialize them.
-	pubsub: {
-		topics: () => pubSubTopics.list(),
-		publish: async (topicId, payload) => {
-			const sep = topicId.indexOf(":");
-			const prefix = sep === -1 ? "" : topicId.slice(0, sep);
-			const name = sep === -1 ? topicId : topicId.slice(sep + 1);
-			try {
-				if (name === "") return { ok: false, reason: "unknown-topic" };
-				if (prefix === "memory") {
-					await memoryPubSub.publish(name, payload);
-					return { ok: true };
-				}
-				if (prefix === "redis") {
-					if (redisPubSub === undefined) return { ok: false, reason: "unavailable" };
-					await redisPubSub.publish(name, payload);
-					return { ok: true };
-				}
-				return { ok: false, reason: "unknown-topic" };
-			} catch {
-				return { ok: false, reason: "publish-failed" };
-			}
-		},
-		declaredTopics: () => eventTopicInfos(eventTopicDecls),
-	},
-	ai: aiBinding,
-	audioTranscribeModel,
-	recordExporters,
-	getLocale: currentLocale,
 	// PL-008: DB-canonical i18n capability — resolves enabled locales +
 	// scope chain inside the app runtime (I18nRuntime cache + Db) and
 	// returns the request-bound I18n shape. Locale defaults to the
@@ -888,42 +421,21 @@ setServerRuntime({
 				return i18n;
 			}),
 		),
-	// P-058: backs `pluginEnabledFn` / `createPluginFileRoute` /
-	// `createPluginApiRoute`. Package-granular like every other
-	// enable-state surface: the route stays live while ANY plugin of the
-	// owning package (`plugins/<pkg>`) is enabled — disabling
-	// `patients.routes` alone no longer kills the package's file routes
-	// while `patients.services` is still on. Ids without a pkg stamp
-	// (out-of-glob plugins, unknown ids) keep the per-id check.
-	pluginEnabled: (pluginId) =>
-		run(
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				const plugin = serverPlugins.find((p) => p.id === pluginId);
-				if (plugin?.pkg === undefined) return yield* states.isEnabled(pluginId);
-				return packageLive(serverPlugins, yield* states.enabledIds(), plugin.pkg);
-			}),
-		),
 	// P-062: the auth plugin's /api/auth/* catch-all reaches the
 	// better-auth instance through this capability — plugins never
 	// import the adapter.
 	authHandler: (request) => auth.handler(request),
-	// F3b: the bridge route's handoff to the AcpBridge durable object
-	// (idFromName(endpointId)). The ?endpoint= rewrite lets the DO
-	// stamp ai_endpoint.last_seen_at on connect/heartbeat. Undefined
-	// when the binding is absent (Node dev).
-	acpBridge:
-		acpBridgeNs === undefined
-			? undefined
-			: (endpointId, request) => {
-					const url = new URL(request.url);
-					url.searchParams.set("endpoint", String(endpointId));
-					return acpBridgeNs
-						.get(acpBridgeNs.idFromName(String(endpointId)))
-						.fetch(new Request(url, request));
-				},
 	aiBridgeCli,
 });
+setServerRuntime(serverRuntime.runtime);
+
+/**
+ * `scheduled()` entry point (src/server.ts): fire every cron job bound
+ * to the controller's cron expression through the registry — same code
+ * path as the console's "run now", including the job_runs projection.
+ * Unknown expressions are a no-op.
+ */
+export const runScheduledCron = serverRuntime.dispatchCronSchedule;
 
 // Raw platform binding passthrough — not composed, just exposed.
 export const ai = aiBinding;
