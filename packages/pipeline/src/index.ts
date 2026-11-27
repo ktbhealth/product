@@ -14,6 +14,13 @@ export {
 	type StageTrace,
 } from "./types.ts";
 export {
+	pipelinePackToOrchestration,
+	pipelineStageKind,
+	type PipelineOrchestrationOptions,
+	type PipelineStageKindOptions,
+	type StageKindFire,
+} from "./bridge.ts";
+export {
 	makePipelineRegistry,
 	PipelineRegistry,
 	PipelineRegistryLive,
