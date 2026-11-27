@@ -8,7 +8,6 @@ import {
 	CopyIcon,
 	DownloadIcon,
 	SparklesIcon,
-	SquareIcon,
 } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
@@ -19,13 +18,7 @@ import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Alert } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@ktbhealth/ui/components/card";
+import { Card, CardContent, CardHeader } from "@ktbhealth/ui/components/card";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import {
 	Empty,
@@ -84,8 +77,16 @@ import {
 	type TranscriptionBackend,
 } from "@ktb/transcription";
 
-import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
-import { PatientContextBar, SpeakerChatRow } from "./-chat.tsx";
+import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
+import {
+	AnamnesisSection,
+	EncryptionPill,
+	ListeningIndicator,
+	PatientContextBar,
+	RecordingIndicator,
+	SpeakerChatRow,
+	TranscriptPanelHeader,
+} from "./-chat.tsx";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	AudioTranscriptPanel,
@@ -1237,12 +1238,32 @@ export function NewConsultationPage({
 										setPatientId(p.id);
 										setQuickCreatedId(p.id);
 										setCreatedAges((m) => ({ ...m, [p.id]: age }));
+										// A brand-new patient has no portal access — carry the
+										// quick-create answer into their access card (T-258);
+										// "Yes" without a usable email stays undecided.
+										const email = newPatientAccess.email.trim();
+										accessLookedUp.current.add(p.id);
+										setStandings((s) => ({ ...s, [p.id]: { status: "none", email: null } }));
+										setChoices((c) => ({
+											...c,
+											[p.id]: { send: newPatientAccess.send && looksLikeEmail(email), email },
+										}));
+										setNewPatientAccess({ send: true, email: "" });
 										setPatientName("");
 										setPatientAge("");
 									}}
 								>
 									{nc.addPatient}
 								</Button>
+								{accessEnabled && patientName.trim() !== "" ? (
+									<div className="basis-full">
+										<NewPatientAccessQuestion
+											choice={newPatientAccess}
+											onChange={setNewPatientAccess}
+											nc={nc}
+										/>
+									</div>
+								) : null}
 								{patientError ? <FieldError className="text-xs">{patientError}</FieldError> : null}
 								{quickCreatedId !== null && quickCreatedId === patientId ? (
 									<Link
@@ -1267,6 +1288,20 @@ export function NewConsultationPage({
 								{nc.consentDeclaration}
 							</label>
 						</div>
+						{patientId !== null && standings[patientId] !== undefined ? (
+							<PatientAccessCard
+								patientName={accessPatientName}
+								standing={standings[patientId]}
+								choice={
+									choices[patientId] ??
+									defaultChoice(
+										standings[patientId].status === "none" ? standings[patientId].email : null,
+									)
+								}
+								onChange={(choice) => setChoices((c) => ({ ...c, [patientId]: choice }))}
+								nc={nc}
+							/>
+						) : null}
 
 						{/* capture source — ZK tenants have no server audio/transcript
 						 * path, so upload and the meet bot stay hidden (T-145/T-147). */}
@@ -1443,81 +1478,63 @@ export function NewConsultationPage({
 				</Card>
 
 				{/* ---- transcript workspace: chat while capturing ---- */}
-				<Card className="min-h-[420px] min-w-0 flex-1 lg:min-h-0">
-					<CardHeader className="shrink-0 border-b">
-						<div className="flex min-w-0 items-center gap-2">
-							<span
-								className={`size-2 shrink-0 rounded-full ${live ? "animate-pulse bg-destructive" : "bg-muted-foreground/40"}`}
+				<Card className="min-h-[420px] min-w-0 flex-1 gap-0 p-0 lg:min-h-0">
+					<TranscriptPanelHeader live={live} title={t.common.transcript}>
+						{live ? (
+							<RecordingIndicator
+								elapsed={fmtElapsed(elapsedSec)}
+								onStop={stopCapture}
+								stopLabel={nc.stopCapture}
 							/>
-							<CardTitle>{t.common.transcript}</CardTitle>
-							{live ? (
-								<span className="shrink-0 font-mono text-xs text-destructive tabular-nums">
-									{fmtElapsed(elapsedSec)}
-								</span>
-							) : null}
-							{modelStatus ? (
-								<Badge variant="secondary" className="min-w-0 font-normal text-muted-foreground">
-									<BrainIcon className="size-3.5 shrink-0" />
-									<span className="truncate">{modelStatus}</span>
-								</Badge>
-							) : null}
-						</div>
-						<CardAction>
-							<div className="flex items-center gap-1">
-								{live ? (
-									<Button
-										type="button"
-										variant="ghost"
-										size="sm"
-										onClick={stopCapture}
-										aria-label={nc.stopCapture}
-										title={nc.stopCapture}
-									>
-										<SquareIcon />
-									</Button>
-								) : null}
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
-								>
-									{nc.useSample}
-								</Button>
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									onClick={() => setTranscript("")}
-									disabled={!transcript}
-								>
-									{nc.clear}
-								</Button>
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									onClick={copyTranscript}
-									disabled={!transcript.trim()}
-									aria-label={nc.copyTranscript}
-									title={nc.copyTranscript}
-								>
-									<CopyIcon />
-								</Button>
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									onClick={exportTranscript}
-									disabled={!transcript.trim()}
-									aria-label={nc.exportTranscript}
-									title={nc.exportTranscript}
-								>
-									<DownloadIcon />
-								</Button>
-							</div>
-						</CardAction>
-					</CardHeader>
+						) : null}
+						{modelStatus ? (
+							<Badge variant="secondary" className="min-w-0 font-normal text-muted-foreground">
+								<BrainIcon className="size-3.5 shrink-0" />
+								<span className="truncate">{modelStatus}</span>
+							</Badge>
+						) : null}
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-7 px-2 text-[11px]"
+							onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
+						>
+							{nc.useSample}
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							className="h-7 px-2 text-[11px]"
+							onClick={() => setTranscript("")}
+							disabled={!transcript}
+						>
+							{nc.clear}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-7 gap-1 px-2 text-[11px]"
+							onClick={copyTranscript}
+							disabled={!transcript.trim()}
+						>
+							<CopyIcon className="size-3" />
+							{nc.copyTranscript}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-7 gap-1 px-2 text-[11px]"
+							onClick={exportTranscript}
+							disabled={!transcript.trim()}
+						>
+							<DownloadIcon className="size-3" />
+							{nc.exportTranscript}
+						</Button>
+					</TranscriptPanelHeader>
 					<CardContent className="flex min-h-0 flex-1 flex-col gap-3">
 						{draft ? (
 							<div
@@ -1569,6 +1586,7 @@ export function NewConsultationPage({
 						{live ? (
 							<ScrollArea className="min-h-0 flex-1 rounded-lg border border-input bg-muted/20">
 								<div className="space-y-4 p-4">
+									<EncryptionPill>{t.transcriptPanel.encryptionNote}</EncryptionPill>
 									{chatRows.map((row, i) => (
 										<SpeakerChatRow
 											// biome-ignore lint/suspicious/noArrayIndexKey: static, ordered transcript lines
@@ -1595,6 +1613,7 @@ export function NewConsultationPage({
 									{chatRows.length === 0 && !partial ? (
 										<p className="text-sm text-muted-foreground">{nc.transcriptPlaceholder}</p>
 									) : null}
+									<ListeningIndicator>{nc.listening}</ListeningIndicator>
 									<div ref={chatEndRef} />
 								</div>
 							</ScrollArea>
@@ -1706,16 +1725,14 @@ export function NewConsultationPage({
 					) : (
 						<>
 							<ScrollArea className="min-h-0 flex-1 px-4">
-								<div className="space-y-3 py-4 pr-3">
+								<div className="space-y-3.5 py-4 pr-3">
+									<EncryptionPill>{t.transcriptPanel.encryptionNote}</EncryptionPill>
 									{anamnesis.historico ? (
-										<div className="rounded-xl border border-border bg-muted/40 p-3">
-											<p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-												{t.sections.historico}
-											</p>
-											<p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
+										<AnamnesisSection title={t.sections.historico}>
+											<p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
 												{anamnesis.historico.content}
 											</p>
-										</div>
+										</AnamnesisSection>
 									) : null}
 									{(
 										Object.keys(t.sections).filter(
@@ -1724,34 +1741,33 @@ export function NewConsultationPage({
 									).map((key) => {
 										const sec = anamnesis[key];
 										return (
-											<Field
+											<AnamnesisSection
 												key={key}
-												className={`gap-1.5 rounded-xl border border-l-4 border-border bg-card p-3 ${CONF_BAR[sec.confidence]}`}
-											>
-												<div className="flex items-center justify-between gap-2">
-													<FieldLabel
-														htmlFor={`sec-${key}`}
-														className="text-xs font-semibold text-foreground"
-													>
-														{t.sections[key]}
-													</FieldLabel>
+												title={t.sections[key]}
+												status={
 													<Badge
 														variant="secondary"
 														className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
 													>
 														{t.confidence[sec.confidence]}
 													</Badge>
-												</div>
-												<Textarea
-													id={`sec-${key}`}
-													value={sec.content}
-													onChange={(e) => updateSection(key, e.target.value)}
-													rows={Math.min(5, Math.max(2, Math.ceil(sec.content.length / 70)))}
-													className="mt-1.5 resize-y text-sm leading-relaxed"
-												/>
+												}
+											>
+												<Field className="gap-1.5">
+													<FieldLabel htmlFor={`sec-${key}`} className="sr-only">
+														{t.sections[key]}
+													</FieldLabel>
+													<Textarea
+														id={`sec-${key}`}
+														value={sec.content}
+														onChange={(e) => updateSection(key, e.target.value)}
+														rows={Math.min(5, Math.max(2, Math.ceil(sec.content.length / 70)))}
+														className="resize-y text-sm leading-relaxed"
+													/>
+												</Field>
 												{sec.evidence.length ? (
-													<details className="mt-1">
-														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-muted-foreground">
+													<details className="mt-1.5">
+														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
 															{t.detail.evidence(sec.evidence.length)}
 														</summary>
 														<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
@@ -1761,7 +1777,7 @@ export function NewConsultationPage({
 														</ul>
 													</details>
 												) : null}
-											</Field>
+											</AnamnesisSection>
 										);
 									})}
 								</div>

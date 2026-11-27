@@ -56,7 +56,7 @@ import {
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
-import { PatientContextBar } from "./-chat.tsx";
+import { EncryptionPill, PatientContextBar, TranscriptPanelHeader } from "./-chat.tsx";
 import { parseTranscriptSegments } from "../segments.ts";
 import {
 	parseTranscriptEdits,
@@ -757,27 +757,26 @@ export function ConsultationDetailPage({
 
 			<div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
 				{/* ---------- transcript chat ---------- */}
-				<Card className="flex min-h-0 flex-1 flex-col lg:flex-[1.35]">
-					<CardHeader className="shrink-0 border-b">
-						<div className="flex items-center justify-between gap-2">
-							<CardTitle>{t.common.transcript}</CardTitle>
-							{!review.transcriptAt && api?.reviewTranscript ? (
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									disabled={busy}
-									onClick={confirmTranscript}
-								>
-									<CheckIcon data-icon="inline-start" />
-									{t.detail.confirmTranscript}
-								</Button>
-							) : null}
-						</div>
-					</CardHeader>
-					<CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+				<Card className="flex min-h-0 flex-1 flex-col gap-0 p-0 lg:flex-[1.35]">
+					<TranscriptPanelHeader title={t.common.transcript}>
+						{!review.transcriptAt && api?.reviewTranscript ? (
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="h-7 text-[11px]"
+								disabled={busy}
+								onClick={confirmTranscript}
+							>
+								<CheckIcon data-icon="inline-start" />
+								{t.detail.confirmTranscript}
+							</Button>
+						) : null}
+					</TranscriptPanelHeader>
+					<CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-4">
 						<ScrollArea className="min-h-0 flex-1">
 							<div className="pr-3" ref={transcriptRef}>
+								<EncryptionPill>{t.transcriptPanel.encryptionNote}</EncryptionPill>
 								{segEditing === "full" ? (
 									<div className="space-y-2">
 										<textarea

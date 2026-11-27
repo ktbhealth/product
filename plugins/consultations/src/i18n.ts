@@ -214,6 +214,8 @@ export interface ConsultationMessages {
 		readonly speakerN: (n: number) => string;
 		/** Chat-row header name for segments with no diarized speaker. */
 		readonly speakerUnknown: string;
+		/** Centered pill above the transcript stream. */
+		readonly encryptionNote: string;
 	};
 	readonly newConsultation: {
 		readonly title: string;
@@ -340,6 +342,8 @@ export interface ConsultationMessages {
 		readonly transcriptCopied: string;
 		readonly exportTranscript: string;
 		readonly yearsOld: (age: number) => string;
+		/** Bottom status inside the live transcript stream. */
+		readonly listening: string;
 	};
 	readonly admin: {
 		readonly title: string;
@@ -599,6 +603,7 @@ const en: ConsultationMessages = {
 		tabOriginal: "Original",
 		speakerN: paramMessage("en", "Speaker {n}", ["n"]),
 		speakerUnknown: "Speaker",
+		encryptionNote: "End-to-end encrypted and secure consultation (LGPD compliant)",
 	},
 	newConsultation: {
 		title: "New consultation",
@@ -741,6 +746,7 @@ const en: ConsultationMessages = {
 		transcriptCopied: "Transcript copied to clipboard",
 		exportTranscript: "Download transcript (.txt)",
 		yearsOld: paramMessage("en", "{age} years", ["age"]),
+		listening: "Listening to the dialogue — transcribing with Whisper AI in real time…",
 	},
 	admin: {
 		title: "Consultations",
@@ -1000,6 +1006,7 @@ const ptBR: ConsultationMessages = {
 		tabOriginal: "Original",
 		speakerN: paramMessage("pt-BR", "Locutor {n}", ["n"]),
 		speakerUnknown: "Locutor",
+		encryptionNote: "Consulta criptografada de ponta a ponta e segura (LGPD)",
 	},
 	newConsultation: {
 		title: "Nova consulta",
@@ -1145,6 +1152,7 @@ const ptBR: ConsultationMessages = {
 		transcriptCopied: "Transcrição copiada para a área de transferência",
 		exportTranscript: "Baixar transcrição (.txt)",
 		yearsOld: paramMessage("pt-BR", "{age} anos", ["age"]),
+		listening: "Ouvindo o diálogo — transcrevendo com IA Whisper em tempo real…",
 	},
 	admin: {
 		title: "Consultas",
@@ -1407,6 +1415,7 @@ const es: ConsultationMessages = {
 		tabOriginal: "Original",
 		speakerN: paramMessage("es", "Hablante {n}", ["n"]),
 		speakerUnknown: "Hablante",
+		encryptionNote: "Consulta cifrada de extremo a extremo y segura (LGPD)",
 	},
 	newConsultation: {
 		title: "Nueva consulta",
@@ -1554,6 +1563,7 @@ const es: ConsultationMessages = {
 		transcriptCopied: "Transcripción copiada al portapapeles",
 		exportTranscript: "Descargar transcripción (.txt)",
 		yearsOld: paramMessage("es", "{age} años", ["age"]),
+		listening: "Escuchando el diálogo — transcribiendo con IA Whisper en tiempo real…",
 	},
 	admin: {
 		title: "Consultas",
