@@ -1,5 +1,3 @@
-import { isKnownPermission as catalogIncludes } from "@ktb/rbac";
-
 /**
  * Product permission catalog (P-054): the flat `(resource, action)`
  * keys role grants are validated against — the concrete vocabulary the
@@ -15,7 +13,7 @@ import { isKnownPermission as catalogIncludes } from "@ktb/rbac";
  */
 
 /** Actions the platform layer owns, outside any entity vocabulary. */
-export const PLATFORM_ACTIONS = [
+const PLATFORM_ACTIONS = [
 	"platform.admin",
 	"billing.manage",
 	"members.invite",
@@ -31,7 +29,7 @@ export const PLATFORM_ACTIONS = [
 ] as const;
 
 /** Entity actions the domain services check (patients, consultations). */
-export const ENTITY_ACTIONS = [
+const ENTITY_ACTIONS = [
 	"patient.create",
 	"patient.read",
 	"patient.update",
@@ -44,10 +42,3 @@ export const ENTITY_ACTIONS = [
 
 /** The full known catalog: entity actions + platform actions. */
 export const PERMISSION_CATALOG = [...ENTITY_ACTIONS, ...PLATFORM_ACTIONS] as const;
-
-export type Permission = (typeof PERMISSION_CATALOG)[number];
-
-/** Whether `(resource, action)` is in the product catalog — for
- * role-editing UIs that want to warn on unknown grants, not as an
- * enforcement gate. */
-export const isKnownPermission = catalogIncludes(PERMISSION_CATALOG);
