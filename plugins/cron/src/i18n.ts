@@ -64,6 +64,12 @@ export interface CronMessages {
 	readonly sColLastRun: string;
 	readonly sColStatus: string;
 	readonly sColAction: string;
+	readonly eColName: string;
+	readonly eColSource: string;
+	readonly eColTriggers: string;
+	readonly eColDescription: string;
+	readonly sourceCron: string;
+	readonly sourceRuntime: string;
 	readonly statusActive: string;
 	readonly statusPaused: string;
 	readonly statusDone: string;
@@ -131,22 +137,28 @@ const en: CronMessages = {
 	rColStarted: "Started",
 	emptyRunsTitle: "No cron runs recorded",
 	emptyRunsDescription: "Scheduled fires and manual runs will appear here once recorded.",
-	schedulesTab: "Dynamic",
-	schedulesTitle: "Dynamic schedules",
+	schedulesTab: "Schedules",
+	schedulesTitle: "Schedules",
 	schedulesDescription:
-		"Runtime-managed scheduled_jobs rows — created here, fired by the every-minute heartbeat and dispatched through the jobs queue.",
+		"Every scheduled thing this deployment knows — deploy-time cron jobs and runtime scheduled_jobs rows in one list.",
 	sColKind: "Kind",
 	sColSchedule: "Schedule",
 	sColNextRun: "Next run",
 	sColLastRun: "Last run",
 	sColStatus: "Status",
 	sColAction: "Action",
+	eColName: "Name",
+	eColSource: "Source",
+	eColTriggers: "Triggers",
+	eColDescription: "Description",
+	sourceCron: "Deployed",
+	sourceRuntime: "Runtime",
 	statusActive: "Active",
 	statusPaused: "Paused",
 	statusDone: "Done",
-	emptySchedulesTitle: "No dynamic schedules",
+	emptySchedulesTitle: "No schedules",
 	emptySchedulesDescription:
-		"Create one below — it fires on the next heartbeat after its time comes due.",
+		"Deploy-time cron jobs appear here automatically; create a runtime schedule below.",
 	newScheduleTitle: "New schedule",
 	fKind: "Job kind",
 	fKindPlaceholder: "e.g. agenda.reminders",
@@ -209,22 +221,28 @@ const ptBR: CronMessages = {
 	rColStarted: "Iniciada em",
 	emptyRunsTitle: "Nenhuma execução cron registrada",
 	emptyRunsDescription: "Disparos agendados e execuções manuais aparecerão aqui quando gravados.",
-	schedulesTab: "Dinâmicas",
-	schedulesTitle: "Agendamentos dinâmicos",
+	schedulesTab: "Agendamentos",
+	schedulesTitle: "Agendamentos",
 	schedulesDescription:
-		"Linhas scheduled_jobs gerenciadas em tempo de execução — criadas aqui, disparadas pelo heartbeat de um minuto e enfileiradas via jobs.",
+		"Tudo que está agendado nesta implantação — tarefas cron de deploy e linhas scheduled_jobs em tempo de execução em uma só lista.",
 	sColKind: "Tipo",
 	sColSchedule: "Agendamento",
 	sColNextRun: "Próxima execução",
 	sColLastRun: "Última execução",
 	sColStatus: "Status",
 	sColAction: "Ação",
+	eColName: "Nome",
+	eColSource: "Origem",
+	eColTriggers: "Gatilhos",
+	eColDescription: "Descrição",
+	sourceCron: "Implantada",
+	sourceRuntime: "Runtime",
 	statusActive: "Ativa",
 	statusPaused: "Pausada",
 	statusDone: "Concluída",
-	emptySchedulesTitle: "Nenhum agendamento dinâmico",
+	emptySchedulesTitle: "Nenhum agendamento",
 	emptySchedulesDescription:
-		"Crie um abaixo — ele dispara no próximo heartbeat após o horário vencer.",
+		"Tarefas cron de deploy aparecem aqui automaticamente; crie um agendamento em tempo de execução abaixo.",
 	newScheduleTitle: "Novo agendamento",
 	fKind: "Tipo de tarefa",
 	fKindPlaceholder: "ex.: agenda.reminders",
@@ -288,22 +306,28 @@ const es: CronMessages = {
 	emptyRunsTitle: "Ninguna ejecución cron registrada",
 	emptyRunsDescription:
 		"Los disparos programados y ejecuciones manuales aparecerán aquí al registrarse.",
-	schedulesTab: "Dinámicas",
-	schedulesTitle: "Programaciones dinámicas",
+	schedulesTab: "Programaciones",
+	schedulesTitle: "Programaciones",
 	schedulesDescription:
-		"Filas scheduled_jobs gestionadas en tiempo de ejecución — creadas aquí, disparadas por el heartbeat de un minuto y encoladas vía jobs.",
+		"Todo lo programado en este despliegue — tareas cron de despliegue y filas scheduled_jobs en tiempo de ejecución en una sola lista.",
 	sColKind: "Tipo",
 	sColSchedule: "Programación",
 	sColNextRun: "Próxima ejecución",
 	sColLastRun: "Última ejecución",
 	sColStatus: "Estado",
 	sColAction: "Acción",
+	eColName: "Nombre",
+	eColSource: "Origen",
+	eColTriggers: "Disparadores",
+	eColDescription: "Descripción",
+	sourceCron: "Desplegada",
+	sourceRuntime: "Runtime",
 	statusActive: "Activa",
 	statusPaused: "Pausada",
 	statusDone: "Finalizada",
-	emptySchedulesTitle: "Ninguna programación dinámica",
+	emptySchedulesTitle: "Ninguna programación",
 	emptySchedulesDescription:
-		"Crea una abajo — se dispara en el próximo heartbeat una vez vencida la hora.",
+		"Las tareas cron de despliegue aparecen aquí automáticamente; crea una programación en tiempo de ejecución abajo.",
 	newScheduleTitle: "Nueva programación",
 	fKind: "Tipo de tarea",
 	fKindPlaceholder: "p. ej. agenda.reminders",

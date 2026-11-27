@@ -13670,20 +13670,20 @@ export const I18N_BASELINE = [
 		namespace: "cron",
 		key: "schedulesTab",
 		locale: "en",
-		value: "Dynamic",
+		value: "Schedules",
 	},
 	{
 		namespace: "cron",
 		key: "schedulesTitle",
 		locale: "en",
-		value: "Dynamic schedules",
+		value: "Schedules",
 	},
 	{
 		namespace: "cron",
 		key: "schedulesDescription",
 		locale: "en",
 		value:
-			"Runtime-managed scheduled_jobs rows — created here, fired by the every-minute heartbeat and dispatched through the jobs queue.",
+			"Every scheduled thing this deployment knows — deploy-time cron jobs and runtime scheduled_jobs rows in one list.",
 	},
 	{
 		namespace: "cron",
@@ -13723,6 +13723,42 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "cron",
+		key: "eColName",
+		locale: "en",
+		value: "Name",
+	},
+	{
+		namespace: "cron",
+		key: "eColSource",
+		locale: "en",
+		value: "Source",
+	},
+	{
+		namespace: "cron",
+		key: "eColTriggers",
+		locale: "en",
+		value: "Triggers",
+	},
+	{
+		namespace: "cron",
+		key: "eColDescription",
+		locale: "en",
+		value: "Description",
+	},
+	{
+		namespace: "cron",
+		key: "sourceCron",
+		locale: "en",
+		value: "Deployed",
+	},
+	{
+		namespace: "cron",
+		key: "sourceRuntime",
+		locale: "en",
+		value: "Runtime",
+	},
+	{
+		namespace: "cron",
 		key: "statusActive",
 		locale: "en",
 		value: "Active",
@@ -13743,13 +13779,13 @@ export const I18N_BASELINE = [
 		namespace: "cron",
 		key: "emptySchedulesTitle",
 		locale: "en",
-		value: "No dynamic schedules",
+		value: "No schedules",
 	},
 	{
 		namespace: "cron",
 		key: "emptySchedulesDescription",
 		locale: "en",
-		value: "Create one below — it fires on the next heartbeat after its time comes due.",
+		value: "Deploy-time cron jobs appear here automatically; create a runtime schedule below.",
 	},
 	{
 		namespace: "cron",
@@ -14082,20 +14118,20 @@ export const I18N_BASELINE = [
 		namespace: "cron",
 		key: "schedulesTab",
 		locale: "pt-BR",
-		value: "Dinâmicas",
+		value: "Agendamentos",
 	},
 	{
 		namespace: "cron",
 		key: "schedulesTitle",
 		locale: "pt-BR",
-		value: "Agendamentos dinâmicos",
+		value: "Agendamentos",
 	},
 	{
 		namespace: "cron",
 		key: "schedulesDescription",
 		locale: "pt-BR",
 		value:
-			"Linhas scheduled_jobs gerenciadas em tempo de execução — criadas aqui, disparadas pelo heartbeat de um minuto e enfileiradas via jobs.",
+			"Tudo que está agendado nesta implantação — tarefas cron de deploy e linhas scheduled_jobs em tempo de execução em uma só lista.",
 	},
 	{
 		namespace: "cron",
@@ -14135,6 +14171,42 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "cron",
+		key: "eColName",
+		locale: "pt-BR",
+		value: "Nome",
+	},
+	{
+		namespace: "cron",
+		key: "eColSource",
+		locale: "pt-BR",
+		value: "Origem",
+	},
+	{
+		namespace: "cron",
+		key: "eColTriggers",
+		locale: "pt-BR",
+		value: "Gatilhos",
+	},
+	{
+		namespace: "cron",
+		key: "eColDescription",
+		locale: "pt-BR",
+		value: "Descrição",
+	},
+	{
+		namespace: "cron",
+		key: "sourceCron",
+		locale: "pt-BR",
+		value: "Implantada",
+	},
+	{
+		namespace: "cron",
+		key: "sourceRuntime",
+		locale: "pt-BR",
+		value: "Runtime",
+	},
+	{
+		namespace: "cron",
 		key: "statusActive",
 		locale: "pt-BR",
 		value: "Ativa",
@@ -14155,13 +14227,14 @@ export const I18N_BASELINE = [
 		namespace: "cron",
 		key: "emptySchedulesTitle",
 		locale: "pt-BR",
-		value: "Nenhum agendamento dinâmico",
+		value: "Nenhum agendamento",
 	},
 	{
 		namespace: "cron",
 		key: "emptySchedulesDescription",
 		locale: "pt-BR",
-		value: "Crie um abaixo — ele dispara no próximo heartbeat após o horário vencer.",
+		value:
+			"Tarefas cron de deploy aparecem aqui automaticamente; crie um agendamento em tempo de execução abaixo.",
 	},
 	{
 		namespace: "cron",
@@ -14495,20 +14568,20 @@ export const I18N_BASELINE = [
 		namespace: "cron",
 		key: "schedulesTab",
 		locale: "es",
-		value: "Dinámicas",
+		value: "Programaciones",
 	},
 	{
 		namespace: "cron",
 		key: "schedulesTitle",
 		locale: "es",
-		value: "Programaciones dinámicas",
+		value: "Programaciones",
 	},
 	{
 		namespace: "cron",
 		key: "schedulesDescription",
 		locale: "es",
 		value:
-			"Filas scheduled_jobs gestionadas en tiempo de ejecución — creadas aquí, disparadas por el heartbeat de un minuto y encoladas vía jobs.",
+			"Todo lo programado en este despliegue — tareas cron de despliegue y filas scheduled_jobs en tiempo de ejecución en una sola lista.",
 	},
 	{
 		namespace: "cron",
@@ -14548,6 +14621,42 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "cron",
+		key: "eColName",
+		locale: "es",
+		value: "Nombre",
+	},
+	{
+		namespace: "cron",
+		key: "eColSource",
+		locale: "es",
+		value: "Origen",
+	},
+	{
+		namespace: "cron",
+		key: "eColTriggers",
+		locale: "es",
+		value: "Disparadores",
+	},
+	{
+		namespace: "cron",
+		key: "eColDescription",
+		locale: "es",
+		value: "Descripción",
+	},
+	{
+		namespace: "cron",
+		key: "sourceCron",
+		locale: "es",
+		value: "Desplegada",
+	},
+	{
+		namespace: "cron",
+		key: "sourceRuntime",
+		locale: "es",
+		value: "Runtime",
+	},
+	{
+		namespace: "cron",
 		key: "statusActive",
 		locale: "es",
 		value: "Activa",
@@ -14568,13 +14677,14 @@ export const I18N_BASELINE = [
 		namespace: "cron",
 		key: "emptySchedulesTitle",
 		locale: "es",
-		value: "Ninguna programación dinámica",
+		value: "Ninguna programación",
 	},
 	{
 		namespace: "cron",
 		key: "emptySchedulesDescription",
 		locale: "es",
-		value: "Crea una abajo — se dispara en el próximo heartbeat una vez vencida la hora.",
+		value:
+			"Las tareas cron de despliegue aparecen aquí automáticamente; crea una programación en tiempo de ejecución abajo.",
 	},
 	{
 		namespace: "cron",

@@ -729,6 +729,10 @@ export type I18nKey =
 	| "cron.actPause"
 	| "cron.actResume"
 	| "cron.description"
+	| "cron.eColDescription"
+	| "cron.eColName"
+	| "cron.eColSource"
+	| "cron.eColTriggers"
 	| "cron.emptyJobsDescription"
 	| "cron.emptyJobsTitle"
 	| "cron.emptyRunsDescription"
@@ -786,6 +790,8 @@ export type I18nKey =
 	| "cron.sColNextRun"
 	| "cron.sColSchedule"
 	| "cron.sColStatus"
+	| "cron.sourceCron"
+	| "cron.sourceRuntime"
 	| "cron.statusActive"
 	| "cron.statusDone"
 	| "cron.statusPaused"
@@ -3431,6 +3437,10 @@ export interface I18nTypedT {
 			n: number;
 		},
 	): Effect.Effect<string>;
+	(key: "cron.eColDescription"): Effect.Effect<string>;
+	(key: "cron.eColName"): Effect.Effect<string>;
+	(key: "cron.eColSource"): Effect.Effect<string>;
+	(key: "cron.eColTriggers"): Effect.Effect<string>;
 	(key: "cron.emptyJobsDescription"): Effect.Effect<string>;
 	(key: "cron.emptyJobsTitle"): Effect.Effect<string>;
 	(key: "cron.emptyRunsDescription"): Effect.Effect<string>;
@@ -3493,6 +3503,8 @@ export interface I18nTypedT {
 	(key: "cron.sColNextRun"): Effect.Effect<string>;
 	(key: "cron.sColSchedule"): Effect.Effect<string>;
 	(key: "cron.sColStatus"): Effect.Effect<string>;
+	(key: "cron.sourceCron"): Effect.Effect<string>;
+	(key: "cron.sourceRuntime"): Effect.Effect<string>;
 	(key: "cron.statusActive"): Effect.Effect<string>;
 	(key: "cron.statusDone"): Effect.Effect<string>;
 	(key: "cron.statusPaused"): Effect.Effect<string>;

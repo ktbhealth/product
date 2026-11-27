@@ -11,20 +11,34 @@ import { insertScheduledJob } from "@ktb/scheduler-port";
 // the inline path tests unbind it before composing.
 
 const hoisted = vi.hoisted(() => ({
-	upsertFails: false,
 	handled: [] as { kind: string; payload: unknown; tenantId: string | number | null }[],
 }));
 
-vi.mock("@ktb/jobs-port", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@ktb/jobs-port")>();
+// Break job_runs writes at the D1 layer: dispatchJobInline's projection
+// calls upsertJobRun inside @ktb/jobs-port, so a module mock on
+// upsertJobRun cannot reach it — the statement itself must reject.
+const failJobRunsWrites = (db: unknown): unknown => {
+	const inner = db as {
+		prepare: (q: string) => {
+			bind: (...args: unknown[]) => Record<string, unknown>;
+		};
+	};
 	return {
-		...actual,
-		upsertJobRun: async (...args: Parameters<typeof actual.upsertJobRun>) => {
-			if (hoisted.upsertFails) throw new Error("job_runs write down");
-			return actual.upsertJobRun(...args);
+		...(db as Record<string, unknown>),
+		prepare: (q: string) => {
+			const stmt = inner.prepare(q);
+			if (!/^\s*insert\s+into\s+"?job_runs"?/i.test(q)) return stmt;
+			const fail = () => Promise.reject(new Error("job_runs write down"));
+			// No BOUND marker — a batch() fallback must hit the rejecting
+			// run(), never the real underlying statement.
+			const failing = { run: fail, all: fail, first: fail, raw: fail, reader: false };
+			return {
+				bind: () => failing,
+				...failing,
+			};
 		},
 	};
-});
+};
 
 const compose = async (configure: (env: Record<string, unknown>) => void = () => {}) => {
 	vi.resetModules();
@@ -153,11 +167,11 @@ describe("platform scheduler-heartbeat dispatch", () => {
 	});
 
 	it("still dispatches when the job_runs projection write fails", { timeout: 30_000 }, async () => {
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		hoisted.upsertFails = true;
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
+				env.DB = failJobRunsWrites(env.DB);
 			});
 			platform.jobHandlerRegistry.register("test.sched.projfail", { handle: async () => {} });
 			await dueJob(platform, "test.sched.projfail");
@@ -166,13 +180,12 @@ describe("platform scheduler-heartbeat dispatch", () => {
 				ok: true,
 				summary: "1 scheduled job fired",
 			});
-			expect(errorSpy).toHaveBeenCalledWith(
-				"scheduler projection write failed",
+			expect(warnSpy).toHaveBeenCalledWith(
+				"job_runs projection write failed",
 				expect.objectContaining({ kind: "test.sched.projfail" }),
 			);
 		} finally {
-			hoisted.upsertFails = false;
-			errorSpy.mockRestore();
+			warnSpy.mockRestore();
 		}
 	});
 });

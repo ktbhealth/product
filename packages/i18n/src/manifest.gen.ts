@@ -2592,6 +2592,24 @@ export const I18N_MANIFEST = {
 		sColAction: {
 			params: [],
 		},
+		eColName: {
+			params: [],
+		},
+		eColSource: {
+			params: [],
+		},
+		eColTriggers: {
+			params: [],
+		},
+		eColDescription: {
+			params: [],
+		},
+		sourceCron: {
+			params: [],
+		},
+		sourceRuntime: {
+			params: [],
+		},
 		statusActive: {
 			params: [],
 		},

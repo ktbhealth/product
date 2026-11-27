@@ -11,6 +11,7 @@ import {
 	type AudioStore,
 	type JsonValue,
 	type QueueDepth,
+	type ScheduleEntryInfo,
 	type ScheduledJobInfo,
 } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
@@ -36,17 +37,25 @@ import {
 	scheduleParamsError,
 	schedulableKindInfos,
 } from "./platform-capabilities.ts";
-import { makeJobHandlerRegistry, makeJobs, upsertJobRun, listJobRuns } from "@ktb/jobs-port";
+import {
+	dispatchJobInline,
+	makeJobHandlerRegistry,
+	makeJobs,
+	upsertJobRun,
+	listJobRuns,
+} from "@ktb/jobs-port";
 import type { JobRecord, JobStatus } from "@ktb/jobs-port";
 import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
 import {
 	deleteScheduledJob,
 	insertScheduledJob,
 	InvalidScheduleError,
+	listScheduleEntries,
 	listScheduledJobs,
 	runScheduledJobNow,
 	runSchedulerSweep,
 	updateScheduledJob,
+	type ScheduleEntry,
 	type ScheduledJob,
 	type ScheduledJobDispatch,
 } from "@ktb/scheduler-port";
@@ -423,47 +432,20 @@ const schedulableParamsValidators = compileSchedulableValidators(schedulableDecl
 // Scheduler dispatch (P-094): a claimed scheduled_jobs row becomes a
 // job envelope on the shared transport — queue retry, payload
 // validation and the job_runs projection all come from jobs-port.
-// When no queue is bound (exotic dev setups), fall back to inline
-// kind-dispatch through the same handler registry with the same
-// projection writes, minus queue retry.
+// When no queue is bound (exotic dev setups), fall back to the
+// canonical inline kind-dispatch (@ktb/jobs-port dispatchJobInline —
+// same handler registry, decode and projection writes, minus queue
+// retry).
 const dispatchScheduledJob: ScheduledJobDispatch = async (job) => {
 	const payload = job.params ?? {};
 	if (jobs !== undefined) {
 		await jobs.enqueue(job.kind, payload, { tenantId: job.tenantId });
 		return;
 	}
-	const registration = jobHandlerRegistry.lookup(job.kind);
-	if (registration === undefined) throw new Error(`unknown job kind: ${job.kind}`);
-	const id = crypto.randomUUID();
-	const mark = (status: "processing" | "done" | "failed", error?: string) =>
-		upsertJobRun(db, {
-			id,
-			kind: job.kind,
-			status,
-			error: error ?? null,
-			tenantId: job.tenantId,
-		}).catch((e: unknown) => {
-			console.error("scheduler projection write failed", {
-				kind: job.kind,
-				status,
-				error: String(e),
-			});
-		});
-	await mark("processing");
-	try {
-		const decoded =
-			registration.decodePayload === undefined ? payload : registration.decodePayload(payload);
-		await registration.handle(decoded, {
-			id,
-			kind: job.kind,
-			payload: decoded,
-			tenantId: job.tenantId,
-		});
-		await mark("done");
-	} catch (error) {
-		await mark("failed", error instanceof Error ? error.message : String(error));
-		throw error;
-	}
+	await dispatchJobInline(
+		{ handlers: jobHandlerRegistry.handlers(), db },
+		{ kind: job.kind, payload, tenantId: job.tenantId },
+	);
 };
 
 // scheduled_jobs row → console shape: drops the lease internals and
@@ -482,6 +464,23 @@ const toScheduleInfo = (job: ScheduledJob): ScheduledJobInfo => ({
 	createdBy: job.createdBy,
 	createdAt: job.createdAt,
 	updatedAt: job.updatedAt,
+});
+
+// Unified schedule entry → console shape: same JSON narrowing as
+// toScheduleInfo (params may be any decoded JSON; the wire type is
+// JsonValue).
+const toScheduleEntryInfo = (entry: ScheduleEntry): ScheduleEntryInfo => ({
+	...entry,
+	params: (entry.params ?? null) as JsonValue | null,
+	lastRun:
+		entry.lastRun === null
+			? null
+			: {
+					ok: entry.lastRun.ok,
+					running: entry.lastRun.running,
+					error: entry.lastRun.error ?? null,
+					at: entry.lastRun.at,
+				},
 });
 
 const cronRunners: Record<string, () => Promise<CronRunOutcome>> = {
@@ -727,6 +726,28 @@ setServerRuntime({
 	// same path the heartbeat sweep uses.
 	schedules: {
 		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
+		// Unified schedules read model: deploy-time cron registry jobs
+		// (joined with their latest `cron.<id>` job_runs row) merged
+		// with runtime scheduled_jobs rows — one list for the console.
+		entries: async () => {
+			const latest = await cronLastRuns();
+			const runSlices = new Map(
+				[...latest].map(([kind, run]) => [
+					kind.slice("cron.".length),
+					{
+						ok: run.status === "done",
+						running: run.status === "processing",
+						error: run.error,
+						at: run.createdAt,
+					},
+				]),
+			);
+			return listScheduleEntries({
+				cronJobs: cronRegistry.list(),
+				scheduledJobs: await listScheduledJobs(db),
+				cronLastRuns: runSlices,
+			}).map(toScheduleEntryInfo);
+		},
 		create: async (input) => {
 			try {
 				// Kind must be dispatchable: a registered handler

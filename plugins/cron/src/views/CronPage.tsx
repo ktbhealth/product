@@ -4,7 +4,7 @@ import { useRouter } from "@tanstack/react-router";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo, ScheduledJobInfo, SchedulableKindInfo } from "@ktb/server-fns";
+import type { ScheduleEntryInfo, SchedulableKindInfo } from "@ktb/server-fns";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
@@ -38,17 +38,17 @@ import { cronMessages, I18N_NAMESPACE, type CronMessages } from "../i18n.ts";
 import type { CronRunNowResult } from "../admin.ts";
 
 /**
- * /platform/cron — the Concurrency console page. Two signal sections,
- * each honest about degradation: jobs (the scheduled-job registry
- * joined with its latest job_runs row) and runs (the `cron.*`
- * projection feed). "Run now" fires the same registry path the
- * worker's `scheduled` handler uses.
+ * /platform/cron — the Concurrency console page. Two tabs: "Schedules"
+ * (the unified read model — deploy-time cron registry jobs AND runtime
+ * scheduled_jobs rows in one table, each row carrying its source) and
+ * "Run history" (the `cron.*` job_runs projection feed). Run-now fires
+ * the same path the worker's `scheduled` handler / scheduler sweep
+ * uses; pause/resume/delete apply to runtime rows only.
  */
 
 interface CronPageProps {
-	readonly jobs: readonly CronJobInfo[] | null;
 	readonly runs: readonly JobRecord[] | null;
-	readonly schedules?: readonly ScheduledJobInfo[] | null;
+	readonly entries: readonly ScheduleEntryInfo[] | null;
 	readonly scheduleKinds?: readonly string[] | null;
 	readonly schedulableKinds?: readonly SchedulableKindInfo[] | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -81,134 +81,6 @@ const runNowMessage = (result: CronRunNowResult, m: CronMessages): string => {
 			return result.error === undefined ? m.runFailed : `${m.runFailed} ${result.error}`;
 	}
 };
-
-type RunState = {
-	readonly pending: boolean;
-	readonly message: string | null;
-	readonly ok: boolean;
-};
-
-function JobsSection({
-	jobs,
-	locale,
-	m,
-}: {
-	jobs: readonly CronJobInfo[] | null;
-	locale: string;
-	m: CronMessages;
-}) {
-	const [states, setStates] = useState<Record<string, RunState>>({});
-	const runNow = async (id: string) => {
-		setStates((s) => ({ ...s, [id]: { pending: true, message: null, ok: false } }));
-		try {
-			const result = await runCronJobFn({ data: { id } });
-			setStates((s) => ({
-				...s,
-				[id]: { pending: false, message: runNowMessage(result, m), ok: result.ok },
-			}));
-		} catch {
-			setStates((s) => ({ ...s, [id]: { pending: false, message: m.runFailed, ok: false } }));
-		}
-	};
-	return (
-		<section>
-			<h2 className="text-sm font-semibold">{m.jobsTitle}</h2>
-			<p className="text-muted-foreground mb-3 text-xs">{m.jobsDescription}</p>
-			{jobs === null ? (
-				<Unavailable m={m} />
-			) : jobs.length === 0 ? (
-				<div className="border-border text-muted-foreground rounded-md border px-4 py-6 text-sm">
-					{m.emptyJobsTitle} — {m.emptyJobsDescription}
-				</div>
-			) : (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>{m.jColJob}</TableHead>
-							<TableHead>{m.jColSchedules}</TableHead>
-							<TableHead>{m.jColDescription}</TableHead>
-							<TableHead>{m.jColLastRun}</TableHead>
-							<TableHead className="text-right">{m.jColAction}</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{jobs.map((job) => {
-							const state = states[job.id];
-							return (
-								<TableRow key={job.id}>
-									<TableCell className="font-medium">{job.id}</TableCell>
-									<TableCell>
-										<div className="flex flex-col gap-0.5">
-											{job.schedules.map((s) => (
-												<code key={s} className="text-xs">
-													{s}
-												</code>
-											))}
-										</div>
-									</TableCell>
-									<TableCell className="text-muted-foreground max-w-64 text-xs">
-										{job.description ?? "—"}
-									</TableCell>
-									<TableCell className="text-xs whitespace-nowrap">
-										{job.lastRun === null ? (
-											<span className="text-muted-foreground">{m.neverRan}</span>
-										) : (
-											<span className="flex flex-col">
-												<span
-													className={
-														job.lastRun.running
-															? "text-muted-foreground"
-															: job.lastRun.ok
-																? "text-success"
-																: "text-destructive"
-													}
-												>
-													{job.lastRun.running
-														? m.lastRunning
-														: job.lastRun.ok
-															? m.lastOk
-															: m.lastFailed}
-												</span>
-												<span className="text-muted-foreground">
-													{fmt(job.lastRun.startedAt, locale)}
-												</span>
-												{job.lastRun.error !== null && job.lastRun.error !== undefined && (
-													<span
-														className="text-destructive max-w-48 truncate"
-														title={job.lastRun.error}
-													>
-														{job.lastRun.error}
-													</span>
-												)}
-											</span>
-										)}
-									</TableCell>
-									<TableCell className="text-right">
-										<Button
-											size="sm"
-											variant="outline"
-											disabled={state?.pending === true}
-											onClick={() => void runNow(job.id)}
-										>
-											{state?.pending === true ? m.running : m.runNow}
-										</Button>
-										{state?.message !== null && state?.message !== undefined && (
-											<p
-												className={`mt-1 text-xs ${state.ok ? "text-success" : "text-destructive"}`}
-											>
-												{state.message}
-											</p>
-										)}
-									</TableCell>
-								</TableRow>
-							);
-						})}
-					</TableBody>
-				</Table>
-			)}
-		</section>
-	);
-}
 
 function RunsSection({
 	runs,
@@ -265,17 +137,56 @@ function RunsSection({
 
 type ScheduleAction = "create" | "pause" | "resume" | "delete" | "run";
 
-const statusLabel = (status: ScheduledJobInfo["status"], m: CronMessages) =>
+const statusLabel = (status: ScheduleEntryInfo["status"], m: CronMessages) =>
 	status === "active" ? m.statusActive : status === "paused" ? m.statusPaused : m.statusDone;
 
+const sourceLabel = (source: ScheduleEntryInfo["source"], m: CronMessages) =>
+	source === "cron" ? m.sourceCron : m.sourceRuntime;
+
+/** Last-run cell: cron registry entries carry the joined job_runs slice
+ * (ok/failed/running + error); scheduled rows only have lastRunAt. */
+const LastRunCell = ({
+	entry,
+	locale,
+	m,
+}: {
+	entry: ScheduleEntryInfo;
+	locale: string;
+	m: CronMessages;
+}) => {
+	if (entry.lastRun !== null) {
+		const run = entry.lastRun;
+		return (
+			<span className="flex flex-col">
+				<span
+					className={
+						run.running ? "text-muted-foreground" : run.ok ? "text-success" : "text-destructive"
+					}
+				>
+					{run.running ? m.lastRunning : run.ok ? m.lastOk : m.lastFailed}
+				</span>
+				<span className="text-muted-foreground">{fmt(run.at, locale)}</span>
+				{run.error !== null && (
+					<span className="text-destructive max-w-48 truncate" title={run.error}>
+						{run.error}
+					</span>
+				)}
+			</span>
+		);
+	}
+	if (entry.lastRunAt !== null)
+		return <span className="text-xs">{fmt(entry.lastRunAt, locale)}</span>;
+	return <span className="text-muted-foreground text-xs">{m.neverRan}</span>;
+};
+
 function SchedulesSection({
-	schedules,
+	entries,
 	kinds,
 	schedulable = null,
 	locale,
 	m,
 }: {
-	schedules: readonly ScheduledJobInfo[] | null;
+	entries: readonly ScheduleEntryInfo[] | null;
 	kinds: readonly string[] | null;
 	schedulable?: readonly SchedulableKindInfo[] | null;
 	locale: string;
@@ -290,6 +201,12 @@ function SchedulesSection({
 	const [busy, setBusy] = useState<ScheduleAction | null>(null);
 	const [rowBusy, setRowBusy] = useState<string | null>(null);
 	const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+	// Per-entry run-now state — several rows can report independently
+	// (the old jobs table kept per-id state for the same reason) and a
+	// pending run must not disable sibling rows' buttons.
+	const [runStates, setRunStates] = useState<
+		Record<string, { pending: boolean; text: string; ok: boolean }>
+	>({});
 
 	const say = (text: string, ok: boolean) => setMessage({ text, ok });
 	const refresh = () => void router.invalidate();
@@ -354,12 +271,40 @@ function SchedulesSection({
 		}
 	};
 
-	const act = async (job: ScheduledJobInfo, action: "pause" | "resume" | "delete" | "run") => {
-		setRowBusy(`${action}:${job.id}`);
+	const act = async (entry: ScheduleEntryInfo, action: "pause" | "resume" | "delete" | "run") => {
+		if (action === "run") {
+			// Both sources share the CronRunNowResult shape — the source
+			// picks which fire path the id addresses. Own try/catch so a
+			// rejection lands on this row's state, not the shared message.
+			setRunStates((s) => ({ ...s, [entry.id]: { pending: true, text: "", ok: false } }));
+			setMessage(null);
+			try {
+				const result =
+					entry.source === "cron"
+						? await runCronJobFn({ data: { id: entry.refId } })
+						: await runScheduleFn({ data: { id: entry.refId } });
+				setRunStates((s) => ({
+					...s,
+					[entry.id]: { pending: false, text: runNowMessage(result, m), ok: result.ok },
+				}));
+				refresh();
+			} catch {
+				setRunStates((s) => ({
+					...s,
+					[entry.id]: {
+						pending: false,
+						text: entry.source === "cron" ? m.runFailed : m.schedFailed,
+						ok: false,
+					},
+				}));
+			}
+			return;
+		}
+		setRowBusy(`${action}:${entry.id}`);
 		setMessage(null);
 		try {
 			if (action === "delete") {
-				const result = await deleteScheduleFn({ data: { id: job.id } });
+				const result = await deleteScheduleFn({ data: { id: entry.refId } });
 				setRowBusy(null);
 				if (result.ok) {
 					say(m.schedDeleted, true);
@@ -369,16 +314,9 @@ function SchedulesSection({
 				}
 				return;
 			}
-			if (action === "run") {
-				const result = await runScheduleFn({ data: { id: job.id } });
-				setRowBusy(null);
-				say(runNowMessage(result, m), result.ok);
-				refresh();
-				return;
-			}
 			const result = await updateScheduleFn({
 				data: {
-					id: job.id,
+					id: entry.refId,
 					patch: { status: action === "pause" ? "paused" : "active" },
 				},
 			});
@@ -399,11 +337,11 @@ function SchedulesSection({
 		<section>
 			<h2 className="text-sm font-semibold">{m.schedulesTitle}</h2>
 			<p className="text-muted-foreground mb-3 text-xs">{m.schedulesDescription}</p>
-			{schedules === null ? (
+			{entries === null ? (
 				<Unavailable m={m} />
 			) : (
 				<>
-					{schedules.length === 0 ? (
+					{entries.length === 0 ? (
 						<div className="border-border text-muted-foreground mb-4 rounded-md border px-4 py-6 text-sm">
 							{m.emptySchedulesTitle} — {m.emptySchedulesDescription}
 						</div>
@@ -411,8 +349,10 @@ function SchedulesSection({
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>{m.sColKind}</TableHead>
-									<TableHead>{m.sColSchedule}</TableHead>
+									<TableHead>{m.eColName}</TableHead>
+									<TableHead>{m.eColSource}</TableHead>
+									<TableHead>{m.eColTriggers}</TableHead>
+									<TableHead>{m.eColDescription}</TableHead>
 									<TableHead>{m.sColNextRun}</TableHead>
 									<TableHead>{m.sColLastRun}</TableHead>
 									<TableHead>{m.sColStatus}</TableHead>
@@ -420,81 +360,116 @@ function SchedulesSection({
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{schedules.map((job) => (
-									<TableRow key={job.id}>
-										<TableCell className="font-medium">{job.kind}</TableCell>
+								{entries.map((entry) => (
+									<TableRow key={entry.id}>
+										<TableCell className="font-medium">{entry.name}</TableCell>
 										<TableCell>
-											{job.cronExpr !== null ? (
-												<code className="text-xs">{job.cronExpr}</code>
+											<span className="text-muted-foreground text-xs">
+												{sourceLabel(entry.source, m)}
+											</span>
+										</TableCell>
+										<TableCell>
+											<div className="flex flex-col gap-0.5">
+												{entry.cronExprs.map((expr) => (
+													<code key={expr} className="text-xs">
+														{expr}
+													</code>
+												))}
+												{entry.runAt !== null && entry.cronExprs.length === 0 && (
+													<span className="text-xs">{fmt(entry.runAt, locale)}</span>
+												)}
+												{entry.cronExprs.length === 0 && entry.runAt === null && (
+													<span className="text-muted-foreground text-xs">—</span>
+												)}
+											</div>
+										</TableCell>
+										<TableCell className="text-muted-foreground max-w-64 text-xs">
+											{entry.description ?? "—"}
+										</TableCell>
+										<TableCell className="text-xs whitespace-nowrap">
+											{entry.nextRunAt === null ? (
+												<span className="text-muted-foreground">—</span>
 											) : (
-												<span className="text-xs">{fmt(job.runAt, locale)}</span>
+												fmt(entry.nextRunAt, locale)
 											)}
 										</TableCell>
 										<TableCell className="text-xs whitespace-nowrap">
-											{fmt(job.nextRunAt, locale)}
-										</TableCell>
-										<TableCell className="text-xs whitespace-nowrap">
-											{job.lastRunAt === null ? (
-												<span className="text-muted-foreground">{m.neverRan}</span>
-											) : (
-												fmt(job.lastRunAt, locale)
-											)}
+											<LastRunCell entry={entry} locale={locale} m={m} />
 										</TableCell>
 										<TableCell>
 											<span
 												className={
-													job.status === "active" ? "text-success" : "text-muted-foreground"
+													entry.status === "active" ? "text-success" : "text-muted-foreground"
 												}
 											>
-												{statusLabel(job.status, m)}
+												{statusLabel(entry.status, m)}
 											</span>
 										</TableCell>
 										<TableCell className="text-right">
 											<div className="flex justify-end gap-1">
-												{job.status === "active" && (
-													<>
-														<Button
-															size="sm"
-															variant="outline"
-															disabled={rowBusy !== null}
-															onClick={() => void act(job, "run")}
-														>
-															{m.runNow}
-														</Button>
-														<Button
-															size="sm"
-															variant="outline"
-															disabled={rowBusy !== null}
-															onClick={() => void act(job, "pause")}
-														>
-															{m.actPause}
-														</Button>
-													</>
+												{/* Run now: cron registry jobs always;
+												 * scheduled rows only while active —
+												 * runScheduledJobNow claims active rows
+												 * only, so paused/done would 404. */}
+												{(entry.source === "cron" || entry.status === "active") && (
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={runStates[entry.id]?.pending === true}
+														onClick={() => void act(entry, "run")}
+													>
+														{runStates[entry.id]?.pending === true ? m.running : m.runNow}
+													</Button>
 												)}
-												{job.status === "paused" && (
+												{entry.mutable && entry.status === "active" && (
 													<Button
 														size="sm"
 														variant="outline"
 														disabled={rowBusy !== null}
-														onClick={() => void act(job, "resume")}
+														onClick={() => void act(entry, "pause")}
+													>
+														{m.actPause}
+													</Button>
+												)}
+												{entry.mutable && entry.status === "paused" && (
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={rowBusy !== null}
+														onClick={() => void act(entry, "resume")}
 													>
 														{m.actResume}
 													</Button>
 												)}
-												<Button
-													size="sm"
-													variant="outline"
-													disabled={rowBusy !== null}
-													onClick={() => void act(job, "delete")}
-												>
-													{m.actDelete}
-												</Button>
+												{entry.mutable && (
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={rowBusy !== null}
+														onClick={() => void act(entry, "delete")}
+													>
+														{m.actDelete}
+													</Button>
+												)}
 											</div>
+											{runStates[entry.id] !== undefined &&
+												runStates[entry.id]!.pending !== true && (
+													<p
+														className={`mt-1 text-xs ${runStates[entry.id]!.ok ? "text-success" : "text-destructive"}`}
+													>
+														{runStates[entry.id]!.text}
+													</p>
+												)}
 										</TableCell>
 									</TableRow>
 								))}
 							</TableBody>
 						</Table>
+					)}
+					{message !== null && (
+						<p className={`mt-2 text-xs ${message.ok ? "text-success" : "text-destructive"}`}>
+							{message.text}
+						</p>
 					)}
 					<div className="border-border mt-4 max-w-2xl rounded-md border p-4">
 						<h3 className="text-sm font-semibold">{m.newScheduleTitle}</h3>
@@ -570,11 +545,6 @@ function SchedulesSection({
 								>
 									{busy === "create" ? m.fCreating : m.fCreate}
 								</Button>
-								{message !== null && (
-									<span className={`text-xs ${message.ok ? "text-success" : "text-destructive"}`}>
-										{message.text}
-									</span>
-								)}
 							</div>
 						</div>
 					</div>
@@ -585,9 +555,8 @@ function SchedulesSection({
 }
 
 export function CronPage({
-	jobs,
 	runs,
-	schedules = null,
+	entries,
 	scheduleKinds = null,
 	schedulableKinds = null,
 	i18n,
@@ -599,21 +568,17 @@ export function CronPage({
 			<header>
 				<h1 className="text-2xl font-semibold tracking-tight">{m.title}</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
-					{jobs === null ? m.unavailableDescription : m.description(jobs.length)}
+					{entries === null ? m.unavailableDescription : m.description(entries.length)}
 				</p>
 			</header>
-			<Tabs defaultValue="jobs">
+			<Tabs defaultValue="schedules">
 				<TabsList>
-					<TabsTrigger value="jobs">{m.jobsTitle}</TabsTrigger>
 					<TabsTrigger value="schedules">{m.schedulesTab}</TabsTrigger>
 					<TabsTrigger value="runs">{m.runsTitle}</TabsTrigger>
 				</TabsList>
-				<TabsContent value="jobs">
-					<JobsSection jobs={jobs} locale={locale} m={m} />
-				</TabsContent>
 				<TabsContent value="schedules">
 					<SchedulesSection
-						schedules={schedules}
+						entries={entries}
 						kinds={scheduleKinds}
 						schedulable={schedulableKinds}
 						locale={locale}
