@@ -421,6 +421,19 @@ describe("PortalInstanceShell", () => {
 			const member = render(shell({ tenant: { id: 1, role: "member" } }));
 			expect(member.queryByText("Vault")).toBeNull();
 			member.unmount();
+			// No session user → clinical/tenant gates fail closed too.
+			rootData = { user: null, pluginStates: ALL_ENABLED };
+			const anon = render(shell({ tenant: { id: 1, role: "admin" } }));
+			expect(anon.queryByText("Vault")).toBeNull();
+			anon.unmount();
+			rootData = { pluginStates: ALL_ENABLED } as never;
+			const noUser = render(shell({ tenant: { id: 1, role: "admin" } }));
+			expect(noUser.queryByText("Vault")).toBeNull();
+			noUser.unmount();
+			rootData = {
+				user: { id: "u1", email: "doc@x.com", name: "Dra" },
+				pluginStates: ALL_ENABLED,
+			};
 			render(shell({ tenant: { id: 1, role: "admin" } }));
 			expect(screen.getAllByText("Vault").length).toBeGreaterThan(0);
 		} finally {
