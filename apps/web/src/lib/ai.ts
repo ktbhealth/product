@@ -9,8 +9,12 @@
  * - AI_STUB=1: canned responses — no server needed, deterministic.
  * - AI_BASE_URL=http://localhost:8080/v1: OpenAI-compatible server
  *   (whisper.cpp, llama.cpp, LM Studio…) — same convention as
- *   LLM_BASE_URL. Audio inputs POST to <base>/audio/transcriptions,
- *   chat inputs to <base>/chat/completions.
+ *   LLM_BASE_URL. Audio inputs POST to <base>/audio/transcriptions.
+ *   Chat-shaped inputs still POST to <base>/chat/completions for
+ *   binding consumers, but generative calls prefer the canonical
+ *   LlmPort env route: app-host maps AI_BASE_URL onto the keyless
+ *   OpenAI env endpoint (see createApp's llmConfig), so LLM traffic
+ *   flows through effect/ai → LlmPort rather than this shim.
  * - otherwise the real env.AI binding (prod, or `wrangler dev` with
  *   the full wrangler.jsonc).
  */

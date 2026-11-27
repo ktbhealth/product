@@ -159,7 +159,9 @@ export const envLlmPort = (
 			),
 		};
 	}
-	if (cfg.openAiApiKey) {
+	// OpenAI-compatible endpoints need no key — a bare baseUrl (local
+	// servers, the AI_BASE_URL dev shim) is enough.
+	if (cfg.openAiApiKey || cfg.openAiBaseUrl) {
 		const model = cfg.openAiModel ?? "gpt-4o-mini";
 		return {
 			engine: "openai",

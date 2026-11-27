@@ -103,10 +103,10 @@ import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
-import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
 import { correctTranscript as envCorrectTranscript } from "@ktb/anamnesis-llm";
 import { correctTranscriptEffect } from "./transcript-cleanup.ts";
+import { resolveLlmConfig } from "./llm-config.ts";
 import {
 	Command,
 	CommandBus,
@@ -203,6 +203,11 @@ export interface AppEnv extends ObservabilityEnv {
 	readonly OPENAI_API_KEY?: string;
 	readonly LLM_BASE_URL?: string;
 	readonly LLM_MODEL?: string;
+	/** Dev shim (apps/web lib/ai.ts): OpenAI-compatible server backing
+	 * the local `AI` binding stand-in — doubles as the keyless OpenAI
+	 * env endpoint for generative calls when no LLM provider key is
+	 * configured (see llmConfig below). */
+	readonly AI_BASE_URL?: string;
 	readonly WORKERS_AI_MODEL?: string;
 	/** Comma-separated admin allowlist for the /platform console (P-026). */
 	readonly PLATFORM_ADMIN_EMAILS?: string;
@@ -521,15 +526,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// creates accounts through.
 	const AccountsLive = Layer.succeed(Accounts, makeAccountsService(auth));
 	// LLM provider config is resolved here, once — impl packages never
-	// read env themselves.
-	const llmConfig: LlmConfig = {
-		anthropicApiKey: env.ANTHROPIC_API_KEY,
-		openAiApiKey: env.LLM_API_KEY ?? env.OPENAI_API_KEY,
-		openAiBaseUrl: env.LLM_BASE_URL,
-		openAiModel: env.LLM_MODEL,
-		workersAi: env.AI,
-		workersAiModel: env.WORKERS_AI_MODEL,
-	};
+	// read env themselves (see ./llm-config.ts for the AI_BASE_URL
+	// dev-shim rule).
+	const llmConfig = resolveLlmConfig(env);
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
 	// Env-corrector port (P-120): the transcript env-cleanup stage
 	// probes this ambient service — the durable-safe successor of the
