@@ -165,6 +165,29 @@ describe("ai kind — llm", () => {
 		expect(envelopes[0]?.input).toBe('u=Ana n=42 b=true t=T1 node=a miss= nil= obj={"a":1} circ=');
 	});
 
+	it("renders placeholders that traverse past a leaf as empty", async () => {
+		const { envelopes, port } = llmCapture();
+		const r = registry();
+		r.registerDef(
+			def("deep-miss", [
+				node("a", "ai", ["start"], {
+					state: { obj: { a: 1 }, str: "leaf" },
+					params: {
+						template:
+							"num=${state.obj.a.b} str=${state.str.x}" +
+							" nil=${event.payload.nothing.x} deep=${event.payload.nothing.y.z}",
+					},
+				}),
+			]),
+		);
+		await Effect.runPromise(
+			r
+				.run("deep-miss", OrchestrationEvent.new("start", { nothing: null }, "test"))
+				.pipe(Effect.provideService(LlmPort, port)),
+		);
+		expect(envelopes[0]?.input).toBe("num= str= nil= deep=");
+	});
+
 	it("deep-interpolates string leaves inside params.input", async () => {
 		const { calls, port } = decisionsCapture();
 		const r = registry();
@@ -419,6 +442,38 @@ describe("ai kind — llm", () => {
 		expect(byNode.get("s3")).toBe("ByType");
 		expect(byNode.get("s4")).toBe('{"custom":1}');
 		expect(byNode.get("s5")).toBe("Text");
+	});
+
+	it("wraps non-object port results into an empty emitted payload", async () => {
+		const returns: unknown[] = [null, ["a"], "plain", 42];
+		let i = 0;
+		const port = {
+			generate: () => Effect.succeed(returns[i++]),
+			correct: () => Effect.die(new Error("unused")),
+		} as unknown as LlmPort["Service"];
+		const r = registry();
+		r.registerDef(
+			def("nonobj", [
+				node("n1", "ai", ["start"]),
+				node("n2", "ai", ["start"]),
+				node("n3", "ai", ["start"]),
+				node("n4", "ai", ["start"]),
+			]),
+		);
+		const result = await Effect.runPromise(
+			r.run("nonobj").pipe(Effect.provideService(LlmPort, port)),
+		);
+		expect(i).toBe(4);
+		// The raw result still lands in state verbatim…
+		expect(["n1", "n2", "n3", "n4"].map((id) => result.state[id])).toEqual(
+			expect.arrayContaining([null, ["a"], "plain", 42]),
+		);
+		// …but only plain objects become the emitted event payload.
+		const emitted = result.events.filter((event) => event.type === "ai.done");
+		expect(emitted).toHaveLength(4);
+		for (const event of emitted) {
+			expect(event.payload).toEqual({});
+		}
 	});
 });
 
