@@ -6,7 +6,7 @@ import { and, asc, eq, ne, or } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { PatientAuditAccess } from "@ktb/audit";
-import { PatientProfiles, type PatientProfile } from "@ktb/auth";
+import { PatientProfiles, type PatientProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { patients, user } from "@ktb/db/schema";

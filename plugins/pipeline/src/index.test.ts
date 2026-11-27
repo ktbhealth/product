@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import type { OrchestrationKind, OrchestrationPack } from "@ktb/orchestrator";
 import type { Db } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import type { PlatformAdmin } from "@ktb/platform";
 import type { PipelinePack, PipelineStage } from "@ktb/pipeline";
 import * as Effect from "effect/Effect";
@@ -180,16 +181,6 @@ describe("pipeline manifests", () => {
 });
 
 describe("pipeline.admin.panel loaders", () => {
-	const DDL = `
-CREATE TABLE orchestration_defs (
-	id TEXT PRIMARY KEY NOT NULL,
-	version TEXT NOT NULL,
-	def TEXT NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);`;
-
 	const panel = plugins.find((p) => p.id === "pipeline.admin.panel");
 	const listLoader = panel?.panel?.pages?.[0]?.loader as () => Effect.Effect<
 		{ rows: readonly unknown[] },
@@ -212,7 +203,7 @@ CREATE TABLE orchestration_defs (
 			import("@ktb/authz"),
 			import("@ktb/orchestrator"),
 		]);
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const admin = opts.admin !== false;
 		const gate = platform.makePlatformAdminGate(
 			platform.parsePlatformAdminEmails(admin ? "admin@x.com" : ""),

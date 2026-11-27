@@ -3,7 +3,9 @@ import { eq } from "drizzle-orm";
 import { insertAuditEntry } from "@ktb/audit";
 import type { DbClient } from "@ktb/db";
 import { relationTuples } from "@ktb/db/schema";
-import { bumpEpoch, PERMISSION_CATALOG, roles, splitPermission } from "@ktb/rbac";
+import { bumpEpoch, roles, splitPermission } from "@ktb/rbac";
+
+import { PERMISSION_CATALOG } from "./catalog.ts";
 
 /**
  * Built-in superadmin role: a role named `superadmin` carrying an

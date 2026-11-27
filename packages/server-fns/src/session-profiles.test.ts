@@ -10,15 +10,15 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Metric from "effect/Metric";
 
+import { Auth } from "@ktb/auth";
+import { sessionContextLookups, tagged } from "@ktb/observability/metrics";
+
 import {
-	Auth,
 	DoctorProfiles,
 	PatientProfiles,
 	type DoctorProfile,
 	type PatientProfile,
-} from "@ktb/auth";
-import { sessionContextLookups, tagged } from "@ktb/observability/metrics";
-
+} from "./profiles.ts";
 import {
 	ensureDoctorUser,
 	getDoctorAccess,

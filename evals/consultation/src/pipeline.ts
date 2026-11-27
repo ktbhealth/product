@@ -1,16 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Schedule from "effect/Schedule";
 import type { JsonObject } from "effect/Schema";
 
-import {
-	anchorEdits,
-	applyEdits,
-	EditApplyError,
-	type EditList,
-	type EditOp,
-	type PromptRef,
-} from "@ktb/eval-core";
+import { type EditList, type PromptRef } from "@ktb/eval-core";
 import {
 	makePipelineRegistry,
 	PipelineStageError,
@@ -18,10 +10,16 @@ import {
 	type PipelineStage,
 	type StageResult,
 } from "@ktb/pipeline";
+import {
+	CLEANUP_PROMPT,
+	charRangesFor,
+	cleanupTranscript,
+	cleanupTranscriptGated,
+	segmentCharSpans,
+	withStagePrompt,
+} from "@ktb/transcript-cleanup";
 
 import { gateTranscript } from "./anonymize.ts";
-import { charRangesFor, segmentCharSpans, type AsrRange } from "./asr-ranges.ts";
-import { sanitizeTimestampOps, timestampedCorrectorInput } from "./cleanup-timestamps.ts";
 import { fnvHex } from "./generate.ts";
 import type { LocaleProfile } from "./locale.ts";
 import { ptBR } from "./locales/pt-BR.ts";
@@ -55,6 +53,18 @@ import type {
 	SampleResult,
 	StageMetrics,
 } from "./schema.ts";
+
+// The cleanup chain (cleanupTranscript[Gated], the ASR-range helpers,
+// timestamp sanitizing, withStagePrompt, CLEANUP_PROMPT) moved to
+// @ktb/transcript-cleanup so production plugins stop depending on this
+// evals/-workspace pack. Re-exported here to preserve this module's
+// (and the package's) public surface.
+export {
+	CLEANUP_PROMPT,
+	cleanupTranscript,
+	cleanupTranscriptGated,
+	withStagePrompt,
+} from "@ktb/transcript-cleanup";
 
 /**
  * Pipeline stage runners — pure port orchestration. The eval path
@@ -141,138 +151,6 @@ export const transcribeSample = (
 		return { asr: scrubbed, record };
 	});
 
-// ---------- S4: LLM cleanup → reversible edits → corrected text ----------
-
-export const cleanupTranscript = (input: {
-	readonly taskId: string;
-	readonly raw: string;
-	/** ASR segments — when non-empty, the corrector sees them rendered
-	 * as `[m:ss] text` lines (temporal context for localizing errors)
-	 * instead of the flat transcript. Returned ops index into the
-	 * TIMESTAMPED text, so they are sanitized (timestamp tokens
-	 * stripped) and re-anchored onto `raw` before application —
-	 * timestamp artifacts can never reach the corrected text, and the
-	 * recorded EditList always spans `raw` (T-207). */
-	readonly timestamps?: readonly { readonly t0: number; readonly text: string }[];
-	/** Invoked with the corrector's RunRecord the moment `correct`
-	 * returns — BEFORE edit application — so a corrupt-edit-list
-	 * failure still leaves the completed call's audit record. Fires
-	 * once per attempt when a corrupt edit list triggers the retry. */
-	readonly onRecord?: (record: RunRecord) => void;
-}) =>
-	Effect.gen(function* () {
-		const llm = yield* LlmPort;
-		const tsMode = input.timestamps !== undefined && input.timestamps.length > 0;
-		const correctorInput = tsMode ? timestampedCorrectorInput(input.timestamps!) : input.raw;
-		// One retry on a corrupt edit list: ops that parse but do not
-		// apply (wrong text, garbage offsets from an unanchored
-		// adapter) get a second correct() call — the model is
-		// stochastic, a fresh attempt often produces applicable ops.
-		// LlmPort failures (port "llm") are NOT retried here — the
-		// batch-level transient retry owns those. Both attempts leave
-		// their RunRecord via onRecord.
-		const attempt = Effect.gen(function* () {
-			const { edits, record } = yield* llm.correct({
-				taskId: input.taskId,
-				role: "corrector",
-				input: correctorInput,
-				outputSchema: "EditList",
-			});
-			// Stamp the pack's declared corrector-prompt identity at the
-			// source — every caller (processSample AND the EvalRunner
-			// driver path) gets it; an adapter-stamped `prompt` always
-			// wins (withStagePrompt never overwrites).
-			const stamped = withStagePrompt(CLEANUP_PROMPT)(record);
-			input.onRecord?.(stamped);
-			// Timestamps mode: ops were authored against the [m:ss]
-			// rendering — sanitize timestamp tokens out of remove/
-			// insert, then anchor onto the plain transcript. Anchored
-			// ops cannot fail applyEdits; unverifiable spans (ops that
-			// only touched a timestamp, quotes that no longer exist
-			// without the markers) drop by the usual contract.
-			const ops = tsMode ? anchorEdits(input.raw, sanitizeTimestampOps(edits.ops)).ops : edits.ops;
-			// Corrupt edit lists are an expected adapter failure (LLMs emit
-			// garbage offsets) — typed failure, never a silent fiber defect.
-			const corrected = yield* Effect.try({
-				try: () => applyEdits(input.raw, ops),
-				catch: (cause) =>
-					new PortError({
-						port: "pipeline",
-						message:
-							cause instanceof EditApplyError
-								? `corrupt edit list at ${cause.at}: expected "${cause.expected}", got "${cause.actual}"`
-								: /* v8 ignore next -- applyEdits only throws EditApplyError */ "corrupt edit list",
-						cause,
-					}),
-			});
-			return { edits: { ops }, corrected, record: stamped };
-		});
-		return yield* attempt.pipe(
-			Effect.retry({
-				while: (e) => e instanceof PortError && e.port === "pipeline",
-				schedule: Schedule.once,
-			}),
-		);
-	});
-
-/**
- * Gated variant of `cleanupTranscript` — the corrector sees ONLY the
- * char spans a CleanupGate flagged, one `correct` call per span, and
- * the returned edits are shifted back to full-transcript offsets.
- * Model ops are re-anchored against each span's slice (adapters that
- * anchor make this idempotent; ones that trust `at` get the same
- * tolerance), so an edit can never land outside its flagged span —
- * the "edits outside a range are discarded" rule holds by
- * construction. `ranges` MUST be sorted and non-overlapping
- * (charRangesFor guarantees both) so the shifted ops stay disjoint —
- * applyEdits requires non-overlapping ops. An empty `ranges` runs no
- * calls and yields the raw text with an empty edit list.
- */
-export const cleanupTranscriptGated = (input: {
-	readonly taskId: string;
-	readonly raw: string;
-	readonly ranges: readonly AsrRange[];
-	readonly onRecord?: (record: RunRecord) => void;
-}) =>
-	Effect.gen(function* () {
-		const llm = yield* LlmPort;
-		const ops: EditOp[] = [];
-		for (const [i, range] of input.ranges.entries()) {
-			const slice = input.raw.slice(range.start, range.end);
-			const { edits, record } = yield* llm.correct({
-				taskId: `${input.taskId}-r${i}`,
-				role: "corrector",
-				input: slice,
-				outputSchema: "EditList",
-			});
-			input.onRecord?.(withStagePrompt(CLEANUP_PROMPT)(record));
-			// Anchor against the SLICE — the model counted offsets into
-			// the only text it saw. Ops it cannot verify there (pure
-			// insertions, quoted text absent from the span, paraphrases)
-			// drop before the offset shift, never in full-text coords.
-			const { ops: anchored } = anchorEdits(slice, edits.ops);
-			for (const op of anchored) {
-				ops.push({ ...op, at: op.at + range.start });
-			}
-		}
-		// Same corrupt-edit-list contract as cleanupTranscript — kept
-		// as a typed failure even though anchored+disjoint ops cannot
-		// throw by construction.
-		const corrected = yield* Effect.try({
-			try: () => applyEdits(input.raw, ops),
-			catch: /* v8 ignore next -- anchored+disjoint ops never throw */ (cause) =>
-				new PortError({
-					port: "pipeline",
-					message:
-						cause instanceof EditApplyError
-							? `corrupt edit list at ${cause.at}: expected "${cause.expected}", got "${cause.actual}"`
-							: "corrupt edit list",
-					cause,
-				}),
-		});
-		return { edits: { ops }, corrected };
-	});
-
 /** Corrector exposure under a bound CleanupGate — the words inside
  * the flagged spans vs the whole transcript, for CleanupGateStats. */
 const wordsOf = (text: string): number => text.split(/\s+/).filter((w) => w !== "").length;
@@ -304,14 +182,6 @@ export const cleanupQuestions = (edits: EditList): EvalQuestion[] =>
 
 // ---------- prompt identities (T-135) ----------
 
-/** Fill `prompt` on a stage record when the adapter did not declare
- * one — the pack's declared contract identity, never overwriting a
- * richer adapter-stamped ref. */
-export const withStagePrompt =
-	(prompt: PromptRef) =>
-	(r: RunRecord): RunRecord =>
-		r.prompt === undefined ? { ...r, prompt } : r;
-
 /** Canonical judge question set — the hash input for JUDGE_PROMPT.
  * Covers both entity stages plus one edit-classification question so
  * a change to ANY question template moves the hash. */
@@ -328,17 +198,6 @@ const canonicalJudgeQuestions = (): string =>
 		...entityQuestions(CANONICAL_JUDGE_ENTITIES, "corrected"),
 		...cleanupQuestions(CANONICAL_JUDGE_EDITS),
 	]);
-
-/** Cleanup corrector prompt identity. The corrector prompt TEXT is
- * adapter-owned (each LlmPort.correct implementation builds its own);
- * the pack owns the envelope contract — role "corrector" +
- * outputSchema "EditList" — so the hash pins exactly that contract,
- * nothing more. */
-export const CLEANUP_PROMPT: PromptRef = {
-	name: "eval.consultation/cleanup-corrector",
-	version: 1,
-	hash: fnvHex(JSON.stringify({ role: "corrector", outputSchema: "EditList" })),
-};
 
 /** Judge prompt identity. The pack owns the question text
  * (entityQuestions/cleanupQuestions); adapters own state
@@ -504,8 +363,10 @@ export interface SampleRun {
 /** Mutable per-sample state the dispatched stage functions share —
  * each stage reads what earlier stages produced and writes its own
  * outputs back. `processSample` hands this object to the pipeline
- * engine as `StageContext.input`, so the stages' writes are visible
- * to assembly exactly as the direct dispatch left them. */
+ * engine inside an {@link EvalRunInput} envelope (as
+ * `StageContext.input.run`), so the stages' writes are visible to
+ * assembly exactly as the direct dispatch left them while the input
+ * object itself stays untouched. */
 interface StageRun {
 	readonly sample: Sample;
 	readonly profile: LocaleProfile;
@@ -680,8 +541,8 @@ export const EVAL_RUN_PIPELINE_ID = "eval.consultation/run";
 /** The stage's products, returned as the PipelineStage `output` — the
  * registry aliases it at `state[stageId]` for observability. The
  * authoritative hand-off stays on the shared {@link StageRun} (the
- * pipeline `input`), which assembly reads — one source of truth, no
- * dual-write divergence. */
+ * `input.run` payload), which assembly reads — one source of truth,
+ * no dual-write divergence. */
 const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
 	switch (id) {
 		case "transcribe":
@@ -697,11 +558,24 @@ const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
 	}
 };
 
+/** The pipeline `input` envelope `processSample` hands to
+ * `registry.run`: the mutable {@link StageRun} rides as a NAMED
+ * payload (`input.run`) so `StageContext.input` itself is never
+ * mutated — the contract's "input is never mutated" holds literally
+ * for every stage, and the shared working state is an explicit
+ * pack-owned object rather than the input aliased. One envelope per
+ * run invocation; the stages of a run share the SAME payload in
+ * declared order (transcribe → cleanup → judge). */
+interface EvalRunInput {
+	readonly run: StageRun;
+}
+
 /** Adapt a RUN_STAGE_FNS runner to the {@link PipelineStage} contract.
- * The shared StageRun arrives as `StageContext.input` — the registry
- * never mutates `input`, and the stage writes land on the same object
- * the direct dispatch used, so records/answers/PHI decisions behave
- * identically. Ambient ports are probed inside the runners exactly as
+ * The shared StageRun arrives as `StageContext.input.run` (see
+ * {@link EvalRunInput}) — the envelope is never mutated, and the
+ * stage writes land on the same payload object the direct dispatch
+ * used, so records/answers/PHI decisions behave identically.
+ * Ambient ports are probed inside the runners exactly as
  * before (`Effect.serviceOption`/`yield*` against the caller-provided
  * layer). The typed `PortError` channel is normalized to
  * `PipelineStageError`; the registry re-wraps it into
@@ -710,7 +584,7 @@ const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
 const toPipelineStage = (id: RunStage): PipelineStage => ({
 	id,
 	run: (sctx) => {
-		const ctx = sctx.input as StageRun;
+		const ctx = (sctx.input as EvalRunInput).run;
 		return RUN_STAGE_FNS[id](ctx).pipe(
 			Effect.map((): StageResult => ({ output: stageOutput(id, ctx) })),
 			Effect.mapError((e) => new PipelineStageError({ stageId: id, message: e.message, cause: e })),
@@ -927,7 +801,9 @@ export const processSample = (input: {
 		// selection becomes the def's ordered stage entries (default
 		// "halt" onError = today's fail-the-sample semantics), the
 		// stage impls are thin adapters over the same runners, and the
-		// mutable StageRun rides as the pipeline `input` — records are
+		// mutable StageRun rides as `input.run` inside an
+		// EvalRunInput envelope — `StageContext.input` itself is never
+		// mutated — records are
 		// collected THROUGH the helpers' onRecord hooks fired the
 		// moment each port call returns, before any subsequent
 		// fallible step (PHI scrub gate, edit application), so even
@@ -956,7 +832,7 @@ export const processSample = (input: {
 		}
 		const registry = makePipelineRegistry();
 		registry.register(evalRunPack(stages));
-		yield* registry.run(EVAL_RUN_PIPELINE_ID, ctx).pipe(
+		yield* registry.run(EVAL_RUN_PIPELINE_ID, { run: ctx }).pipe(
 			// PipelineRunError wraps the stage failure twice
 			// (PipelineStageError → run error); its `cause` is the
 			// ORIGINAL typed error — unwrap so callers see the same

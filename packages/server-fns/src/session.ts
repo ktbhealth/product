@@ -1,15 +1,8 @@
-import {
-	actingAs,
-	Auth,
-	DOCTOR_PROFILE_COOKIE,
-	DoctorProfiles,
-	PATIENT_PROFILE_COOKIE,
-	PatientProfiles,
-	profileIdFromHeaders,
-	resolveDoctorProfile,
-	resolvePatientProfile,
-} from "@ktb/auth";
-import type { ActingUser, DoctorProfile, PatientProfile, SessionUser } from "@ktb/auth";
+import { Auth, type SessionUser } from "@ktb/auth";
+// Type-only: anchors the `declare module "@ktb/kernel"` ChromeUser
+// augmentation below — the module must be imported for TS to resolve
+// the augmentation target. Erased at compile time.
+import type {} from "@ktb/kernel";
 import { tenantSelectorFromHeaders, type TenantSelector } from "@ktb/tenant/selector";
 import {
 	recordUnsafe,
@@ -20,6 +13,17 @@ import {
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import {
+	actingAs,
+	DOCTOR_PROFILE_COOKIE,
+	DoctorProfiles,
+	PATIENT_PROFILE_COOKIE,
+	PatientProfiles,
+	profileIdFromHeaders,
+	resolveDoctorProfile,
+	resolvePatientProfile,
+} from "./profiles.ts";
+import type { ActingUser, DoctorProfile, PatientProfile } from "./profiles.ts";
 import { run } from "./runtime.ts";
 
 export type { ActingUser, DoctorProfile, PatientProfile, SessionUser };
@@ -288,6 +292,49 @@ export interface SessionAccount extends SessionUser {
 	 * the link only makes sense when there is a record to open.
 	 */
 	readonly patientProfiles: number;
+}
+
+/**
+ * Chrome-session facets (P-082): the clinical standing fields
+ * {@link SessionAccount} resolves are product data, not kernel
+ * contract — @ktb/kernel's `ChromeUser` stays generic (id/email/name +
+ * console flag) and product deployments extend it via module
+ * augmentation, the same pattern `PluginRegistry` uses. Any program
+ * that imports @ktb/server-fns sees these fields on `ChromeUser`, so
+ * chrome components (`ChromeProps.user`, `PageContext.user`) and
+ * `when.minUserCounts` gates can read them by name. Consumers that
+ * need the facets without a server-fns dep can pull the augmentation
+ * with a type-only import.
+ */
+declare module "@ktb/kernel" {
+	interface ChromeUser {
+		/** True when the account has no doctor side at all — no doctor
+		 * profile of its own and none delegated to it: a patient
+		 * account, which is shown the patient portal only. */
+		readonly patientOnly?: boolean;
+		/** The account's clinical standing: "owner" when it holds its
+		 * own doctor profile (or no directory is deployed), "secretary"
+		 * when it only acts through delegations, null when it has no
+		 * doctor side at all (a patient-only account). */
+		readonly clinicalRole?: "owner" | "secretary" | null;
+		/** Number of entries in the account's doctor-profile directory —
+		 * its own profile plus delegations. Chrome `when.minUserCounts`
+		 * gates multi-profile affordances on it. */
+		readonly doctorProfiles?: number;
+		/** Number of patient records linked to the account — how many
+		 * profiles the patient portal would offer. Chrome hides the
+		 * patient-portal entry when this is 0. */
+		readonly patientProfiles?: number;
+		/** Rank of the account's role in the tenant bound to the current
+		 * request (owner > admin > member, per TENANT_ROLE_RANK in
+		 * @ktb/tenant). Portal shells resolve it per navigation from the
+		 * same TenantResolver pipeline page loaders use — it is request
+		 * state, not a session-account field, so getSessionAccount does
+		 * not populate it. Chrome `when.minUserCounts` gates tenant-admin
+		 * surfaces on it; hosts that resolve no bound tenant leave it
+		 * undefined, which those gates treat as failing closed. */
+		readonly tenantRoleRank?: number;
+	}
 }
 
 /** The session user plus which side of the app the account belongs to

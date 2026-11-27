@@ -320,19 +320,15 @@ export interface LandingFooterBlock {
  * stay unit-testable. `paths`/`exceptPaths` entries match the current
  * pathname exactly or as a `prefix/*` subtree (the bare prefix itself
  * counts); `exceptPaths` wins over `paths`. Absent `paths` means "every
- * page". `minDoctorProfiles` is the clinical request-state condition:
- * the contribution only renders when the session account's doctor-
- * profile directory holds at least that many entries — fails closed
- * (hidden) when the host resolves no user or no count.
- * `minTenantRole` is the tenant-membership condition: the contribution
- * only renders when the session's role in the request's bound tenant
- * ranks at/above it ("owner" > "admin" > "member") — fails closed
- * (hidden) when the host resolves no tenant role. */
+ * page". `minUserCounts` is the session-state condition: each named
+ * numeric field on the session user (see {@link ChromeUser} — products
+ * extend it via module augmentation) must be at least the given count.
+ * Fails closed (hidden) when the host resolves no user or the field is
+ * absent/non-numeric. */
 export interface ChromeWhen {
 	readonly paths?: readonly string[];
 	readonly exceptPaths?: readonly string[];
-	readonly minDoctorProfiles?: number;
-	readonly minTenantRole?: "member" | "admin" | "owner";
+	readonly minUserCounts?: Readonly<Record<string, number>>;
 }
 
 /** A named portal instance (P-081): a sidebar-shell surface scoped to
@@ -344,17 +340,19 @@ export interface ChromeWhen {
  * `audience` names the audience RULE the portal gate checks (see
  * `PortalAudience` in @ktb/portal) — absent means `PORTAL_AUDIENCE_MEMBER`
  * (any signed-in user). `subject` selects which identity page loaders
- * run under: absent/"session" binds the raw session account;
- * "doctor" binds the doctor-resolved acting user (delegation-aware —
- * `Principal.userId` is the acting doctor's id, `actorId` the signed-in
- * account), which owner-scoped clinical services require. */
+ * run under: absent/"session" binds the raw session account; any other
+ * value is a host-defined subject kind the principal stage resolves —
+ * this product's "doctor" binds the doctor-resolved acting user
+ * (delegation-aware — `Principal.userId` is the acting doctor's id,
+ * `actorId` the signed-in account), which owner-scoped clinical
+ * services require. */
 export interface PortalInstance {
 	readonly id: string;
 	readonly basePath: string;
 	readonly label: string;
 	readonly icon?: ComponentType<{ readonly className?: string }>;
 	readonly audience?: string;
-	readonly subject?: "session" | "doctor";
+	readonly subject?: string;
 	/** Pinned UI locale for this portal (PL-008 Phase 6) — when set it
 	 * overrides the visitor's locale cookie for all copy under the
 	 * portal (e.g. a clinic portal pinned to pt-BR). */
@@ -370,47 +368,19 @@ export interface PortalsPlugin extends PluginBase, ForbiddenContributions<"porta
 }
 
 /** Session user shape handed to chrome components — structurally
- * compatible with `SessionUser` (@ktb/auth) without a kernel→auth dep. */
+ * compatible with `SessionUser` (@ktb/auth) without a kernel→auth dep.
+ * Generic identity/console fields only: product deployments extend the
+ * shape via `declare module "@ktb/kernel"` interface augmentation
+ * (see `SessionAccount` in @ktb/server-fns for this product's clinical
+ * facets) — chrome components and `when.minUserCounts` read those
+ * facets by name. */
 export interface ChromeUser {
 	readonly id: string;
 	readonly email: string;
 	readonly name?: string | null;
-	/** True for an account with no doctor side (a patient account) — chrome
-	 * hides doctor-only entries for it. Absent means a regular account. */
-	readonly patientOnly?: boolean;
 	/** True when the session passes the console gate (same check the
 	 * /platform beforeLoad runs) — chrome shows the console entry. */
 	readonly platformAdmin?: boolean;
-	/**
-	 * The account's clinical standing from the doctor-profile directory:
-	 * "owner" holds its own doctor profile, "secretary" only acts through
-	 * delegations, null has no doctor side (patient). Hosts that do not
-	 * resolve a role leave it undefined — chrome treats that as "owner".
-	 */
-	readonly clinicalRole?: "owner" | "secretary" | null;
-	/**
-	 * Number of entries in the account's doctor-profile directory — own
-	 * profile plus delegations. `when.minDoctorProfiles` gates chrome on
-	 * it; hosts that do not resolve the directory leave it undefined,
-	 * which gates treat as 0.
-	 */
-	readonly doctorProfiles?: number;
-	/**
-	 * Number of patient records linked to the account — how many profiles
-	 * the patient portal would offer. Hosts that do not resolve the
-	 * patient directory leave it undefined, which chrome treats as 0 —
-	 * the patient-portal entry only renders when there is a record to
-	 * open.
-	 */
-	readonly patientProfiles?: number;
-	/**
-	 * The account's role in the tenant bound to the current request
-	 * ("owner" > "admin" > "member"). Portal shells resolve it per
-	 * navigation from the same TenantResolver pipeline page loaders
-	 * use; hosts that do not resolve a bound tenant leave it
-	 * undefined, which `when.minTenantRole` treats as failing closed.
-	 */
-	readonly tenantRole?: "owner" | "admin" | "member" | null;
 }
 
 /** Everything the host injects into a chrome `component` contribution —
@@ -503,7 +473,7 @@ export type ChromeContent =
  * valid set per shell; unknown regions are skipped with a dev warning.
  * `order` sorts within the region (ascending, `order ?? Infinity`),
  * ties break by plugin topo order then array index; `when` filters by
- * pathname and session clinical state at render time. `portal` scopes the contribution to ONE
+ * pathname and session state at render time. `portal` scopes the contribution to ONE
  * portal instance (P-081): only consulted for `portal.*` regions —
  * absent means the default instance ("platform"), so pre-portal
  * contributions keep rendering in the platform console only. */

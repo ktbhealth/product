@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { sessionHandler } from "@ktb/server-fns";
 
 import { QueueAdmin, type EnqueueJobResult } from "./admin.ts";
 
@@ -20,17 +20,17 @@ const decodeEnqueueInput = Schema.decodeUnknownSync(EnqueueInput);
 
 export const enqueueJobFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeEnqueueInput(input))
-	.handler(async ({ data }): Promise<EnqueueJobResult> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const admin = yield* QueueAdmin;
-				return yield* admin.enqueue(data.kind, data.payload);
-			}).pipe(
-				Effect.catchTag("Forbidden", () =>
-					Effect.succeed<EnqueueJobResult>({ ok: false, reason: "forbidden" }),
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<EnqueueJobResult> => {
+			return run(
+				Effect.gen(function* () {
+					const admin = yield* QueueAdmin;
+					return yield* admin.enqueue(data.kind, data.payload);
+				}).pipe(
+					Effect.catchTag("Forbidden", () =>
+						Effect.succeed<EnqueueJobResult>({ ok: false, reason: "forbidden" }),
+					),
 				),
-			),
-		);
-	});
+			);
+		}),
+	);

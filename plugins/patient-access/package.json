@@ -4,6 +4,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./entities": "./src/entities.ts",
 		"./fns": "./src/fns.ts",
 		"./i18n": "./src/i18n.ts",
 		"./schema": "./src/schema.ts",
@@ -12,7 +13,6 @@
 	},
 	"dependencies": {
 		"@ktb/audit": "workspace:*",
-		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",
@@ -33,6 +33,7 @@
 		"lucide-react": "0.544.0"
 	},
 	"devDependencies": {
+		"@ktb/db-testing": "workspace:*",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
 		"react": "^19.2.0",

@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { consultations } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { EvalRunner } from "@ktb/eval-consultation";
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
 import { jobHandlers } from "@ktb/jobs-port";
@@ -14,7 +15,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { EVAL_RUN_JOB_KIND, executeEvalRun, registerEvalRunJobHandler } from "./run-job.ts";
 import { evalRun, evalRunSample } from "./schema.ts";
-import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 
 /** WS-E: eval.run job kind — payload decode, the DB-driven
  * executeEvalRun (pending-only resume), and the consumer handler's
@@ -126,7 +126,7 @@ afterEach(async () => {
 
 describe("eval.run job — executeEvalRun", () => {
 	it("runs a queued run to done: pending samples execute, run flips running→done", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db, { statuses: ["pending", "pending"] });
 		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
 		const [run] = await db.select().from(evalRun);
@@ -140,7 +140,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("resumes after a crash: only pending samples go back through the runner", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId, itemIds } = await seedRun(db, {
 			statuses: ["ok", "pending", "failed"],
 		});
@@ -156,7 +156,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("a wholesale runner failure lands the run failed, not stuck running", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db);
 		const crashing = EvalRunner.of({ run: () => Effect.fail(new Error("boom")) as never });
 		await Effect.runPromise(executeEvalRun(db, crashing, runId));
@@ -166,13 +166,13 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("a missing/deleted run row is a succeed-no-op", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		await Effect.runPromise(executeEvalRun(db, okRunner(), 9999));
 		expect(await db.select().from(evalRun)).toHaveLength(0);
 	});
 
 	it("retries a failed run: flips back to running and keeps startedAt", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db);
 		const startedAt = new Date("2026-01-02T03:04:05.000Z");
 		await db
@@ -187,7 +187,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("redelivers a done run idempotently: no pending samples reach the runner", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db, { statuses: ["ok", "ok"] });
 		await db.update(evalRun).set({ status: "done" }).where(eq(evalRun.id, runId));
 		const seen: number[] = [];
@@ -201,7 +201,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("writes pipeline outputs back onto the item's synthetic consultations row", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId, itemIds } = await seedRun(db);
 		await db.insert(consultations).values({
 			transcript: "gold script",
@@ -236,7 +236,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("skips the experiment projection when the run row disappears mid-run", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db);
 		// Concurrent delete between the finalize update and the
 		// experiment re-read — the projection must no-op, not throw.
@@ -248,7 +248,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("pins the dataset from params.instanceId when the instance link is gone", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId, instanceId } = await seedRun(db);
 		// instance_id set-nulls when the cohort instance is deleted —
 		// params.instanceId stays authoritative for the dataset pin.
@@ -262,7 +262,7 @@ describe("eval.run job — executeEvalRun", () => {
 	});
 
 	it("falls back to an unknown dataset pin when neither link nor params survive", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db);
 		await db.update(evalRun).set({ instanceId: null, params: "{}" }).where(eq(evalRun.id, runId));
 		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
@@ -291,7 +291,7 @@ describe("eval.run job — consumer handler", () => {
 	});
 
 	it("handle executes the run inside the app runtime", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db);
 		runtimeFor(
 			Layer.mergeAll(
@@ -308,7 +308,7 @@ describe("eval.run job — consumer handler", () => {
 	});
 
 	it("handle fails the run honestly when no EvalRunner is bound", async () => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db);
 		// Db only — serviceOption(EvalRunner) is None inside the runtime.
 		runtimeFor(Layer.succeed(Db, db as unknown as DbClient) as Layer.Layer<unknown, never, never>);

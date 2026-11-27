@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { Effect, Option } from "effect";
 
 import { PortalAudience } from "@ktb/portal";
-import { getSessionUser, runAs } from "@ktb/server-fns";
+import { optionalSessionHandler } from "@ktb/server-fns";
 
 /**
  * Audience rule ids the session user satisfies — the patient sign-in
@@ -12,16 +12,16 @@ import { getSessionUser, runAs } from "@ktb/server-fns";
  * callers get an empty list; sorted for stable wire output.
  */
 export const portalAudiencesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly string[]> => {
-		const user = await getSessionUser();
-		if (user === null) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const audience = yield* Effect.serviceOption(PortalAudience);
-				if (Option.isNone(audience)) return [] as string[];
-				return [...(yield* audience.value.audiences())].sort();
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => [],
+		async ({ run }): Promise<readonly string[]> => {
+			return run(
+				Effect.gen(function* () {
+					const audience = yield* Effect.serviceOption(PortalAudience);
+					if (Option.isNone(audience)) return [] as string[];
+					return [...(yield* audience.value.audiences())].sort();
+				}),
+			);
+		},
+	),
 );

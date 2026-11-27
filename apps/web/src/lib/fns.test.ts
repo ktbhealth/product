@@ -1108,6 +1108,6 @@ describe("server fns", () => {
 			createdAt: new Date(),
 		});
 		// Exactly one membership → the resolver's default pick binds it.
-		expect(await boundTenantFn()).toEqual({ id: tenant!.id, role: "admin" });
+		expect(await boundTenantFn()).toEqual({ id: tenant!.id, role: "admin", roleRank: 2 });
 	});
 });

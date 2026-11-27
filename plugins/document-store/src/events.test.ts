@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { makeEventBus, EventBus } from "@effect-server-utils/cqrs";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -11,15 +12,11 @@ import { defineCollection } from "./collection.ts";
 import { DocumentCollections } from "./collection.ts";
 import { DocumentRecordWritten, DocumentWriteDepth } from "./events.ts";
 import { f } from "./fields.ts";
-import { DocumentStore, DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
+import { DocumentStore, DocumentStoreLive } from "./service.ts";
 
 /** Minimal groups stub — document_records.tenant_id FKs to groups.id. */
 const GROUPS_DDL = `
-CREATE TABLE groups (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL DEFAULT ''
-);
-INSERT INTO groups (id, name) VALUES (1, 'clinic-a');
+INSERT INTO groups (id, name, slug, kind, created_at, updated_at) VALUES (1, 'clinic-a', 'clinic-a', 'clinic', 0, 0);
 `;
 
 const things = defineCollection({
@@ -41,7 +38,7 @@ describe("DocumentStoreLive write events", () => {
 	const seen: WrittenEvent[] = [];
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),
@@ -163,7 +160,7 @@ describe("DocumentStoreLive write events", () => {
 		// A bus whose dispatch dies must not turn a committed DB write
 		// into a reported failure (that would invite duplicate-retry
 		// writes). The event is logged and dropped instead.
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const db = makeDb(makeTestD1(GROUPS_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),

@@ -73,7 +73,7 @@ export const portalLoader = async ({
 		portalAudiencesFn(),
 		// Instance → tenant → platform fallback (P-082).
 		themeScopeFn({ data: { scope: "portal-instance", id: instanceId } }),
-		// Bound tenant for `when.minTenantRole` chrome gates.
+		// Bound tenant for `when.minUserCounts` chrome gates.
 		boundTenantFn(),
 	]);
 	const enabled = enabledIdSet(states);
@@ -96,9 +96,13 @@ export interface PortalLoaderData {
 	audiences: readonly string[];
 	pluginStates: { enabled: readonly string[] };
 	theme: ResolvedTheme | null;
-	/** Bound tenant ({ id, role }) or null in personal scope — feeds
-	 * `when.minTenantRole` chrome gates. */
-	tenant: { readonly id: string | number; readonly role: TenantRole } | null;
+	/** Bound tenant ({ id, role, roleRank }) or null in personal scope —
+	 * `roleRank` feeds the `tenantRoleRank` chrome facet. */
+	tenant: {
+		readonly id: string | number;
+		readonly role: TenantRole;
+		readonly roleRank: number;
+	} | null;
 }
 
 export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderData }) {
@@ -111,10 +115,11 @@ export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderDa
 	if (entry === undefined || pageEntry === undefined) return null;
 	const instance = entry.instance;
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
-	// Chrome user gains the bound tenant role so `when.minTenantRole`
-	// gates evaluate; unresolved tenant → null → those gates fail closed.
+	// Chrome user gains the bound tenant's role rank so
+	// `when.minUserCounts: { tenantRoleRank }` gates evaluate;
+	// unresolved tenant → undefined → those gates fail closed.
 	const chromeUser =
-		user === null || user === undefined ? user : { ...user, tenantRole: tenant?.role ?? null };
+		user === null || user === undefined ? user : { ...user, tenantRoleRank: tenant?.roleRank };
 	const items = collectChrome(
 		visiblePlugins,
 		"portal.sidebar",

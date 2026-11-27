@@ -90,7 +90,7 @@ describe("logLevelLayer", () => {
 	});
 
 	it("provides the configured minimum level", async () => {
-		const config = telemetryConfigFromEnv({ KTB_LOG_LEVEL: "warning" });
+		const config = telemetryConfigFromEnv({ LOG_LEVEL: "warning" });
 		const runtime = ManagedRuntime.make(logLevelLayer(config));
 		try {
 			const level = await runtime.runPromise(Effect.service(References.MinimumLogLevel));

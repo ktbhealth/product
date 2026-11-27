@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import { Tenant, withTenantAccess } from "./index.ts";
 import { scopedRepo, type ScopedRepo } from "./scoped-repo.ts";
@@ -45,12 +45,9 @@ const notes = tenantTable("test_notes", {
 	body: text().notNull(),
 });
 
-const DDL =
-	"CREATE TABLE test_notes (" +
-	"id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-	"tenant_id INTEGER, " +
-	"body TEXT NOT NULL" +
-	")";
+const DDL = `
+CREATE TABLE test_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, body TEXT NOT NULL);
+`;
 
 const BASE_SEED = 0x5eed0001;
 const SCENARIOS = 400;
@@ -241,7 +238,7 @@ const runScenario = async (seed: number, index: number): Promise<number> => {
 	const scenario = genScenario(rng, index);
 	const tag = `seed=${seed}`;
 
-	const sql = makeD1(DDL);
+	const sql = makeTestD1(DDL);
 	const ins = (tenantId: number | null, body: string) =>
 		sql
 			.prepare("INSERT INTO test_notes (tenant_id, body) VALUES (?, ?)")

@@ -5,7 +5,7 @@ import * as Logger from "effect/Logger";
 import * as References from "effect/References";
 import type { LogLevel } from "effect/LogLevel";
 
-import { telemetryConfigFromEnv, type ObservabilityEnv, type TelemetryConfig } from "./config.ts";
+import { telemetryConfigFromEnv, type TelemetryConfig, type TelemetryEnvInput } from "./config.ts";
 import { Telemetry, TelemetryLocalLive } from "./service.ts";
 import { consoleJsonLogger } from "./redact.ts";
 
@@ -28,7 +28,7 @@ export * from "./service.ts";
  */
 
 /**
- * Layer honoring `KTB_LOG_LEVEL` — provides `References.MinimumLogLevel`
+ * Layer honoring the configured LOG_LEVEL var — provides `References.MinimumLogLevel`
  * when configured. Shared by every telemetry driver (the level applies
  * regardless of which exporter wins).
  */
@@ -59,7 +59,7 @@ export const telemetryWarningsLayer = (config: TelemetryConfig) => {
  * Ordered LAST in the driver list; any exporter driver that is eligible
  * wins instead.
  */
-export const telemetryConsoleDriver: Driver<ObservabilityEnv> = {
+export const telemetryConsoleDriver: Driver<TelemetryEnvInput> = {
 	id: "telemetry-console",
 	port: Telemetry.key,
 	provides: (env) => {

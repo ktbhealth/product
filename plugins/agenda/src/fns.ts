@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureDoctorUser, runAs } from "@ktb/server-fns";
+import { doctorHandler, ensureDoctorUser, forbiddenTo, runAs } from "@ktb/server-fns";
 
 import { APPOINTMENT_STATUSES, type AppointmentStatus } from "./schema.ts";
 import type { Forbidden } from "@ktb/authz";
@@ -91,7 +91,7 @@ export const listAppointmentsFn = createServerFn({ method: "GET" })
 				const appointments = yield* Appointments;
 				const rows = yield* appointments.list(user.id, data);
 				return { ok: true, appointments: rows } as const;
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
+			}).pipe(forbiddenTo({ ok: false } as const)),
 		);
 	});
 
@@ -108,7 +108,7 @@ const collapseWriteErrors = <R>(
 	effect: Effect.Effect<AppointmentFnResult, Forbidden | AppointmentConflict, R>,
 ) =>
 	effect.pipe(
-		Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const)),
+		forbiddenTo({ ok: false } as const),
 		Effect.catchTag("AppointmentConflict", (e) =>
 			Effect.succeed({ ok: false, reason: "conflict", conflictingId: e.conflictingId } as const),
 		),
@@ -116,54 +116,54 @@ const collapseWriteErrors = <R>(
 
 export const createAppointmentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(CreateInput)(normalizeStartsAt(input)))
-	.handler(async ({ data }) => {
-		const user = await ensureDoctorUser();
-		return runAs(
-			user,
-			collapseWriteErrors(
-				Effect.gen(function* () {
-					const appointments = yield* Appointments;
-					const row = yield* appointments.create(user.id, data);
-					return asResult(row);
-				}),
-			),
-		);
-	});
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			return run(
+				collapseWriteErrors(
+					Effect.gen(function* () {
+						const appointments = yield* Appointments;
+						const row = yield* appointments.create(user.id, data);
+						return asResult(row);
+					}),
+				),
+			);
+		}),
+	);
 
 export const updateAppointmentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(UpdateInput)(normalizeStartsAt(input)))
-	.handler(async ({ data }) => {
-		const user = await ensureDoctorUser();
-		const { id, ...patch } = data;
-		return runAs(
-			user,
-			collapseWriteErrors(
-				Effect.gen(function* () {
-					const appointments = yield* Appointments;
-					const row = yield* appointments.update(user.id, id, patch);
-					return asResult(row);
-				}),
-			),
-		);
-	});
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			const { id, ...patch } = data;
+			return run(
+				collapseWriteErrors(
+					Effect.gen(function* () {
+						const appointments = yield* Appointments;
+						const row = yield* appointments.update(user.id, id, patch);
+						return asResult(row);
+					}),
+				),
+			);
+		}),
+	);
 
 export const setAppointmentStatusFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(StatusInput)(input))
-	.handler(async ({ data }) => {
-		const user = await ensureDoctorUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const appointments = yield* Appointments;
-				const row = yield* appointments.setStatus(
-					user.id,
-					data.id,
-					data.status as AppointmentStatus,
-				);
-				return asResult(row);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
-		);
-	});
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const appointments = yield* Appointments;
+					const row = yield* appointments.setStatus(
+						user.id,
+						data.id,
+						data.status as AppointmentStatus,
+					);
+					return asResult(row);
+				}).pipe(forbiddenTo({ ok: false } as const)),
+			);
+		}),
+	);
 
 export type StartAppointmentFnResult =
 	| { readonly ok: true; readonly consultationId: number }
@@ -176,16 +176,16 @@ export type StartAppointmentFnResult =
  */
 export const startAppointmentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(IdInput)(input))
-	.handler(async ({ data }) => {
-		const user = await ensureDoctorUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const appointments = yield* Appointments;
-				const result = yield* appointments.start(user.id, data.id);
-				return result === null
-					? ({ ok: false } as const)
-					: ({ ok: true, consultationId: result.consultationId } as const);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
-		);
-	});
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const appointments = yield* Appointments;
+					const result = yield* appointments.start(user.id, data.id);
+					return result === null
+						? ({ ok: false } as const)
+						: ({ ok: true, consultationId: result.consultationId } as const);
+				}).pipe(forbiddenTo({ ok: false } as const)),
+			);
+		}),
+	);

@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { RichTextAdminConsolePage } from "./platform-page.tsx";
 import { richText } from "./schema.ts";
@@ -83,20 +83,12 @@ export const richTextPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, richTextServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "rich-text.admin",
 				path: "/platform/rich-text",
 				component: RichTextAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const richTexts = yield* RichTexts;
@@ -109,7 +101,7 @@ export const richTextPanelPlugin = definePlugin({
 							updatedAt: row.updatedAt.toISOString(),
 						}));
 					}),
-			},
+			}),
 		],
 	},
 });

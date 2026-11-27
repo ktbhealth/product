@@ -21,17 +21,23 @@ const mocks = vi.hoisted(() => ({
 // Same fake as fns-attach-input.test.ts: handlers run as plain async
 // fns and the validator is applied to the incoming `data`.
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => ({
-	ensureDoctorUser: mocks.ensureDoctorUser,
-	ensureSessionUser: vi.fn(async () => ({ id: "u1" })),
-	getDoctorAccess: vi.fn(),
-	getDoctorUser: mocks.getDoctorUser,
-	getLocale: vi.fn(),
-	getServerRuntime: vi.fn(),
-	getSessionUser: vi.fn(),
-	purgeAudio: vi.fn(),
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		...actual,
+		ensureDoctorUser: mocks.ensureDoctorUser,
+		ensureSessionUser: vi.fn(async () => ({ id: "u1" })),
+		getDoctorAccess: vi.fn(),
+		getDoctorUser: mocks.getDoctorUser,
+		getLocale: vi.fn(),
+		getServerRuntime: vi.fn(),
+		getSessionUser: vi.fn(),
+		purgeAudio: vi.fn(),
+		runAs: mocks.runAs,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 /** Minimal DbClient — `deleteConsultationRow`'s rollback reads the
  * audio key then deletes: `db.select().from().where().limit()` +
  * `db.delete().where()`; the P-101 tuple cleanup then runs

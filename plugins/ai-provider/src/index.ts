@@ -638,13 +638,6 @@ export const PlatformDecisionsLive = Layer.effect(
 // Plugin manifests
 // ---------------------------------------------------------------------------
 
-/** DDL mirror of schema.ts for in-memory test databases (same
- * contract as EVAL_PERSONA_TEST_DDL). */
-export const AI_ENDPOINTS_TEST_DDL = `
-CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, machine_id INTEGER, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id INTEGER NOT NULL REFERENCES ai_endpoint(id) ON DELETE cascade, token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL);
-`;
-
 export const aiEndpointsTablesPlugin = definePlugin({
 	id: "ai.provider.tables",
 	meta: { keywords: ["ai", "tables"] },

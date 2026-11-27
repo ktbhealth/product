@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
@@ -39,16 +40,7 @@ import {
 	updateLayoutFn,
 } from "./fns.ts";
 import { plugins } from "./index.ts";
-import { LAYOUTS_TEST_DDL, Layouts, LayoutsLive } from "./service.ts";
-
-const PLUGIN_STATE_DDL = `
-CREATE TABLE plugin_state (
-	plugin_id TEXT PRIMARY KEY NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	config TEXT,
-	updated_at INTEGER NOT NULL
-);
-`;
+import { Layouts, LayoutsLive } from "./service.ts";
 
 const CONFIG = JSON.stringify({
 	sections: [{ id: "s1", title: "Hero", kind: "rich-text", refId: 1 }],
@@ -67,7 +59,7 @@ describe("layouts fns", () => {
 		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(LAYOUTS_TEST_DDL + PLUGIN_STATE_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),

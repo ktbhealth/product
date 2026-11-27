@@ -187,19 +187,3 @@ export const RichTextsLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the `rich_text` migration — re-exported for
- * sibling test files (same convention as `PAGES_TEST_DDL` in
- * plugins/pages). Never used by production code.
- */
-export const RICH_TEXT_TEST_DDL = `
-CREATE TABLE rich_text (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	title TEXT NOT NULL,
-	value TEXT NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE INDEX rich_text_updated_idx ON rich_text (updated_at);
-`;

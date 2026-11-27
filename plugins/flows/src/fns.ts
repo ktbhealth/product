@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 import type { Json } from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { runAs, sessionHandler } from "@ktb/server-fns";
 
 import { FLOW_EVENT_PATTERN } from "./definition.ts";
 import { Flows, type FlowEventInput, type FlowTargetInput } from "./service.ts";
@@ -112,43 +112,45 @@ const asUser = <A, E>(
  * missing/invisible records and handled failures. */
 export const flowStateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeTarget(input))
-	.handler(async ({ data }): Promise<FlowStateWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const flows = yield* Flows;
-					const info = yield* flows.currentState(data as FlowTargetInput);
-					if (info === null) return null;
-					return {
-						flow: info.flow.id,
-						collection: info.flow.collection,
-						id: info.record.id,
-						state: info.state,
-					};
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<FlowStateWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const flows = yield* Flows;
+						const info = yield* flows.currentState(data as FlowTargetInput);
+						if (info === null) return null;
+						return {
+							flow: info.flow.id,
+							collection: info.flow.collection,
+							id: info.record.id,
+							state: info.state,
+						};
+					}),
+				),
+			);
+		}),
+	);
 
 /** Would `event` transition the document right now? `false` for
  * unknown flows, missing records, illegal transitions and handled
  * failures. */
 export const canTransitionFlowFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeEvent(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		const user = await ensureSessionUser();
-		return orFalse(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const flows = yield* Flows;
-					return yield* flows.canTransition(data as FlowEventInput);
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<boolean> => {
+			return orFalse(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const flows = yield* Flows;
+						return yield* flows.canTransition(data as FlowEventInput);
+					}),
+				),
+			);
+		}),
+	);
 
 /** Commit a transition — the atomic state+field write plus post-commit
  * hooks. `null` for every handled failure (unknown flow, invisible
@@ -156,24 +158,25 @@ export const canTransitionFlowFn = createServerFn({ method: "POST" })
  * store validation). */
 export const transitionFlowFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeEvent(input))
-	.handler(async ({ data }): Promise<FlowTransitionWire | null> => {
-		const user = await ensureSessionUser();
-		return orNull(
-			asUser(
-				user,
-				Effect.gen(function* () {
-					const flows = yield* Flows;
-					const result = yield* flows.transition(data as FlowEventInput);
-					return {
-						flow: result.flow.id,
-						collection: result.flow.collection,
-						id: result.record.id,
-						event: data.event,
-						from: result.from,
-						to: result.to,
-						data: result.record.data as unknown as Json,
-					};
-				}),
-			),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, user }): Promise<FlowTransitionWire | null> => {
+			return orNull(
+				asUser(
+					user,
+					Effect.gen(function* () {
+						const flows = yield* Flows;
+						const result = yield* flows.transition(data as FlowEventInput);
+						return {
+							flow: result.flow.id,
+							collection: result.flow.collection,
+							id: result.record.id,
+							event: data.event,
+							from: result.from,
+							to: result.to,
+							data: result.record.data as unknown as Json,
+						};
+					}),
+				),
+			);
+		}),
+	);

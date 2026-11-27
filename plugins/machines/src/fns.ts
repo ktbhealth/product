@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
+import { optionalSessionHandler, sessionHandler } from "@ktb/server-fns";
 
 import { Machines, type MachineCard } from "./machines.ts";
 import type { MachineKind } from "./schema.ts";
@@ -72,102 +72,100 @@ const toCreateInput = (data: typeof CreateInput.Type) => ({
 
 /** Platform machine list — admin-only; denials degrade to []. */
 export const machinesListFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly MachineCard[]> => {
-		const user = await getSessionUser();
-		if (!user) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const machines = yield* Machines;
-				return yield* machines.list({ scope: "platform" }).pipe(denyToFalse([] as MachineCard[]));
-			}),
-		);
-	},
+	optionalSessionHandler(
+		() => [],
+		async ({ run }): Promise<readonly MachineCard[]> => {
+			return run(
+				Effect.gen(function* () {
+					const machines = yield* Machines;
+					return yield* machines.list({ scope: "platform" }).pipe(denyToFalse([] as MachineCard[]));
+				}),
+			);
+		},
+	),
 );
 
 export const machinesCreateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<Result<MachineCard>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const machines = yield* Machines;
-				return yield* machines.create(toCreateInput(data)).pipe(
-					Effect.map((card) => ({ ok: true as const, data: card })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
-
-export const machinesUpdateFn = createServerFn({ method: "POST" })
-	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<Result<MachineCard>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const machines = yield* Machines;
-				return yield* machines
-					.update({
-						id: data.id,
-						...(data.name !== undefined ? { name: data.name } : {}),
-						...(data.kind !== undefined ? { kind: data.kind as MachineKind } : {}),
-						...(data.host !== undefined ? { host: data.host } : {}),
-						...(data.port !== undefined ? { port: data.port } : {}),
-						...(data.capabilities !== undefined ? { capabilities: data.capabilities } : {}),
-						...(data.secretRef !== undefined ? { secretRef: data.secretRef } : {}),
-						...(data.healthUrl !== undefined ? { healthUrl: data.healthUrl } : {}),
-						...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-					})
-					.pipe(
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<MachineCard>> => {
+			return run(
+				Effect.gen(function* () {
+					const machines = yield* Machines;
+					return yield* machines.create(toCreateInput(data)).pipe(
 						Effect.map((card) => ({ ok: true as const, data: card })),
 						denyToFalse({ ok: false as const }),
 					);
-			}),
-		);
-	});
+				}),
+			);
+		}),
+	);
+
+export const machinesUpdateFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeUpdate(input))
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<MachineCard>> => {
+			return run(
+				Effect.gen(function* () {
+					const machines = yield* Machines;
+					return yield* machines
+						.update({
+							id: data.id,
+							...(data.name !== undefined ? { name: data.name } : {}),
+							...(data.kind !== undefined ? { kind: data.kind as MachineKind } : {}),
+							...(data.host !== undefined ? { host: data.host } : {}),
+							...(data.port !== undefined ? { port: data.port } : {}),
+							...(data.capabilities !== undefined ? { capabilities: data.capabilities } : {}),
+							...(data.secretRef !== undefined ? { secretRef: data.secretRef } : {}),
+							...(data.healthUrl !== undefined ? { healthUrl: data.healthUrl } : {}),
+							...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+						})
+						.pipe(
+							Effect.map((card) => ({ ok: true as const, data: card })),
+							denyToFalse({ ok: false as const }),
+						);
+				}),
+			);
+		}),
+	);
 
 export const machinesRemoveFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const machines = yield* Machines;
-				return yield* machines.remove(data.id).pipe(
-					Effect.map(() => ({ ok: true as const, data: null })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.gen(function* () {
+					const machines = yield* Machines;
+					return yield* machines.remove(data.id).pipe(
+						Effect.map(() => ({ ok: true as const, data: null })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /** Probe one machine's health — persists status/lastCheckAt. */
 export const machinesCheckFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<MachineCard | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const machines = yield* Machines;
-				return yield* machines.check(data.id).pipe(
-					Effect.map((card) => ({ ok: true as const, data: card })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<MachineCard | null>> => {
+			return run(
+				Effect.gen(function* () {
+					const machines = yield* Machines;
+					return yield* machines.check(data.id).pipe(
+						Effect.map((card) => ({ ok: true as const, data: card })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);
 
 /** Probe every platform machine — returns refreshed cards. */
 export const machinesCheckAllFn = createServerFn({ method: "POST" }).handler(
-	async (): Promise<Result<readonly MachineCard[]>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
+	sessionHandler(async ({ run }): Promise<Result<readonly MachineCard[]>> => {
+		return run(
 			Effect.gen(function* () {
 				const machines = yield* Machines;
 				return yield* machines.checkAll({ scope: "platform" }).pipe(
@@ -176,7 +174,7 @@ export const machinesCheckAllFn = createServerFn({ method: "POST" }).handler(
 				);
 			}),
 		);
-	},
+	}),
 );
 
 /** Agent heartbeat — stamps lastSeenAt and marks the machine online.
@@ -184,16 +182,16 @@ export const machinesCheckAllFn = createServerFn({ method: "POST" }).handler(
  * here until agent tokens land. */
 export const machinesBeatFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const machines = yield* Machines;
-				return yield* machines.beat(data.id).pipe(
-					Effect.map(() => ({ ok: true as const, data: null })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.gen(function* () {
+					const machines = yield* Machines;
+					return yield* machines.beat(data.id).pipe(
+						Effect.map(() => ({ ok: true as const, data: null })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);

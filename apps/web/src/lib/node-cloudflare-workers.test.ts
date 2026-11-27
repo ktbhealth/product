@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
+import { observabilityEnvKeys } from "@ktb/observability";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { STUB_TRANSCRIPT } from "./ai.ts";
@@ -146,15 +146,15 @@ describe("node-cloudflare-workers env", () => {
 	it("forwards every observability env key into the worker env", async () => {
 		// telemetryConfigFromEnv reads these off the worker binding env —
 		// a key missing from ENV_KEYS is silently ignored under dev:node.
-		// OBSERVABILITY_ENV_KEYS is the canonical list (@ktb/observability).
+		// observabilityEnvKeys("KTB_") is the canonical list (@ktb/observability).
 		vi.stubEnv("DATABASE_URL", ":memory:");
 		vi.stubEnv("KTB_DEV_QUEUE_DB", ":memory:");
-		for (const key of OBSERVABILITY_ENV_KEYS) {
+		for (const key of observabilityEnvKeys("KTB_")) {
 			vi.stubEnv(key, `fwd-${key}`);
 		}
 
 		const env = await loadEnv();
-		for (const key of OBSERVABILITY_ENV_KEYS) {
+		for (const key of observabilityEnvKeys("KTB_")) {
 			expect(env[key], key).toBe(`fwd-${key}`);
 		}
 	});

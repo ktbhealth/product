@@ -6,7 +6,7 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { audit } from "@ktb/audit";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
-import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
+import { PlatformAdmin, platformAdminAdmits, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 import { i18nManifestHash, parseMessage, PSEUDO_LOCALE, type MessageParam } from "@ktb/i18n";
 
@@ -101,10 +101,7 @@ export const I18nAdminLive = Layer.effect(
 				const ok = yield* permissionsOpt.value.can(I18N_RESOURCE, I18N_READ_ACTION);
 				if (ok) return true;
 			}
-			return yield* platformAdmin.requireAdmin().pipe(
-				Effect.as(true),
-				Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-			);
+			return yield* platformAdminAdmits(platformAdmin);
 		});
 
 		/**

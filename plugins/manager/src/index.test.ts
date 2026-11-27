@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { makePluginStatesLive, PluginStates } from "@ktb/platform/plugin-states";
 import { collectRouteDefinitions, makeRoutes, Routes } from "@ktb/platform/routes";
@@ -12,15 +13,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { managerChromePlugin, managerPanelPlugin, plugins } from "./index.ts";
 import { managerConfig, managerConfigSchema } from "./config.tsx";
-
-const DDL = `
-CREATE TABLE plugin_state (
-	plugin_id TEXT PRIMARY KEY NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	config TEXT,
-	updated_at INTEGER NOT NULL
-);
-`;
 
 describe("manager plugins", () => {
 	it("declares the sidebar chrome and the /platform/plugins page", () => {
@@ -68,7 +60,7 @@ describe("manager page loader", () => {
 	const runtimeFor = (adminEmail?: string) =>
 		ManagedRuntime.make(
 			Layer.mergeAll(
-				makePluginStatesLive(plugins).pipe(Layer.provide(Layer.succeed(Db, makeDb(makeD1(DDL))))),
+				makePluginStatesLive(plugins).pipe(Layer.provide(Layer.succeed(Db, makeDb(makeTestD1())))),
 				Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(adminEmail))),
 			),
 		);

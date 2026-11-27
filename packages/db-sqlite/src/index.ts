@@ -111,6 +111,18 @@ export const makeSqliteDatabase = (
 		applyMigrations(sqlite, opts.migrate);
 	}
 
+	return wrapSqliteDatabase(sqlite);
+};
+
+/**
+ * Wrap an already-open better-sqlite3 handle in the `SqlDatabase`
+ * surface. Split from {@link makeSqliteDatabase} so callers that manage
+ * the handle themselves — migration runners, test fixtures applying
+ * extra DDL before first use — get the same adapter without reopening
+ * the file. Pragmas are the caller's responsibility (makeSqliteDatabase
+ * sets busy_timeout/foreign_keys/journal_mode before wrapping).
+ */
+export const wrapSqliteDatabase = (sqlite: Database.Database): SqliteDatabase => {
 	const now = () => performance.now();
 
 	const runBound = (b: BoundStatement): SqlResult => {

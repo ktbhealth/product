@@ -27,10 +27,16 @@ vi.mock("@tanstack/react-start", () => ({
 		return api;
 	},
 }));
-vi.mock("@ktb/server-fns", () => ({
-	ensureDoctorUser: mocks.ensureDoctorUser,
-	runAs: mocks.runAs,
-}));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		...actual,
+		ensureDoctorUser: mocks.ensureDoctorUser,
+		runAs: mocks.runAs,
+		forbiddenTo: actual.forbiddenTo,
+		...actual.serverFnHandlerMocks(),
+	};
+});
 
 import { AppointmentConflict, Appointments } from "./service.ts";
 import {

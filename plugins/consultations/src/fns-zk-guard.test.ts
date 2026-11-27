@@ -25,7 +25,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { Tenant } from "@ktb/tenant";
 
 import { consultationsZkApi } from "./apis.ts";
@@ -33,8 +34,7 @@ import { extractAnamnesisFn, patientHistoryRowsFn } from "./fns.ts";
 import { Consultations } from "./index.ts";
 
 const DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO groups (id, name, slug, kind, zk) VALUES (7, 'ZK Clinic', 'zk', 'clinic', 1);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'ZK Clinic', 'zk', 'clinic', 1, 0, 0);
 `;
 
 const USER = { id: "u-doc", email: "doc@x.com", name: "Doc" };
@@ -44,7 +44,7 @@ const session = {
 	expiresAt: new Date(Date.now() + 3600_000),
 };
 
-const db = makeDb(makeD1(DDL));
+const db = makeDb(makeTestD1(DDL));
 const runtime = ManagedRuntime.make(Layer.succeed(Db, db) as Layer.Layer<unknown>);
 let activeSession: typeof session | null = session;
 const auth = stubAuth(() => activeSession);

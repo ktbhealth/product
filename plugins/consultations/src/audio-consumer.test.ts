@@ -5,7 +5,8 @@ import { EventBus, type EventBusShape } from "@effect-server-utils/cqrs";
 import * as Effect from "effect/Effect";
 
 import { makeDb, Db, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { consultations, jobRuns } from "@ktb/db/schema";
 import { jobHandlers, registerJobHandler } from "@ktb/jobs-port";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
@@ -31,19 +32,13 @@ import {
 import { createConsultation } from "./lifecycle.ts";
 
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL DEFAULT 'browser', status TEXT NOT NULL DEFAULT 'done', bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO groups (id, name, slug, kind, zk) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1, 0, 0);
 `;
 
 const TEST_MODEL = "test-whisper";
 
 const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
-	const db = makeDb(makeD1(DDL));
+	const db = makeDb(makeTestD1(DDL));
 	const calls = {
 		corrected: [] as string[],
 		segments: [] as (readonly WhisperSegment[] | undefined)[],
@@ -562,7 +557,7 @@ describe("transcription audit trail (P-080)", () => {
 
 describe("defaultAudioJobDeps", () => {
 	it("resolves bindings from the server runtime and Db from the app runtime", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		const bucket = { get: async () => null };
 		const ai = { run: async () => ({}) };
 		const correct = async () => null;

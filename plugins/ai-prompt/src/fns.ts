@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
+import { optionalSessionHandler, sessionHandler } from "@ktb/server-fns";
 
 import { AiPrompts, type PromptCard, type PromptVariable } from "./prompts.ts";
 
@@ -65,97 +65,99 @@ const toVariables = (
 /** Platform prompt list — admin-only; denials degrade to []. */
 export const promptsListFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeList(input ?? {}))
-	.handler(async ({ data }): Promise<readonly PromptCard[]> => {
-		const user = await getSessionUser();
-		if (!user) return [];
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const prompts = yield* AiPrompts;
-				return yield* prompts
-					.list({
-						scope: "platform",
-						...(data.name !== undefined && data.name !== "" ? { name: data.name } : {}),
-					})
-					.pipe(denyToFalse([] as PromptCard[]));
-			}),
-		);
-	});
+	.handler(
+		optionalSessionHandler(
+			({ data }) => [],
+			async ({ data, run }): Promise<readonly PromptCard[]> => {
+				return run(
+					Effect.gen(function* () {
+						const prompts = yield* AiPrompts;
+						return yield* prompts
+							.list({
+								scope: "platform",
+								...(data.name !== undefined && data.name !== "" ? { name: data.name } : {}),
+							})
+							.pipe(denyToFalse([] as PromptCard[]));
+					}),
+				);
+			},
+		),
+	);
 
 export const promptsCreateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
-	.handler(async ({ data }): Promise<Result<PromptCard>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const prompts = yield* AiPrompts;
-				return yield* prompts
-					.create({
-						scope: "platform",
-						name: data.name,
-						template: data.template,
-						...(data.version !== undefined && data.version !== null
-							? { version: data.version }
-							: {}),
-						...(data.locale !== undefined && data.locale !== null ? { locale: data.locale } : {}),
-						...(toVariables(data.variables) !== undefined
-							? { variables: toVariables(data.variables) }
-							: {}),
-						...(data.modelHint !== undefined && data.modelHint !== null
-							? { modelHint: data.modelHint }
-							: {}),
-						...(data.isSystem !== undefined ? { isSystem: data.isSystem } : {}),
-						...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}),
-					})
-					.pipe(
-						Effect.map((card) => ({ ok: true as const, data: card })),
-						denyToFalse({ ok: false as const }),
-					);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<PromptCard>> => {
+			return run(
+				Effect.gen(function* () {
+					const prompts = yield* AiPrompts;
+					return yield* prompts
+						.create({
+							scope: "platform",
+							name: data.name,
+							template: data.template,
+							...(data.version !== undefined && data.version !== null
+								? { version: data.version }
+								: {}),
+							...(data.locale !== undefined && data.locale !== null ? { locale: data.locale } : {}),
+							...(toVariables(data.variables) !== undefined
+								? { variables: toVariables(data.variables) }
+								: {}),
+							...(data.modelHint !== undefined && data.modelHint !== null
+								? { modelHint: data.modelHint }
+								: {}),
+							...(data.isSystem !== undefined ? { isSystem: data.isSystem } : {}),
+							...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}),
+						})
+						.pipe(
+							Effect.map((card) => ({ ok: true as const, data: card })),
+							denyToFalse({ ok: false as const }),
+						);
+				}),
+			);
+		}),
+	);
 
 export const promptsUpdateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<Result<PromptCard>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const prompts = yield* AiPrompts;
-				return yield* prompts
-					.update({
-						id: data.id,
-						...(data.template !== undefined ? { template: data.template } : {}),
-						...(toVariables(data.variables) !== undefined
-							? { variables: toVariables(data.variables) }
-							: {}),
-						...(data.modelHint !== undefined ? { modelHint: data.modelHint } : {}),
-						...(data.isSystem !== undefined ? { isSystem: data.isSystem } : {}),
-						...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}),
-						...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-					})
-					.pipe(
-						Effect.map((card) => ({ ok: true as const, data: card })),
-						denyToFalse({ ok: false as const }),
-					);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<PromptCard>> => {
+			return run(
+				Effect.gen(function* () {
+					const prompts = yield* AiPrompts;
+					return yield* prompts
+						.update({
+							id: data.id,
+							...(data.template !== undefined ? { template: data.template } : {}),
+							...(toVariables(data.variables) !== undefined
+								? { variables: toVariables(data.variables) }
+								: {}),
+							...(data.modelHint !== undefined ? { modelHint: data.modelHint } : {}),
+							...(data.isSystem !== undefined ? { isSystem: data.isSystem } : {}),
+							...(data.isDefault !== undefined ? { isDefault: data.isDefault } : {}),
+							...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+						})
+						.pipe(
+							Effect.map((card) => ({ ok: true as const, data: card })),
+							denyToFalse({ ok: false as const }),
+						);
+				}),
+			);
+		}),
+	);
 
 export const promptsRemoveFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.gen(function* () {
-				const prompts = yield* AiPrompts;
-				return yield* prompts.remove(data.id).pipe(
-					Effect.map(() => ({ ok: true as const, data: null })),
-					denyToFalse({ ok: false as const }),
-				);
-			}),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
+			return run(
+				Effect.gen(function* () {
+					const prompts = yield* AiPrompts;
+					return yield* prompts.remove(data.id).pipe(
+						Effect.map(() => ({ ok: true as const, data: null })),
+						denyToFalse({ ok: false as const }),
+					);
+				}),
+			);
+		}),
+	);

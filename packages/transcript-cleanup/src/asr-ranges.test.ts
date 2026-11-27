@@ -10,7 +10,7 @@ import {
 	mergeFlaggedRanges,
 	segmentCharSpans,
 } from "./asr-ranges.ts";
-import { EvalPort, PortError } from "./ports.ts";
+import { EvalPort, PortError } from "@ktb/eval-core";
 
 const record = {
 	runId: "r",

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { consultations, doctors, patients, user as userTable } from "@ktb/db/schema";
 import { Forbidden, Principal } from "@ktb/authz";
 import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
@@ -15,7 +16,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import type { CohortSummary } from "./index.ts";
 import { evalValidatorPanelPlugin, EvalValidator, EvalValidatorLive } from "./index.ts";
 import { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
-import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 
 const grantLayer = (allow: boolean) =>
 	Layer.succeed(
@@ -74,7 +74,7 @@ const make = (
 	} = {},
 ) => {
 	const { allow = true, runner } = opts;
-	const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+	const db = makeDb(makeTestD1(undefined, { foreignKeys: true }));
 	const layers = Layer.mergeAll(
 		Layer.succeed(Db, db as unknown as DbClient),
 		grantLayer(allow),

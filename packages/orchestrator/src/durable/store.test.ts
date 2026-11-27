@@ -2,8 +2,9 @@ import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { orchestrationDefs, orchestrationEvents, orchestrationRuns } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
+
 import { eq } from "drizzle-orm";
 
 import { makeOrchestratorRegistry } from "../registry.ts";
@@ -25,50 +26,7 @@ import {
 } from "./store.ts";
 import type { OrchestrationSnapshot } from "../runner.ts";
 
-const DDL = `
-CREATE TABLE orchestration_defs (
-	id TEXT PRIMARY KEY,
-	version TEXT NOT NULL,
-	def TEXT NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_runs (
-	id TEXT PRIMARY KEY,
-	def_id TEXT NOT NULL,
-	def_version TEXT NOT NULL,
-	status TEXT DEFAULT 'running' NOT NULL,
-	state TEXT NOT NULL,
-	runtime TEXT NOT NULL,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_events (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	event_id TEXT NOT NULL,
-	event_type TEXT NOT NULL,
-	payload TEXT NOT NULL,
-	source TEXT NOT NULL,
-	ts INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-CREATE TABLE orchestration_node_runs (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	node_id TEXT NOT NULL,
-	status TEXT NOT NULL,
-	latency_ms INTEGER NOT NULL,
-	error TEXT,
-	fires INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-`;
-
-const makeTestDb = (): DbClient => makeDb(makeD1(DDL));
+const makeTestDb = (): DbClient => makeDb(makeTestD1());
 
 const noopKind: OrchestrationKind = { id: "noop", run: () => Effect.succeed({}) };
 

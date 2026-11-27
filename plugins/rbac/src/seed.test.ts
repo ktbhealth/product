@@ -3,22 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import * as Effect from "effect/Effect";
 
-import { AUDIT_TEST_DDL, adminAudit } from "@ktb/audit";
+import { adminAudit } from "@ktb/audit";
 import { makeDb } from "@ktb/db";
+import { makeTestD1 } from "@ktb/db-testing";
 import { relationTuples } from "@ktb/db/schema";
-import { makeD1 } from "@ktb/db/testing";
-import { buildPermissions, PERMISSION_CATALOG, readEpoch, roles, splitPermission } from "@ktb/rbac";
+import { buildPermissions, readEpoch, roles, splitPermission } from "@ktb/rbac";
 
+import { PERMISSION_CATALOG } from "./catalog.ts";
 import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";
 
-const DDL = `
-CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-${AUDIT_TEST_DDL}
-`;
-
-const freshDb = () => makeDb(makeD1(DDL));
+const freshDb = () => makeDb(makeTestD1());
 
 describe("ensureSuperadminRole", () => {
 	it("creates the role with an allow grant tuple for every catalog permission", async () => {

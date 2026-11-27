@@ -2,7 +2,7 @@ import { DatabaseIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminPlugin, platformPanelPlugin, adminConsolePage } from "@ktb/platform";
 
 import { KvAdmin, KvAdminLive } from "./admin.ts";
 import { kvEntries } from "./schema.ts";
@@ -110,18 +110,10 @@ export const kvPanelPlugin = definePlugin({
 	requiredDeps: [platformPanelPlugin.id, kvAdminServicesPlugin.id],
 	panel: {
 		pages: [
-			{
+			adminConsolePage({
 				id: "kv.entries",
 				path: "/platform/kv",
 				component: KvAdminConsolePage,
-				guard: (_path) =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const admin = yield* KvAdmin;
@@ -138,32 +130,10 @@ export const kvPanelPlugin = definePlugin({
 							Effect.catchTag("Forbidden", () => Effect.succeed(empty)),
 						);
 					}),
-			},
+			}),
 		],
 	},
 });
-
-/** Test DDL mirroring the drizzle table (better-sqlite3 has no
- * migrations; tests create the schema directly). */
-export const KV_TEST_DDL = `
-CREATE TABLE kv_entries (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	namespace TEXT NOT NULL,
-	"key" TEXT NOT NULL,
-	tenant_id INTEGER,
-	owner_id TEXT,
-	value TEXT NOT NULL,
-	expires_at INTEGER,
-	version INTEGER NOT NULL DEFAULT 1,
-	created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-	updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-	tenant_key INTEGER GENERATED ALWAYS AS (coalesce("tenant_id", -1)) VIRTUAL,
-	owner_key TEXT GENERATED ALWAYS AS (coalesce("owner_id", '')) VIRTUAL
-);
-CREATE UNIQUE INDEX kv_entries_uidx ON kv_entries (namespace, "key", tenant_key, owner_key);
-CREATE INDEX kv_entries_expiry_idx ON kv_entries (expires_at);
-CREATE INDEX kv_entries_scope_idx ON kv_entries (namespace, tenant_id, owner_id);
-`;
 
 /** Single-concern plugins contributed by this module. */
 export const plugins: readonly Plugin[] = [

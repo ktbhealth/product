@@ -9,7 +9,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-start", () => reactStartMock());
-vi.mock("@ktb/server-fns", () => mocks);
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return Object.assign(mocks, actual.serverFnHandlerMocks(), {
+		forbiddenTo: actual.forbiddenTo,
+	});
+});
 
 import { PortalAudience } from "@ktb/portal";
 

@@ -7,7 +7,8 @@ import type { QueueDepth } from "@ktb/server-fns";
 
 /**
  * Restart-persistent stand-in for the Cloudflare Queue binding under
- * `KTB_DEV_NODE=1` (see node-cloudflare-workers.ts). Messages live in a
+ * `KTB_DEV_NODE=1` (wired by apps/web's node-cloudflare-workers.ts
+ * shim). Messages live in a
  * dedicated SQLite file — separate from the app schema, no drizzle
  * involvement — so queued jobs survive dev-server restarts and the
  * consumer sees the same batch/message contract workerd would deliver
@@ -26,7 +27,8 @@ import type { QueueDepth } from "@ktb/server-fns";
  * is reset to `pending` on open but keeps its attempt count, so a
  * poison message cannot loop forever.
  *
- * Plain deploy glue for apps/web — no ports/adapters involved.
+ * Node-only dev runtime glue consumed by apps/web's dev:node shim —
+ * no ports/adapters involved.
  */
 
 /** Shape the queue consumer expects (handleAudioQueueBatch input). */

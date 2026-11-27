@@ -13,7 +13,8 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -29,7 +30,7 @@ import {
 	machinesRemoveFn,
 	machinesUpdateFn,
 } from "./fns.ts";
-import { MACHINES_TEST_DDL, MachinesLive } from "./index.ts";
+import { MachinesLive } from "./index.ts";
 
 const ADMIN = "admin@x.com";
 
@@ -41,7 +42,7 @@ describe("machines fns", () => {
 	beforeAll(() => {
 		// checkAll probes healthUrls — keep probes off the network.
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("ok", { status: 200 })));
-		const db = makeDb(makeD1(MACHINES_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN))),

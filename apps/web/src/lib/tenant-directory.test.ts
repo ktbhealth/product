@@ -2,20 +2,18 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 
 import { makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import type { TenantSelector } from "@ktb/tenant";
 
 import { makeTenantDirectory } from "./tenant-directory.ts";
 
 const DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
 INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES
   ('Clinic A', 'clinic-a', 'clinic', '{"city":"sp"}', 1000, 1000),
   ('Org B', 'org-b', 'org', NULL, 2000, 2000),
   ('Cohort C', 'cohort-c', 'cohort', 'not-json{{', 3000, 3000),
   ('Clinic D', 'clinic-d', 'clinic', NULL, 4000, 4000);
-CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX group_members_group_member_idx ON group_members (group_id, member_kind, member_id);
 INSERT INTO group_members (group_id, member_kind, member_id, role, created_at) VALUES
   (1, 'user', 'u1', 'admin', 1000),
   (2, 'user', 'u1', NULL, 1000),
@@ -26,7 +24,7 @@ INSERT INTO group_members (group_id, member_kind, member_id, role, created_at) V
   (1, 'user', 'u3', 'member', 1000);
 `;
 
-const directory = makeTenantDirectory(makeDb(makeD1(DDL)));
+const directory = makeTenantDirectory(makeDb(makeTestD1(DDL)));
 
 const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect);
 const find = (userId: string, selector: TenantSelector) =>
@@ -81,7 +79,9 @@ describe("tenant directory membershipsFor", () => {
 	it("fails when the underlying query fails", async () => {
 		// No tables in this database — the select rejects and the
 		// directory surfaces it as a typed Effect failure.
-		const broken = makeTenantDirectory(makeDb(makeD1()));
+		const broken = makeTenantDirectory(
+			makeDb(makeTestD1("DROP TABLE group_members; DROP TABLE groups;")),
+		);
 		const exit = await Effect.runPromiseExit(broken.membershipsFor("u1"));
 		expect(exit._tag).toBe("Failure");
 	});
@@ -140,7 +140,9 @@ describe("tenant directory findBySelector", () => {
 	});
 
 	it("propagates query failures", async () => {
-		const broken = makeTenantDirectory(makeDb(makeD1()));
+		const broken = makeTenantDirectory(
+			makeDb(makeTestD1("DROP TABLE group_members; DROP TABLE groups;")),
+		);
 		const exit = await Effect.runPromiseExit(broken.findBySelector("u1", { slug: "x" }));
 		expect(exit._tag).toBe("Failure");
 	});

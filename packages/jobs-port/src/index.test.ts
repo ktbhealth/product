@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	decodeJobEnvelope,
@@ -27,21 +27,8 @@ import {
 	type JobRegistration,
 } from "./index.ts";
 
-const DDL = `
-CREATE TABLE job_runs (
-	id TEXT PRIMARY KEY,
-	kind TEXT NOT NULL,
-	status TEXT NOT NULL DEFAULT 'queued',
-	payload_ref TEXT,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-`;
-
 const makeTestDb = () => {
-	const sql = makeD1(DDL);
+	const sql = makeTestD1();
 	return { sql, db: makeDb(sql) };
 };
 
@@ -58,6 +45,14 @@ describe("envelope + record schemas", () => {
 			payload: { a: 1 },
 			id: "j1",
 			tenantId: 7,
+		});
+		// TenantId is string | number (@ktb/tenant): string ids decode
+		// verbatim — the projection normalizes them at write time.
+		expect(decodeJobEnvelope({ id: "j1", kind: "k", tenantId: "clinic-9" })).toEqual({
+			kind: "k",
+			payload: undefined,
+			id: "j1",
+			tenantId: "clinic-9",
 		});
 		expect(decodeJobEnvelope({ id: "j1", kind: "k", payload: null, tenantId: null })).toEqual({
 			kind: "k",
@@ -78,7 +73,8 @@ describe("envelope + record schemas", () => {
 		expect(decodeJobEnvelope("nope")).toBeNull();
 		expect(decodeJobEnvelope({ kind: "k" })).toBeNull(); // missing id
 		expect(decodeJobEnvelope({ id: "j", kind: "" })).toBeNull(); // empty kind
-		expect(decodeJobEnvelope({ id: "j", kind: "k", tenantId: "x" })).toBeNull();
+		expect(decodeJobEnvelope({ id: "j", kind: "k", tenantId: true })).toBeNull();
+		expect(decodeJobEnvelope({ id: "j", kind: "k", tenantId: { id: 1 } })).toBeNull();
 	});
 
 	it("JobEnvelopeSchema/JobRecordSchema round-trip through decodeUnknownSync", () => {
@@ -187,6 +183,21 @@ describe("job_runs repo helpers", () => {
 				(r) => r.id,
 			),
 		).toEqual(["c"]);
+	});
+
+	it("normalizes TenantId strings to the integer tenant_id storage form", async () => {
+		const { db } = makeTestDb();
+		// Numeric strings store as the integer column value; non-numeric
+		// strings cannot be stamped and project as personal scope
+		// (tenantStorageId contract — same as tenantScopeId).
+		await insertJobRun(db, { id: "n", kind: "k", status: "done", tenantId: "7" }, 1);
+		await insertJobRun(db, { id: "s", kind: "k", status: "done", tenantId: "clinic-9" }, 2);
+		expect(await getJobRun(db, "n")).toMatchObject({ tenantId: 7 });
+		expect(await getJobRun(db, "s")).toMatchObject({ tenantId: null });
+		// Filters normalize the same way; a non-numeric id matches
+		// nothing rather than collapsing onto the personal-scope NULLs.
+		expect((await listJobRuns(db, { tenantId: "7" })).map((r) => r.id)).toEqual(["n"]);
+		expect(await listJobRuns(db, { tenantId: "clinic-9" })).toEqual([]);
 	});
 });
 
@@ -469,7 +480,7 @@ describe("makeJobConsumer", () => {
 
 	it("supports a custom normalizer for pre-envelope bodies", async () => {
 		const { db } = makeTestDb();
-		const seen: { id?: string; tenantId?: number | null }[] = [];
+		const seen: { id?: string; tenantId?: string | number | null }[] = [];
 		const consumer = makeJobConsumer({
 			handlers: {
 				legacy: {

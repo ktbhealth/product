@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Effect, Layer } from "effect";
 
-import { Bot, STUB_CALL, StubBotLive, StubBotProvider, stubBotDriver } from "./index.ts";
+import { Bot, StubBotLive, StubBotProvider, stubBotDriver } from "./index.ts";
 
 describe("StubBotProvider", () => {
 	it("joins a call and returns a session", async () => {
@@ -27,50 +27,6 @@ describe("StubBotProvider", () => {
 		expect(p.name).toBe("stub");
 		const s = await p.join("https://meet.example/x", "https://api.example/hook");
 		expect(s.provider).toBe(p.name);
-	});
-});
-
-describe("STUB_CALL", () => {
-	it("is the canned diarized consult transcript", () => {
-		expect(STUB_CALL).toEqual([
-			{ speaker: "Médico", text: "Bom dia, o que te traz hoje?", delayMs: 1200 },
-			{
-				speaker: "Paciente",
-				text: "Uma dor de cabeça que não passa faz três dias.",
-				delayMs: 2200,
-			},
-			{
-				speaker: "Médico",
-				text: "Desde quando exatamente? Teve febre?",
-				delayMs: 1800,
-			},
-			{
-				speaker: "Paciente",
-				text: "Começou segunda-feira. Ontem à tarde medi 38 graus.",
-				delayMs: 2400,
-			},
-			{
-				speaker: "Médico",
-				text: "Você tem alguma condição de saúde conhecida?",
-				delayMs: 1800,
-			},
-			{
-				speaker: "Paciente",
-				text: "Sou hipertenso há cinco anos, tomo losartana 50 mg por dia.",
-				delayMs: 2400,
-			},
-			{ speaker: "Médico", text: "Alergia a algum medicamento?", delayMs: 1600 },
-			{
-				speaker: "Paciente",
-				text: "Não que eu saiba. Minha mãe tem enxaqueca, se ajuda.",
-				delayMs: 2200,
-			},
-			{
-				speaker: "Médico",
-				text: "Entendi. Vou examinar e já conversamos sobre o que fazer.",
-				delayMs: 2000,
-			},
-		]);
 	});
 });
 

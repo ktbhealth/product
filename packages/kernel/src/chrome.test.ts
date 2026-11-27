@@ -69,10 +69,10 @@ describe("chromeWhenMatches", () => {
 		expect(chromeWhenMatches(when, "/other")).toBe(false);
 	});
 
-	it("gates on minDoctorProfiles against the session user", () => {
-		const when = { minDoctorProfiles: 2 };
-		const solo = { id: "u", email: "u@x", doctorProfiles: 1 };
-		const duo = { ...solo, doctorProfiles: 2 };
+	it("gates on minUserCounts against the session user", () => {
+		const when = { minUserCounts: { profiles: 2 } };
+		const solo = { id: "u", email: "u@x", profiles: 1 };
+		const duo = { ...solo, profiles: 2 };
 		expect(chromeWhenMatches(when, "/x", duo)).toBe(true);
 		expect(chromeWhenMatches(when, "/x", solo)).toBe(false);
 		// Fails closed: unknown count or no user hides the contribution.
@@ -83,23 +83,6 @@ describe("chromeWhenMatches", () => {
 		const both = { ...when, paths: ["/portal/*"] };
 		expect(chromeWhenMatches(both, "/portal/doctor", duo)).toBe(true);
 		expect(chromeWhenMatches(both, "/elsewhere", duo)).toBe(false);
-	});
-
-	it("gates on minTenantRole against the bound tenant role", () => {
-		const when = { minTenantRole: "admin" as const };
-		const base = { id: "u", email: "u@x" };
-		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: "owner" })).toBe(true);
-		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: "admin" })).toBe(true);
-		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: "member" })).toBe(false);
-		// "member" admits every role.
-		expect(
-			chromeWhenMatches({ minTenantRole: "member" }, "/x", { ...base, tenantRole: "member" }),
-		).toBe(true);
-		// Fails closed: unresolved/absent role or no user hides it.
-		expect(chromeWhenMatches(when, "/x", base)).toBe(false);
-		expect(chromeWhenMatches(when, "/x", { ...base, tenantRole: null })).toBe(false);
-		expect(chromeWhenMatches(when, "/x", null)).toBe(false);
-		expect(chromeWhenMatches(when, "/x")).toBe(false);
 	});
 });
 
@@ -140,18 +123,18 @@ describe("collectChrome", () => {
 		expect(collectChrome(tied, "r", "/").map((e) => e.id)).toEqual(["a.2", "a.1", "b.1"]);
 	});
 
-	it("filters clinical conditions against the session user", () => {
+	it("filters session-count conditions against the session user", () => {
 		const plugins = [
 			plugin("a", [
 				entry("a.switch", "portal.sidebar", {
 					portal: "doctor",
-					when: { minDoctorProfiles: 2 },
+					when: { minUserCounts: { profiles: 2 } },
 				}),
 				entry("a.plain", "portal.sidebar", { portal: "doctor" }),
 			]),
 		];
-		const solo = { id: "u", email: "u@x", doctorProfiles: 1 };
-		const duo = { ...solo, doctorProfiles: 2 };
+		const solo = { id: "u", email: "u@x", profiles: 1 };
+		const duo = { ...solo, profiles: 2 };
 		const ids = (user?: typeof solo | null) =>
 			collectChrome(plugins, "portal.sidebar", "/x", "doctor", user).map((e) => e.id);
 		expect(ids(duo)).toEqual(["a.switch", "a.plain"]);

@@ -4,7 +4,8 @@ import * as Option from "effect/Option";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { jobHandlers, type JobEnvelope, type JobsEnqueuer } from "@ktb/jobs-port";
 import {
 	getOrchestrationRun,
@@ -19,50 +20,7 @@ import {
 
 import { makeOrchestrationHost } from "./orchestration.ts";
 
-const DDL = `
-CREATE TABLE orchestration_defs (
-	id TEXT PRIMARY KEY,
-	version TEXT NOT NULL,
-	def TEXT NOT NULL,
-	enabled INTEGER DEFAULT true NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_runs (
-	id TEXT PRIMARY KEY,
-	def_id TEXT NOT NULL,
-	def_version TEXT NOT NULL,
-	status TEXT DEFAULT 'running' NOT NULL,
-	state TEXT NOT NULL,
-	runtime TEXT NOT NULL,
-	error TEXT,
-	tenant_id INTEGER,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE TABLE orchestration_events (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	event_id TEXT NOT NULL,
-	event_type TEXT NOT NULL,
-	payload TEXT NOT NULL,
-	source TEXT NOT NULL,
-	ts INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-CREATE TABLE orchestration_node_runs (
-	run_id TEXT NOT NULL,
-	seq INTEGER NOT NULL,
-	node_id TEXT NOT NULL,
-	status TEXT NOT NULL,
-	latency_ms INTEGER NOT NULL,
-	error TEXT,
-	fires INTEGER NOT NULL,
-	PRIMARY KEY(run_id, seq)
-);
-`;
-
-const makeTestDb = (): DbClient => makeDb(makeD1(DDL));
+const makeTestDb = (): DbClient => makeDb(makeTestD1());
 
 /** Capturing enqueuer — the fake transport (same shape the
  * orchestrator package's own runner tests use). */
@@ -70,7 +28,7 @@ const fakeJobs = () => {
 	const sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: number | null };
+		options?: { tenantId?: string | number | null };
 	}[] = [];
 	const jobs: JobsEnqueuer = {
 		enqueue: async (kind, payload, options): Promise<JobEnvelope> => {
@@ -119,7 +77,7 @@ interface HostHarness {
 	readonly sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: number | null };
+		options?: { tenantId?: string | number | null };
 	}[];
 }
 

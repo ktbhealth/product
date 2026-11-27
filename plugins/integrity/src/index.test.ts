@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { Principal } from "@ktb/authz";
 import { contentHash, sha256Hex } from "@ktb/crypto/digest";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	appendRecordVersion,
@@ -15,7 +15,6 @@ import {
 	IntegrityLive,
 	latestRecordVersion,
 	listRecordVersions,
-	RECORD_VERSIONS_TEST_DDL,
 	recordVersion,
 	verifyRecordVersions,
 	plugins,
@@ -23,8 +22,6 @@ import {
 	integrityServicesPlugin,
 } from "./index.ts";
 import { recordVersions } from "./schema.ts";
-
-const DDL = RECORD_VERSIONS_TEST_DDL;
 
 const makeRuntime = (db: ReturnType<typeof makeDb>) => {
 	const infra = Layer.succeed(Db, db);
@@ -43,7 +40,7 @@ describe("record_versions repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 	});
 
 	it("appends version 1 with a null chain head", async () => {
@@ -139,7 +136,7 @@ describe("Integrity service", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Integrity, never>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 		runtime = makeRuntime(db);
 	});
 
@@ -205,7 +202,7 @@ describe("Integrity service", () => {
 
 describe("recordVersion helper", () => {
 	it("returns the row when the service is present", async () => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1());
 		const runtime = makeRuntime(db);
 		const row = await run(
 			runtime,
@@ -264,7 +261,7 @@ describe("verifyRecordVersions (T-139)", () => {
 	const entity = "consultation.anamnesis";
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1());
 	});
 
 	const seed = async (entityId: number, payloads: string[]) => {

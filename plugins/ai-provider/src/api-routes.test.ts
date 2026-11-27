@@ -4,12 +4,12 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 
 import { Route } from "./api-routes/ai.bridge.ts";
 import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
-import { AI_ENDPOINTS_TEST_DDL } from "./index.ts";
 import { aiAgentLink, aiEndpoint } from "./schema.ts";
 
 // Thin wiring check: GET delegates to handleBridgeUpgrade — the full
@@ -23,7 +23,7 @@ afterEach(() => resetServerRuntime());
 
 describe("GET /api/ai/bridge route", () => {
 	it("delegates the upgrade to handleBridgeUpgrade", async () => {
-		const db = makeDb(makeD1(AI_ENDPOINTS_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const rt = ManagedRuntime.make(Layer.succeed(Db, db as never));
 		const [row] = await db
 			.insert(aiEndpoint)

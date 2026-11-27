@@ -1,5 +1,3 @@
-import { env } from "cloudflare:workers";
-
 import {
 	makeFixedWindowRateLimiter,
 	telemetryConfigFromEnv,
@@ -12,8 +10,11 @@ import {
  * port's fixed-window limiter.
  *
  * Limits come from `telemetryConfigFromEnv(env)` (KTB_TELEMETRY_RATE_
- * LIMIT_*), re-resolved per request so binding changes and tests take
- * effect without a redeploy of module state. The limiter maps are
+ * LIMIT_*). The env slice is a parameter — the caller reads its
+ * platform binding (`cloudflare:workers` env on workerd, the dev:node
+ * shim elsewhere) so this module stays runtime-agnostic — re-resolved
+ * per request so binding changes and tests take effect without a
+ * redeploy of module state. The limiter maps are
  * module-level: they live for the isolate's lifetime, which is exactly
  * the best-effort semantics documented on `makeFixedWindowRateLimiter`
  * (per-isolate counters, approximate under fan-out — deliberate vs.
@@ -47,11 +48,12 @@ export const telemetryClientKey = (request: Request): string =>
  * Check the request against the per-IP and global ingest limits.
  * Never throws — see the fail-open contract above.
  */
-export const checkTelemetryIngestRateLimit = (request: Request): RateLimitDecision => {
+export const checkTelemetryIngestRateLimit = (
+	request: Request,
+	env: ObservabilityEnv,
+): RateLimitDecision => {
 	try {
-		const { rateLimit } = telemetryConfigFromEnv(
-			env as unknown as ObservabilityEnv,
-		).clientTelemetry;
+		const { rateLimit } = telemetryConfigFromEnv(env).clientTelemetry;
 		const perIp = perIpLimiter.hit(telemetryClientKey(request), rateLimit.perIpPerMinute);
 		if (!perIp.allowed) return perIp;
 		return globalLimiter.hit("global", rateLimit.globalPerMinute);

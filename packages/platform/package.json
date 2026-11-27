@@ -9,6 +9,7 @@
 		"./element-kinds": "./src/element-kinds.ts",
 		"./routes": "./src/routes.ts",
 		"./capabilities": "./src/capabilities.ts",
+		"./keywords": "./src/keywords.ts",
 		"./middleware": "./src/middleware.ts"
 	},
 	"scripts": {
@@ -20,5 +21,8 @@
 		"@ktb/kernel": "workspace:*",
 		"drizzle-orm": "^0.45.1",
 		"effect": "4.1.2"
+	},
+	"devDependencies": {
+		"@ktb/db-testing": "workspace:*"
 	}
 }

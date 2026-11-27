@@ -1,0 +1,51 @@
+/**
+ * Canned diarized consult used by the stub-bot simulation (dev only).
+ *
+ * Product fixture — lives here, not in `@ktb/bot`, because the generic
+ * bot port/package must stay domain-blind: the pt-BR clinical transcript
+ * is KTB product data composed by the consumer that replays it through
+ * `Consultations.appendTranscript`.
+ */
+export const STUB_CALL: Array<{
+	speaker: string;
+	text: string;
+	delayMs: number;
+}> = [
+	{ speaker: "Médico", text: "Bom dia, o que te traz hoje?", delayMs: 1200 },
+	{
+		speaker: "Paciente",
+		text: "Uma dor de cabeça que não passa faz três dias.",
+		delayMs: 2200,
+	},
+	{
+		speaker: "Médico",
+		text: "Desde quando exatamente? Teve febre?",
+		delayMs: 1800,
+	},
+	{
+		speaker: "Paciente",
+		text: "Começou segunda-feira. Ontem à tarde medi 38 graus.",
+		delayMs: 2400,
+	},
+	{
+		speaker: "Médico",
+		text: "Você tem alguma condição de saúde conhecida?",
+		delayMs: 1800,
+	},
+	{
+		speaker: "Paciente",
+		text: "Sou hipertenso há cinco anos, tomo losartana 50 mg por dia.",
+		delayMs: 2400,
+	},
+	{ speaker: "Médico", text: "Alergia a algum medicamento?", delayMs: 1600 },
+	{
+		speaker: "Paciente",
+		text: "Não que eu saiba. Minha mãe tem enxaqueca, se ajuda.",
+		delayMs: 2200,
+	},
+	{
+		speaker: "Médico",
+		text: "Entendi. Vou examinar e já conversamos sobre o que fazer.",
+		delayMs: 2000,
+	},
+];

@@ -20,10 +20,9 @@ const pathMatches = (pattern: string, pathname: string): boolean => {
 };
 
 /** Whether a contribution's `when` rules admit `pathname` under the
- * session `user` (when clinical/tenant conditions apply).
- * `minDoctorProfiles` and `minTenantRole` fail closed: no resolved
- * user/count/role hides the contribution — gated chrome never leaks
- * to unknown accounts. */
+ * session `user`. `minUserCounts` fails closed: no resolved user, a
+ * missing field or a non-numeric value hides the contribution —
+ * session-gated chrome never leaks to unknown accounts. */
 export const chromeWhenMatches = (
 	when: ChromeContribution["when"],
 	pathname: string,
@@ -31,19 +30,12 @@ export const chromeWhenMatches = (
 ): boolean => {
 	if (when === undefined) return true;
 	if (when.exceptPaths?.some((p) => pathMatches(p, pathname))) return false;
-	if (
-		// Stryker disable next-line ConditionalExpression: `count < undefined` is always false, so replacing `!== undefined` with `true` cannot change the outcome
-		when.minDoctorProfiles !== undefined &&
-		(user?.doctorProfiles ?? 0) < when.minDoctorProfiles
-	) {
-		return false;
-	}
-	if (
-		when.minTenantRole !== undefined &&
-		(user?.tenantRole == null ||
-			TENANT_ROLE_RANK[user.tenantRole] < TENANT_ROLE_RANK[when.minTenantRole])
-	) {
-		return false;
+	if (when.minUserCounts !== undefined) {
+		const facets = user as Readonly<Record<string, unknown>> | null | undefined;
+		for (const [field, min] of Object.entries(when.minUserCounts)) {
+			const value = facets?.[field];
+			if (typeof value !== "number" || value < min) return false;
+		}
 	}
 	if (when.paths === undefined || when.paths.length === 0) return true;
 	return when.paths.some((p) => pathMatches(p, pathname));
@@ -59,15 +51,6 @@ interface Ranked {
  * say otherwise (P-081): the platform console is the default portal. */
 export const DEFAULT_PORTAL_ID = "platform";
 
-/** Tenant-role ranking for `when.minTenantRole` — mirrors
- * `TENANT_ROLE_RANK` in @ktb/tenant; the kernel stays dependency-free
- * so the order is restated here (the strings are the contract). */
-const TENANT_ROLE_RANK: Record<"member" | "admin" | "owner", number> = {
-	member: 0,
-	admin: 1,
-	owner: 2,
-};
-
 /** The instance an entry renders in: its explicit `portal` tag, else
  * the default instance. Only `portal.*` regions consult this. */
 export const chromePortal = (entry: ChromeContribution): string =>
@@ -77,9 +60,9 @@ export const chromePortal = (entry: ChromeContribution): string =>
  * order. Plugins without `chrome` contribute nothing. `portal` (P-081)
  * additionally keeps only entries scoped to that instance — pass it for
  * `portal.*` regions; app.* regions ignore it. `user` is the session
- * account the `when` clinical conditions evaluate against — regions
- * without clinical chrome may omit it (their `when` rules only see
- * the pathname). */
+ * account the `when` session-state conditions evaluate against —
+ * regions without session-gated chrome may omit it (their `when` rules
+ * only see the pathname). */
 export const collectChrome = (
 	plugins: readonly Plugin[],
 	region: string,

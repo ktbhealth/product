@@ -332,20 +332,3 @@ export const SchemasLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the `schemas` migration — re-exported for
- * sibling test files (same convention as `RICH_TEXT_TEST_DDL` in
- * plugins/rich-text). Never used by production code.
- */
-export const SCHEMAS_TEST_DDL = `
-CREATE TABLE schemas (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	name TEXT NOT NULL UNIQUE,
-	description TEXT,
-	schema TEXT NOT NULL,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE INDEX schemas_updated_idx ON schemas (updated_at);
-`;

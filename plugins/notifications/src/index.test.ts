@@ -5,7 +5,8 @@ import { Principal } from "@ktb/authz";
 import { AppointmentReminderDue } from "@ktb/agenda/api";
 import { ConsultationCreated } from "@ktb/consultations/api";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { PatientCreated, PatientDeleted } from "@ktb/patients/api";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -33,20 +34,16 @@ import {
 } from "./index.ts";
 
 const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-INSERT INTO "user" VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0);
-INSERT INTO "user" VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0);
-CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES "user"(id), kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
--- Tenant flag source (T-149): group 7 non-ZK, group 8 ZK.
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO groups (id, name, slug, kind, zk) VALUES (7, 'Clinic', 'clinic-7', 'clinic', 0), (8, 'ZK Clinic', 'clinic-8', 'clinic', 1);
+INSERT INTO "user" (id, name, email, email_verified, image, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0);
+INSERT INTO "user" (id, name, email, email_verified, image, created_at, updated_at) VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'Clinic', 'clinic-7', 'clinic', 0, 0, 0), (8, 'ZK Clinic', 'clinic-8', 'clinic', 1, 0, 0);
 `;
 
 describe("notifications repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(DDL));
 	});
 
 	it("inserts and lists scoped by user, newest first", async () => {
@@ -96,7 +93,7 @@ describe("NotificationsLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<AppServices, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(DDL));
+		const db = makeDb(makeTestD1(DDL));
 		// Shared infra object → layer memoization → one EventBus instance
 		// for the service subscriptions and the test's dispatches.
 		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus());

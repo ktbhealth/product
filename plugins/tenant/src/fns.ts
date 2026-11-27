@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { forbiddenTo, runAs, sessionHandler } from "@ktb/server-fns";
 
 import { Tenants, type TenantMember, type TenantRow } from "./index.ts";
 
@@ -40,81 +40,79 @@ type Result<T> = { readonly ok: true; readonly data: T } | { readonly ok: false 
 // Principal reaches the PlatformAdmin gate through the Groups service.
 
 export const listTenantsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly TenantRow[]>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
+	sessionHandler(async ({ run }): Promise<Result<readonly TenantRow[]>> => {
+		return run(
 			Effect.scoped(
 				Effect.gen(function* () {
 					const tenants = yield* Tenants;
 					const rows = yield* tenants.list();
 					return { ok: true as const, data: rows };
 				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			).pipe(forbiddenTo({ ok: false as const })),
 		);
-	},
+	}),
 );
 
 export const listTenantMembersFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeListMembers(input))
-	.handler(async ({ data }): Promise<Result<readonly TenantMember[]>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const tenants = yield* Tenants;
-					const members = yield* tenants.members(data.tenantId);
-					return { ok: true as const, data: members };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<readonly TenantMember[]>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const tenants = yield* Tenants;
+						const members = yield* tenants.members(data.tenantId);
+						return { ok: true as const, data: members };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const addTenantMemberFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAddMember(input))
-	.handler(async ({ data }): Promise<Result<TenantMember | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const tenants = yield* Tenants;
-					const member = yield* tenants.addMember(data);
-					return { ok: true as const, data: member };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<TenantMember | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const tenants = yield* Tenants;
+						const member = yield* tenants.addMember(data);
+						return { ok: true as const, data: member };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const removeTenantMemberFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeRemoveMember(input))
-	.handler(async ({ data }): Promise<Result<TenantMember | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const tenants = yield* Tenants;
-					const member = yield* tenants.removeMember(data);
-					return member === null ? ({ ok: false } as const) : { ok: true as const, data: member };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<TenantMember | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const tenants = yield* Tenants;
+						const member = yield* tenants.removeMember(data);
+						return member === null ? ({ ok: false } as const) : { ok: true as const, data: member };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);
 
 export const setTenantMemberRoleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSetRole(input))
-	.handler(async ({ data }): Promise<Result<TenantMember | null>> => {
-		const user = await ensureSessionUser();
-		return runAs(
-			user,
-			Effect.scoped(
-				Effect.gen(function* () {
-					const tenants = yield* Tenants;
-					const member = yield* tenants.setRole(data);
-					return member === null ? ({ ok: false } as const) : { ok: true as const, data: member };
-				}),
-			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
+	.handler(
+		sessionHandler(async ({ data, run }): Promise<Result<TenantMember | null>> => {
+			return run(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const tenants = yield* Tenants;
+						const member = yield* tenants.setRole(data);
+						return member === null ? ({ ok: false } as const) : { ok: true as const, data: member };
+					}),
+				).pipe(forbiddenTo({ ok: false as const })),
+			);
+		}),
+	);

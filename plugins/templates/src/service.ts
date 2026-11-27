@@ -406,23 +406,3 @@ export const TemplatesLive = Layer.effect(
 		});
 	}),
 );
-
-/**
- * Test-only DDL mirroring the `templates` migration — re-exported for
- * sibling test files (same convention as `SCHEMAS_TEST_DDL` in
- * plugins/schemas). Never used by production code.
- */
-export const TEMPLATES_TEST_DDL = `
-CREATE TABLE templates (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	kind TEXT NOT NULL,
-	name TEXT NOT NULL,
-	description TEXT,
-	payload TEXT NOT NULL,
-	created_by TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX templates_kind_name_idx ON templates (kind, name);
-CREATE INDEX templates_updated_idx ON templates (updated_at);
-`;

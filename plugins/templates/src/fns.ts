@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
+import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
@@ -132,61 +132,70 @@ const isHandled = (error: unknown): boolean =>
  * invalid payloads, name conflicts and other handled failures. */
 export const saveTemplateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSave(input))
-	.handler(async ({ data }): Promise<TemplateDocWire | null> => {
-		await requirePluginEnabled("templates.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const templates = yield* Templates;
-				const row = yield* templates.save(data);
-				return row === null ? null : toDocWire(row);
+	.handler(
+		pluginHandler(
+			"templates.panel",
+			sessionHandler(async ({ data, user }): Promise<TemplateDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const templates = yield* Templates;
+						const row = yield* templates.save(data);
+						return row === null ? null : toDocWire(row);
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Update a template's name/description/payload; `null` for
  * non-admins, missing rows, unknown kinds, invalid payloads, name
  * conflicts and other handled failures. */
 export const updateTemplateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
-	.handler(async ({ data }): Promise<TemplateDocWire | null> => {
-		await requirePluginEnabled("templates.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const templates = yield* Templates;
-				const { id, ...input } = data;
-				return toDocWire(yield* templates.adminUpdate(id, input));
+	.handler(
+		pluginHandler(
+			"templates.panel",
+			sessionHandler(async ({ data, user }): Promise<TemplateDocWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const templates = yield* Templates;
+						const { id, ...input } = data;
+						return toDocWire(yield* templates.adminUpdate(id, input));
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Delete a template by id; `false` for non-admins and missing rows. */
 export const deleteTemplateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<boolean> => {
-		await requirePluginEnabled("templates.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const templates = yield* Templates;
-				yield* templates.adminRemove(data.id);
-				return true;
+	.handler(
+		pluginHandler(
+			"templates.panel",
+			sessionHandler(async ({ data, user }): Promise<boolean> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const templates = yield* Templates;
+						yield* templates.adminRemove(data.id);
+						return true;
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return false;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return false;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Instantiate a template: deserialize the stored payload into the
  * kind's source form. Admin-gated — the caller feeds `source` through
@@ -194,43 +203,47 @@ export const deleteTemplateFn = createServerFn({ method: "POST" })
  * non-admins, missing rows and unregistered kinds. */
 export const instantiateTemplateFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<TemplateInstanceWire | null> => {
-		await requirePluginEnabled("templates.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const templates = yield* Templates;
-				const instance: TemplateInstance | null = yield* templates.instantiate(data.id);
-				return instance === null
-					? null
-					: { kind: instance.kind, source: instance.source as TemplateJsonValue };
+	.handler(
+		pluginHandler(
+			"templates.panel",
+			sessionHandler(async ({ data, user }): Promise<TemplateInstanceWire | null> => {
+				return asAdmin(
+					user,
+					Effect.gen(function* () {
+						const templates = yield* Templates;
+						const instance: TemplateInstance | null = yield* templates.instantiate(data.id);
+						return instance === null
+							? null
+							: { kind: instance.kind, source: instance.source as TemplateJsonValue };
+					}),
+				).catch((error: unknown) => {
+					if (isHandled(error)) return null;
+					throw error;
+				});
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return null;
-			throw error;
-		});
-	});
+		),
+	);
 
 /** Admin template list for pickers — id/kind/name/description/
  * createdBy/timestamps only, no payload. Handled failures collapse to
  * an empty list. */
 export const listTemplatesFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<readonly TemplateMetaWire[]> => {
-		await requirePluginEnabled("templates.panel");
-		const user = await ensureSessionUser();
-		return asAdmin(
-			user,
-			Effect.gen(function* () {
-				const templates = yield* Templates;
-				const rows = yield* templates.adminList();
-				return rows.map(toMetaWire);
-			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return [] as readonly TemplateMetaWire[];
-			throw error;
-		});
-	},
+	pluginHandler(
+		"templates.panel",
+		sessionHandler(async ({ user }): Promise<readonly TemplateMetaWire[]> => {
+			return asAdmin(
+				user,
+				Effect.gen(function* () {
+					const templates = yield* Templates;
+					const rows = yield* templates.adminList();
+					return rows.map(toMetaWire);
+				}),
+			).catch((error: unknown) => {
+				if (isHandled(error)) return [] as readonly TemplateMetaWire[];
+				throw error;
+			});
+		}),
+	),
 );
 
 /** Public template read by id — session-optional (anonymous consumers

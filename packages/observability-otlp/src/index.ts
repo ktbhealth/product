@@ -10,7 +10,7 @@ import {
 	telemetryErrors,
 	telemetryWarningsLayer,
 	Telemetry,
-	type ObservabilityEnv,
+	type TelemetryEnvInput,
 	type TelemetryConfig,
 	type TelemetryHealth,
 	type TelemetryShape,
@@ -138,7 +138,7 @@ export const TelemetryOtlpLive = (config: TelemetryConfig) => makeOtlpTelemetryL
  *
  * Returned layer provides: `CurrentLoggers`, `Tracer.Tracer` (only when
  * a traces endpoint is set), `Telemetry`, `OtlpExporter.Flusher` and
- * `References.MinimumLogLevel` (when KTB_LOG_LEVEL is set). Requires
+ * `References.MinimumLogLevel` (when the LOG_LEVEL var is set). Requires
  * nothing beyond what `httpClientLayer` itself needs.
  */
 export const makeOtlpLayers = (
@@ -240,7 +240,7 @@ export const makeOtlpLayers = (
  * in the registry — any eligible exporter wins; console stays the
  * always-eligible fallback.
  */
-export const otlpTelemetryDriver: Driver<ObservabilityEnv> = {
+export const otlpTelemetryDriver: Driver<TelemetryEnvInput> = {
 	id: "telemetry-otlp",
 	port: Telemetry.key,
 	when: (env) => otlpActive(telemetryConfigFromEnv(env)),

@@ -5,7 +5,7 @@ import { Forbidden, Principal } from "@ktb/authz";
 import { buildPermissions, Permissions } from "@ktb/rbac";
 import { ConsultationsLive } from "@ktb/consultations";
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
 import { consultations } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
 import { Patients, PatientsQueriesLive } from "@ktb/patients";
@@ -16,7 +16,6 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
-	AGENDA_TEST_DDL,
 	agendaChromePlugin,
 	agendaPagesPlugin,
 	agendaServicesPlugin,
@@ -45,19 +44,13 @@ import {
 	AppointmentUpdated,
 } from "./api.ts";
 
-const DDL = `
-CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+// Seed rows only — the schema comes from the real drizzle migrations
+// applied by makeTestD1 (@ktb/db-testing).
+const FIXTURE_SQL = `
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0, 0);
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
-INSERT INTO groups (id, name, slug, kind, zk) VALUES (7, 'Clínica A', 'clinica-a', 'clinic', 0), (8, 'Clínica B', 'clinica-b', 'clinic', 0), (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1);
-CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
-CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), tenant_id INTEGER REFERENCES groups(id) ON DELETE SET NULL, transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL DEFAULT 'browser', status TEXT NOT NULL DEFAULT 'done', bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
-${AGENDA_TEST_DDL}
-INSERT INTO patients (id, owner_id, name) VALUES (1, 'u1', 'Ana'), (2, 'u1', 'Bia'), (3, 'u2', 'Other Doc Patient'), (4, 'u1', 'Shared Pat');
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'Clínica A', 'clinica-a', 'clinic', 0, 0, 0), (8, 'Clínica B', 'clinica-b', 'clinic', 0, 0, 0), (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
+INSERT INTO patients (id, owner_id, name, created_at) VALUES (1, 'u1', 'Ana', 0), (2, 'u1', 'Bia', 0), (3, 'u2', 'Other Doc Patient', 0), (4, 'u1', 'Shared Pat', 0);
 UPDATE patients SET tenant_id = 7 WHERE id = 4;
 -- T-182: personal-patient record authz resolves owner tuples — the raw
 -- inserts above bypass createPatient's tuple write, so mirror it.
@@ -74,7 +67,7 @@ describe("agenda repo", () => {
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(FIXTURE_SQL));
 	});
 
 	it("creates, gets and lists appointments in window order", async () => {
@@ -237,7 +230,7 @@ describe("AppointmentsLive", () => {
 	const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(FIXTURE_SQL));
 		const busRuntime = ManagedRuntime.make(makeEventBus());
 		bus = await busRuntime.runPromise(EventBus);
 		const infra = Layer.mergeAll(
@@ -769,7 +762,7 @@ describe("AppointmentsLive without the Permissions port", () => {
 	let bus: EventBusShape;
 
 	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
+		db = makeDb(makeTestD1(FIXTURE_SQL));
 		const busRuntime = ManagedRuntime.make(makeEventBus());
 		bus = await busRuntime.runPromise(EventBus);
 		const infra = Layer.mergeAll(

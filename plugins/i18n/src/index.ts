@@ -4,7 +4,7 @@ import * as Option from "effect/Option";
 
 import { auditServicesPlugin } from "@ktb/audit";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { platformAdminGuard, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
@@ -167,11 +167,7 @@ const i18nReadGuard = () =>
 			const ok = yield* permissionsOpt.value.can("i18n", "messages.read");
 			if (ok) return true;
 		}
-		const platformAdmin = yield* PlatformAdmin;
-		return yield* platformAdmin.requireAdmin().pipe(
-			Effect.as(true),
-			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-		);
+		return yield* platformAdminGuard();
 	});
 
 // Panel (system console) contribution: the /platform/i18n subtree is
@@ -259,56 +255,6 @@ export const i18nPanelPlugin = definePlugin({
 		],
 	},
 });
-
-/** Test DDL mirroring the drizzle tables (better-sqlite3 has no
- * migrations; tests create the schema directly). */
-export const I18N_TEST_DDL = `
-CREATE TABLE i18n_namespaces (
-	namespace TEXT PRIMARY KEY,
-	plugin_id TEXT NOT NULL DEFAULT '',
-	manifest_hash TEXT NOT NULL DEFAULT '',
-	default_locale TEXT NOT NULL DEFAULT 'en',
-	created_at INTEGER NOT NULL
-);
-CREATE TABLE i18n_locales (
-	code TEXT PRIMARY KEY,
-	endonym TEXT NOT NULL,
-	fallbacks TEXT NOT NULL,
-	enabled INTEGER NOT NULL DEFAULT 1,
-	created_at INTEGER NOT NULL
-);
-CREATE TABLE i18n_messages (
-	namespace TEXT NOT NULL,
-	key TEXT NOT NULL,
-	locale TEXT NOT NULL,
-	scope TEXT NOT NULL,
-	scope_id TEXT NOT NULL DEFAULT '',
-	kind TEXT NOT NULL DEFAULT 'text',
-	value TEXT NOT NULL,
-	draft_value TEXT,
-	status TEXT NOT NULL DEFAULT 'draft',
-	params TEXT NOT NULL,
-	version INTEGER NOT NULL DEFAULT 1,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL,
-	PRIMARY KEY (namespace, key, locale, scope, scope_id)
-);
-CREATE TABLE i18n_crdt_updates (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	namespace TEXT NOT NULL,
-	key TEXT NOT NULL,
-	locale TEXT NOT NULL,
-	scope TEXT NOT NULL,
-	scope_id TEXT NOT NULL DEFAULT '',
-	"update" BLOB NOT NULL,
-	actor_id TEXT NOT NULL DEFAULT '',
-	created_at INTEGER NOT NULL
-);
-CREATE TABLE i18n_revision (
-	id INTEGER PRIMARY KEY,
-	revision INTEGER NOT NULL DEFAULT 0
-);
-`;
 
 /** Single-concern plugins contributed by this module. */
 export const plugins: readonly Plugin[] = [

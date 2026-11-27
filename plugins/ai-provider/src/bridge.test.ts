@@ -5,19 +5,19 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
-import { makeD1 } from "@ktb/db/testing";
+import { makeTestD1 } from "@ktb/db-testing";
+
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 
 import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
 import { handleBridgeUpgrade } from "./bridge.ts";
-import { AI_ENDPOINTS_TEST_DDL } from "./index.ts";
 import { aiAgentLink, aiEndpoint } from "./schema.ts";
 
 /** One seeded bridge endpoint + runtime whose acpBridge capability
  * records the handoff. Mirrors the DO stub's shape without the
  * binding — the handler only forwards `request` to it. */
 const harness = async () => {
-	const db = makeDb(makeD1(AI_ENDPOINTS_TEST_DDL));
+	const db = makeDb(makeTestD1());
 	const rt = ManagedRuntime.make(Layer.succeed(Db, db as never));
 	const [row] = await db
 		.insert(aiEndpoint)
@@ -92,7 +92,7 @@ describe("handleBridgeUpgrade", () => {
 	});
 
 	it("answers 501 when the runtime has no acpBridge capability", async () => {
-		const db = makeDb(makeD1(AI_ENDPOINTS_TEST_DDL));
+		const db = makeDb(makeTestD1());
 		const rt = ManagedRuntime.make(Layer.succeed(Db, db as never));
 		setServerRuntime({
 			run: <A, E>(e: Effect.Effect<A, E, unknown>) =>

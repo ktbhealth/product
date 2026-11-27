@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeLocalAudioBucket } from "./node-audio.ts";
+import { makeLocalAudioBucket } from "./audio-bucket.ts";
 
 let dir: string | undefined;
 const bucketDir = () => {
