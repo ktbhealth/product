@@ -169,6 +169,16 @@ describe("createRedisJobsTransport", () => {
 		expect(destroy).toHaveBeenCalledOnce();
 	});
 
+	it("close() resolves and destroys when quit() rejects", async () => {
+		const { client } = fakeRedis();
+		const destroy = vi.fn();
+		const t = await createRedisJobsTransport({
+			client: { ...client, quit: async () => Promise.reject(new Error("gone")), destroy },
+		});
+		await expect(t.close()).resolves.toBeUndefined();
+		expect(destroy).toHaveBeenCalledOnce();
+	});
+
 	it("falls back to default url, queue and block seconds", async () => {
 		const { client } = fakeRedis();
 		const connected = { ...client, connect: async () => "OK" };
