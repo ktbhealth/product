@@ -9,10 +9,19 @@ import { plugins as clientPlugins } from "./plugins.ts";
  * must mirror the server registry (@ktb/app-host → plugins/<name>/src/index.ts)
  * on everything the browser can observe: plugin ids in topo order, dep
  * edges, and the client-consumed contributions (chrome entries,
- * landing.page, panel.pages, pages id+path+component+context, and
- * elementKinds kind/label/icon/renderer/editor).
- * Server-only fields (tables, services, routes, page loader/guard)
- * are excluded — they must never reach the client bundle.
+ * landing.page, panel.pages, pages id+path+component+context,
+ * portals, boundaries kind+component, and elementKinds
+ * kind/label/icon/renderer/editor).
+ * Server-only fields (tables, services, routes, middleware, pipelines,
+ * orchestrations, page loader/guard, configSchema) are excluded — they
+ * must never reach the client bundle.
+ *
+ * `contributions` (P-070 generic channel) is client-VISIBLE but
+ * opt-in: entries are plain JSON data any client surface may enumerate
+ * via ctx.plugins, yet most mirrors deliberately omit them (no browser
+ * consumer — see plugins/triggers/src/client.ts, packages/platform's
+ * platform.jobs). It therefore gets a dedicated subset assertion below
+ * instead of strict parity.
  */
 const clientView = (p: Plugin) => ({
 	id: p.id,
@@ -51,6 +60,21 @@ const clientView = (p: Plugin) => ({
 					beforeLoad: page.beforeLoad ?? null,
 					head: page.head ?? null,
 				})),
+	// Portal instances (P-081): id/basePath/label/audience/subject/locale
+	// are plain data the portal shells and switcher consume; `icon` is a
+	// component ref compared like chrome/page components.
+	portals:
+		p.portals === undefined
+			? null
+			: p.portals.map((portal) => ({
+					id: portal.id,
+					basePath: portal.basePath,
+					label: portal.label,
+					icon: portal.icon ?? null,
+					audience: portal.audience ?? null,
+					subject: portal.subject ?? null,
+					locale: portal.locale ?? null,
+				})),
 	boundaries:
 		p.boundaries === undefined
 			? null
@@ -76,6 +100,10 @@ describe("client plugin registry", () => {
 		for (const p of clientPlugins) {
 			expect(p.tables).toBeUndefined();
 			expect(p.services).toBeUndefined();
+			expect(p.routes).toBeUndefined();
+			expect(p.middleware).toBeUndefined();
+			expect(p.pipelines).toBeUndefined();
+			expect(p.orchestrations).toBeUndefined();
 			for (const page of p.panel?.pages ?? []) {
 				expect(page.loader).toBeUndefined();
 				expect(page.guard).toBeUndefined();
@@ -83,6 +111,25 @@ describe("client plugin registry", () => {
 			for (const page of p.pages ?? []) {
 				expect(page.loader).toBeUndefined();
 				expect(page.guard).toBeUndefined();
+			}
+		}
+	});
+
+	it("mirrors generic `contributions` as a subset of the server's", () => {
+		// `contributions` is opt-in on the client (see file header): a
+		// mirror carries an entry only when a browser surface consumes
+		// its kind. Every entry the client DOES carry must match a
+		// server entry exactly — kind/id/version/meta are JSON data, so
+		// a drift here means the mirror invented or mutated a def.
+		const serverById = new Map(serverPlugins.map((p) => [p.id, p]));
+		for (const p of clientPlugins) {
+			const server = serverById.get(p.id);
+			expect(server, `client plugin ${p.id} has no server counterpart`).toBeDefined();
+			for (const entry of p.contributions ?? []) {
+				expect(
+					server?.contributions ?? [],
+					`${p.id} contribution ${entry.kind}/${entry.id} is not on the server plugin`,
+				).toContainEqual(entry);
 			}
 		}
 	});
