@@ -167,6 +167,40 @@ describe("createRedisJobsTransport", () => {
 		await t.close();
 	});
 
+	it("close() is bounded and destroys the client when quit() never resolves", async () => {
+		const destroy = vi.fn();
+		const client: RedisLike = {
+			lPush: async () => 0,
+			brPop: async () => null,
+			lLen: async () => 0,
+			// Simulates node-redis during reconnect: QUIT sits in the
+			// offline queue and the promise never settles.
+			quit: () => new Promise(() => {}),
+			destroy,
+		};
+		const t = await createRedisJobsTransport({ client });
+		await expect(t.close()).resolves.toBeUndefined();
+		expect(destroy).toHaveBeenCalledOnce();
+	});
+
+	it("close() destroys the client even when quit() succeeds", async () => {
+		const { client } = fakeRedis();
+		const destroy = vi.fn();
+		const t = await createRedisJobsTransport({ client: { ...client, destroy } });
+		await t.close();
+		expect(destroy).toHaveBeenCalledOnce();
+	});
+
+	it("close() resolves and destroys when quit() rejects", async () => {
+		const { client } = fakeRedis();
+		const destroy = vi.fn();
+		const t = await createRedisJobsTransport({
+			client: { ...client, quit: async () => Promise.reject(new Error("gone")), destroy },
+		});
+		await expect(t.close()).resolves.toBeUndefined();
+		expect(destroy).toHaveBeenCalledOnce();
+	});
+
 	it("falls back to default url, queue and block seconds", async () => {
 		const { client } = fakeRedis();
 		const connected = { ...client, connect: async () => "OK" };
