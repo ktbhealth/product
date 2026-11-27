@@ -40,6 +40,8 @@
         "@ktb/db-sqlite": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/jobs-transport-redis": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
+        "effect": "4.1.2",
       },
       "devDependencies": {
         "@types/node": "^22.10.2",

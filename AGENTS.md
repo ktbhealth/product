@@ -88,7 +88,12 @@ kind-dispatched consumer + `job_runs` projection):
   `makeJobs({ send: transport.send, db })` where `transport` is
   `@ktb/jobs-transport-redis`. `dev:node` keeps its SQLite queue for
   the audio/theme bindings; the Redis path is for new job kinds
-  (eval runner first).
+  (eval runner first). `orchestrator.step` is registered here too
+  (apps/jobs-worker/src/orchestration.ts) so durable orchestration
+  runs locally — builtin kinds + `orchestration_defs` rows only (the
+  worker composes no plugins, and ambientContext carries just the
+  OrchestratorRegistry, so pack kinds and the `ai` kind's ports
+  degrade honestly; see that module's doc).
 
 ## Conventions
 
