@@ -11,8 +11,11 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 
+import * as Effect from "effect/Effect";
+
 import type { ElementKind } from "@ktb/kernel";
 import type { JsonSchemaObject } from "@ktb/json-schema";
+import { defineElementKind } from "@ktb/platform/element-kinds";
 
 import {
 	COLUMNS_FIELDS,
@@ -43,6 +46,13 @@ import { schemaEditor } from "./schema-editor.tsx";
  * primitives contributed through the `elementKinds` manifest — the same
  * entries ./index.ts (server parity) and ./client.ts (browser bundle)
  * carry, so keep this module free of server-only imports.
+ *
+ * Each kind is declared ONCE via `defineElementKind` (@ktb/platform):
+ * `manifest` feeds both plugin manifests and `live` derives the server
+ * descriptor registered by ./element-kinds.ts — `kind`/`label` can
+ * never drift between the client and server halves. Blocks are
+ * self-contained (the stored ref IS the props payload), so `server`
+ * ignores the empty services record and `resolve` is the identity.
  *
  * `kind` strings are the stable ids consumers store; `fields` is the
  * prop schema builder palettes compile (PL-014) and the catalog page
@@ -144,15 +154,29 @@ const BLOCK_SPECS: readonly BlockSpec[] = [
 	},
 ];
 
-/** The manifest entries — `editor` is the shared schema-driven editor
+/** The kind definitions — `editor` is the shared schema-driven editor
  * bound to each kind's `fields` schema. */
-export const BUILDER_BLOCK_KINDS: readonly ElementKind[] = BLOCK_SPECS.map((spec) => ({
-	kind: spec.kind,
-	label: spec.label,
-	description: spec.description,
-	category: spec.category,
-	icon: spec.icon,
-	renderer: spec.renderer,
-	editor: schemaEditor(spec.fields),
-	fields: spec.fields,
-}));
+const BLOCK_KIND_DEFS = BLOCK_SPECS.map((spec) =>
+	defineElementKind<Record<string, never>>({
+		manifest: {
+			kind: spec.kind,
+			label: spec.label,
+			description: spec.description,
+			category: spec.category,
+			icon: spec.icon,
+			renderer: spec.renderer,
+			editor: schemaEditor(spec.fields),
+			fields: spec.fields,
+		},
+		// Self-contained props payload — the stored ref IS the value.
+		server: () => ({ resolve: (ref) => Effect.succeed(ref) }),
+	}),
+);
+
+/** The manifest entries shared by ./index.ts and ./client.ts. */
+export const BUILDER_BLOCK_KINDS: readonly ElementKind[] = BLOCK_KIND_DEFS.map(
+	(def) => def.manifest,
+);
+
+/** The full definitions (manifest + server) for ./element-kinds.ts. */
+export const BUILDER_BLOCK_KIND_DEFS = BLOCK_KIND_DEFS;
