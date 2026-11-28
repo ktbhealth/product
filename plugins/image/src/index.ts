@@ -10,9 +10,8 @@ import { ImageAdminConsolePage } from "./platform-page.tsx";
 import { images } from "./schema.ts";
 import { ImageDeleteHooksLive } from "./delete-hooks.ts";
 import { ImageElementKindLive } from "./element-kind.ts";
+import { imageElement } from "./kind.tsx";
 import { Images, ImagesLive, type ImageRecord } from "./service.ts";
-import { ImageView } from "./views/ImageView.tsx";
-import { ImageElementEditor } from "./views/ImageElementEditor.tsx";
 
 /**
  * Image plugin (P-111): the media library for site content — an
@@ -123,22 +122,17 @@ export const imagePanelPlugin = definePlugin({
  * Element-kind contribution (P-111): `"image"` is a citizen of the
  * managed-content registry — `ImageView` renders the resolved payload
  * (public serve URL + intrinsic metadata), `ImageElementEditor` is the
- * library-picker dialog. The server half (resolve/hooks) registers via
- * `ImageElementKindLive` in image.services — consumers never import
- * this plugin's internals, they go through `ElementKinds`.
+ * library-picker dialog. The kind is declared once in ./kind.tsx via
+ * `defineElementKind`: this manifest entry IS `imageElement.manifest`
+ * — the same object ./client.ts carries — and the server half
+ * (resolve/hooks) registers via `ImageElementKindLive` in
+ * image.services. Consumers never import this plugin's internals, they
+ * go through `ElementKinds`.
  */
 export const imageElementsPlugin = definePlugin({
 	id: "image.elements",
 	meta: { keywords: ["image", "ui"] },
-	elementKinds: [
-		{
-			kind: "image",
-			label: "Image",
-			icon: ImageIcon,
-			renderer: ImageView,
-			editor: ImageElementEditor,
-		},
-	],
+	elementKinds: [imageElement.manifest],
 });
 
 /**
