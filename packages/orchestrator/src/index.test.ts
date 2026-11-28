@@ -923,4 +923,29 @@ describe("delayed routing (notBefore)", () => {
 		expect(session.pendingEvents().map((e) => e.type)).toEqual(["later", "soon"]);
 		expect(session.nextWakeAt()).toBeNull();
 	});
+
+	it("nextWakeAt reports the earliest notBefore across multiple delayed events", async () => {
+		const delays = kind("delays", () =>
+			Effect.succeed({
+				events: [
+					{ type: "late", payload: {}, notBefore: Date.now() + 90_000 },
+					{ type: "early", payload: {}, notBefore: Date.now() + 30_000 },
+					{ type: "mid", payload: {}, notBefore: Date.now() + 60_000 },
+				],
+			}),
+		);
+		const session = await Effect.runPromise(
+			createOrchestrationSession(
+				def("d", [node("a", "delays", ["start"])]),
+				new Map([["delays", delays]]),
+			),
+		);
+		await Effect.runPromise(session.step());
+		expect(session.pendingEvents().map((e) => e.type)).toEqual(["late", "early", "mid"]);
+		const wakeAt = session.nextWakeAt();
+		expect(wakeAt).not.toBeNull();
+		expect(wakeAt as number).toBeGreaterThan(Date.now());
+		// The earliest notBefore wins even though "late" was queued first.
+		expect(wakeAt as number).toBeLessThan(Date.now() + 60_000);
+	});
 });
