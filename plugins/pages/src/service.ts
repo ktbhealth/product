@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import { and, asc, eq, ne } from "drizzle-orm";
 
 import { Forbidden } from "@ktb/authz";
+import { defineAdminStore } from "@ktb/admin-store";
 import { Db, type DbClient } from "@ktb/db";
 import { PlatformAdmin } from "@ktb/platform";
 import {
@@ -27,6 +28,15 @@ export type { PageRow } from "./schema.ts";
  * in depth — the /platform layout and the server fns gate too); public
  * reads (`publishedByPath`, `navList`) need no principal so anonymous
  * visitors can render published pages.
+ *
+ * The list/get/remove core comes from `@ktb/admin-store`'s
+ * `defineAdminStore` (ordered by `sortOrder`, `path`); the write
+ * contract is plugin-owned — pages key on `path` (unique index), not
+ * name/payload, and both writes fully replace the row after
+ * `normalizePagePath`/duplicate/optional-id validation — so
+ * `writes.create`/`writes.update` carry it behind the factory's admin
+ * gate and span naming. `adminSetBuilderJson`, `publishedByPath`,
+ * `navList` and `validatedSearch` stay hand-written below.
  */
 
 /** Page path rejected by `normalizePagePath` — surfaced to admin fns as
@@ -41,7 +51,9 @@ export class DuplicatePagePath extends Data.TaggedError("DuplicatePagePath")<{
 	readonly path: string;
 }> {}
 
-/** `adminUpdate`/`adminRemove` targeted a missing row. */
+/** `adminUpdate`/`adminRemove` targeted a missing row. Injected into
+ * the store as `errors.notFound` so the generated `adminRemove` throws
+ * this exact class. */
 export class PageNotFound extends Data.TaggedError("PageNotFound")<{
 	readonly id: number;
 }> {}
@@ -135,6 +147,23 @@ const normalizeSearchSchemaId = (value: number | null | undefined) =>
 const normalizeLayoutId = (value: number | null | undefined) =>
 	normalizeOptionalId(value, "layoutId");
 
+/** Write-path normalization, split to preserve the original failure
+ * order: path validation → duplicate probe → optional-id validation. */
+const normalizePath = (input: PageInput) =>
+	Effect.gen(function* () {
+		const path = normalizePagePath(input.path);
+		if (path === null) return yield* new InvalidPagePath({ path: input.path });
+		return path;
+	});
+
+const normalizeRefs = (input: PageInput) =>
+	Effect.gen(function* () {
+		const richTextId = yield* normalizeRichTextId(input.richTextId);
+		const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
+		const layoutId = yield* normalizeLayoutId(input.layoutId);
+		return { richTextId, searchSchemaId, layoutId };
+	});
+
 /** Top-level search-param key an issue path blames — the segment
  * before the first "." or "[" ("filter.tag" → "filter"). "$" and
  * malformed/empty paths blame no single param and are ignored. */
@@ -159,6 +188,93 @@ const cleanSearchParams = (
 	if (blamed.size === 0) return search;
 	return Object.fromEntries(Object.entries(search).filter(([key]) => !blamed.has(key)));
 };
+
+const byPath = (path: string) => eq(page.path, path);
+const toRow = (row: PageRow): PageRow => row;
+
+const store = defineAdminStore({
+	serviceName: "Pages",
+	table: page,
+	columns: { id: page.id },
+	// Admin list order — path order within sort buckets.
+	orderBy: [asc(page.sortOrder), asc(page.path)],
+	// Pages key on `path` and carry no name/description/JSON payload —
+	// both writes are custom, so payloadField/defaultPayload/naturalKey
+	// stay unset; the invalidName/nameTaken/invalidPayload slots are
+	// unused decoys (InvalidPagePath/DuplicatePagePath/InvalidPageInput
+	// are plugin-owned).
+	errors: {
+		notFound: PageNotFound,
+		invalidName: "InvalidPageName",
+		nameTaken: "PageNameTaken",
+		invalidPayload: "InvalidPagePayload",
+	},
+	toMeta: toRow,
+	toDoc: toRow,
+	writes: {
+		create: (input: PageInput, ctx) =>
+			Effect.gen(function* () {
+				const path = yield* normalizePath(input);
+				const existing = yield* Effect.promise(() =>
+					ctx.db.select({ id: page.id }).from(page).where(byPath(path)).limit(1),
+				);
+				if (existing.length > 0) return yield* new DuplicatePagePath({ path });
+				const refs = yield* normalizeRefs(input);
+				const now = new Date();
+				const rows = yield* Effect.promise(() =>
+					ctx.db
+						.insert(page)
+						.values({
+							path,
+							title: input.title,
+							richTextId: refs.richTextId,
+							searchSchemaId: refs.searchSchemaId,
+							layoutId: refs.layoutId,
+							published: input.published ?? false,
+							showInNav: input.showInNav ?? false,
+							sortOrder: input.sortOrder ?? 0,
+							createdAt: now,
+							updatedAt: now,
+						})
+						.returning(),
+				);
+				return rows[0] ?? null;
+			}),
+		update: (id: number, input: PageInput, ctx) =>
+			Effect.gen(function* () {
+				const path = yield* normalizePath(input);
+				const clash = yield* Effect.promise(() =>
+					ctx.db
+						.select({ id: page.id })
+						.from(page)
+						.where(and(byPath(path), ne(page.id, id)))
+						.limit(1),
+				);
+				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
+				const refs = yield* normalizeRefs(input);
+				const rows = yield* Effect.promise(() =>
+					ctx.db
+						.update(page)
+						.set({
+							path,
+							title: input.title,
+							richTextId: refs.richTextId,
+							searchSchemaId: refs.searchSchemaId,
+							layoutId: refs.layoutId,
+							published: input.published ?? false,
+							showInNav: input.showInNav ?? false,
+							sortOrder: input.sortOrder ?? 0,
+							updatedAt: new Date(),
+						})
+						.where(ctx.byId(id))
+						.returning(),
+				);
+				const row = rows[0];
+				if (row === undefined) return yield* new PageNotFound({ id });
+				return row;
+			}),
+	},
+});
 
 export class Pages extends Context.Service<
 	Pages,
@@ -255,23 +371,12 @@ export const PagesLive = Layer.effect(
 		// pages.services keeps the registry built first when present.
 		const schemaService = yield* Effect.serviceOption(Schemas);
 
+		const { methods } = yield* store.build;
 		const requireAdmin = platformAdmin.requireAdmin();
-
 		const byId = (id: number) => eq(page.id, id);
-		const byPath = (path: string) => eq(page.path, path);
 
 		return Pages.of({
-			adminList: Effect.fn("Pages.adminList")(function* () {
-				yield* requireAdmin;
-				return yield* Effect.promise(() =>
-					db.select().from(page).orderBy(asc(page.sortOrder), asc(page.path)),
-				);
-			}),
-			adminGet: Effect.fn("Pages.adminGet")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() => db.select().from(page).where(byId(id)).limit(1));
-				return rows[0] ?? null;
-			}),
+			...methods,
 			adminSetBuilderJson: Effect.fn("Pages.adminSetBuilderJson")(function* (
 				id: number,
 				builderJson: string | null,
@@ -294,79 +399,6 @@ export const PagesLive = Layer.effect(
 				const row = rows[0];
 				if (row === undefined) return yield* new PageNotFound({ id });
 				return row;
-			}),
-			adminCreate: Effect.fn("Pages.adminCreate")(function* (input: PageInput) {
-				yield* requireAdmin;
-				const path = normalizePagePath(input.path);
-				if (path === null) return yield* new InvalidPagePath({ path: input.path });
-				const existing = yield* Effect.promise(() =>
-					db.select({ id: page.id }).from(page).where(byPath(path)).limit(1),
-				);
-				if (existing.length > 0) return yield* new DuplicatePagePath({ path });
-				const richTextId = yield* normalizeRichTextId(input.richTextId);
-				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
-				const layoutId = yield* normalizeLayoutId(input.layoutId);
-				const rows = yield* Effect.promise(() =>
-					db
-						.insert(page)
-						.values({
-							path,
-							title: input.title,
-							richTextId,
-							searchSchemaId,
-							layoutId,
-							published: input.published ?? false,
-							showInNav: input.showInNav ?? false,
-							sortOrder: input.sortOrder ?? 0,
-							createdAt: new Date(),
-							updatedAt: new Date(),
-						})
-						.returning(),
-				);
-				return rows[0] ?? null;
-			}),
-			adminUpdate: Effect.fn("Pages.adminUpdate")(function* (id: number, input: PageInput) {
-				yield* requireAdmin;
-				const path = normalizePagePath(input.path);
-				if (path === null) return yield* new InvalidPagePath({ path: input.path });
-				const clash = yield* Effect.promise(() =>
-					db
-						.select({ id: page.id })
-						.from(page)
-						.where(and(byPath(path), ne(page.id, id)))
-						.limit(1),
-				);
-				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
-				const richTextId = yield* normalizeRichTextId(input.richTextId);
-				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
-				const layoutId = yield* normalizeLayoutId(input.layoutId);
-				const rows = yield* Effect.promise(() =>
-					db
-						.update(page)
-						.set({
-							path,
-							title: input.title,
-							richTextId,
-							searchSchemaId,
-							layoutId,
-							published: input.published ?? false,
-							showInNav: input.showInNav ?? false,
-							sortOrder: input.sortOrder ?? 0,
-							updatedAt: new Date(),
-						})
-						.where(byId(id))
-						.returning(),
-				);
-				const row = rows[0];
-				if (row === undefined) return yield* new PageNotFound({ id });
-				return row;
-			}),
-			adminRemove: Effect.fn("Pages.adminRemove")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.delete(page).where(byId(id)).returning({ id: page.id }),
-				);
-				if (rows.length === 0) return yield* new PageNotFound({ id });
 			}),
 			publishedByPath: Effect.fn("Pages.publishedByPath")(function* (path: string) {
 				const rows = yield* Effect.promise(() =>
