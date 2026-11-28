@@ -13,7 +13,7 @@ import { EVAL_ACTION, EVAL_RESOURCE } from "@ktb/eval-validator";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
-import { Secrets } from "@ktb/vault";
+import { Secrets, type SecretMeta } from "@ktb/vault";
 
 import { CredentialsPanelPage } from "./platform-page.tsx";
 
@@ -165,6 +165,19 @@ export const CredentialsLive = Layer.effect(
 				// Numeric ids are vault rows; anything else is a legacy
 				// apiKey id from the pre-vault credential store.
 				if (secrets !== null && /^\d+$/.test(id)) {
+					// Vault row ids are global across scopes (user/tenant/
+					// platform) and `Secrets.resolve` is the ungated
+					// capability read — `credential:` refs must keep the
+					// owner invariant the apiKey path has, so resolve only
+					// when the row is one of the caller's own user-scope
+					// secrets. Anything else (other users, tenant or
+					// platform rows) is a silent null.
+					const uid = yield* userId;
+					if (uid === "") return null;
+					const owned = yield* secrets
+						.list({ tenantId: null, userId: uid })
+						.pipe(Effect.catch(() => Effect.succeed([] as readonly SecretMeta[])));
+					if (!owned.some((m) => m.id === Number(id))) return null;
 					return yield* secrets
 						.resolve(`vault:${id}`)
 						.pipe(Effect.catch(() => Effect.succeed(null)));

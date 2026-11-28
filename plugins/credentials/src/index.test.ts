@@ -498,6 +498,45 @@ describe("Credentials (vault-backed, P-098 C3)", () => {
 			"sk-live-9876",
 		);
 
+		// `credential:<id>` stays owner-scoped: vault row ids are global
+		// across scopes, so another user's secret — or a non-credential
+		// row in the caller's own scope is fine, but u2's row is not —
+		// resolves null even though u2 holds the eval grant.
+		const runAs = <A, E>(effect: Effect.Effect<A, E, unknown>, userId: string) =>
+			rt.runPromise(
+				Effect.provideService(effect, Principal, {
+					userId,
+					email: `${userId}@x.com`,
+				}) as Effect.Effect<A, E>,
+			);
+		const foreign = await runAs(
+			Effect.flatMap(Secrets, (s) =>
+				s.put({ tenantId: null, userId: "u2", name: "u2-key", value: "u2-secret" }),
+			),
+			"u2",
+		);
+		expect(
+			await runAs(
+				Effect.flatMap(Credentials, (s) => s.resolve(`credential:${foreign.id}`)),
+				"u1",
+			),
+		).toBeNull();
+		// The owner still resolves their own row through the same ref.
+		expect(
+			await runAs(
+				Effect.flatMap(Credentials, (s) => s.resolve(`credential:${foreign.id}`)),
+				"u2",
+			),
+		).toBe("u2-secret");
+		// No principal → empty uid → fail closed.
+		expect(
+			await rt.runPromise(
+				Effect.flatMap(Credentials, (s) => s.resolve(`credential:${id}`)) as Effect.Effect<
+					string | null
+				>,
+			),
+		).toBeNull();
+
 		await run(Effect.flatMap(Credentials, (s) => s.remove(id)));
 		expect(await run(Effect.flatMap(Credentials, (s) => s.list()))).toHaveLength(0);
 
@@ -640,6 +679,29 @@ describe("Credentials (vault-backed, P-098 C3)", () => {
 			});
 			await run(Effect.flatMap(Credentials, (s) => s.remove("42")));
 			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("vault:9")))).toBeNull();
+			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("credential:9")))).toBeNull();
+			await rt.dispose();
+		}
+
+		// credential:<numeric> ownership check: an owned id whose vault
+		// resolve fails degrades to null; a failing ownership list
+		// fails closed (empty).
+		{
+			const { rt, run } = make({
+				extra: [
+					stub({
+						list: () => Effect.succeed([meta(9)]),
+						resolve: () => Effect.fail(new SecretError({ reason: "not-found" })),
+					}),
+				],
+			});
+			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("credential:9")))).toBeNull();
+			await rt.dispose();
+		}
+		{
+			const { rt, run } = make({
+				extra: [stub({ list: () => Effect.fail(new SecretError({ reason: "invalid" })) })],
+			});
 			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("credential:9")))).toBeNull();
 			await rt.dispose();
 		}

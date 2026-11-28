@@ -477,7 +477,9 @@ export const MachinesLive = Layer.effect(
 			beat: Effect.fn("Machines.beat")(function* (id) {
 				const row = yield* Effect.promise(() => getMachineById(db, id));
 				if (row === null) return yield* Effect.fail(new MachineError({ reason: "not-found" }));
-				if (row.status === "draining") return; // draining machines ignore beats
+				// Disabled and draining machines ignore beats — a beat
+				// must not resurrect a machine consumers already skip.
+				if (row.enabled !== 1 || row.status === "draining") return;
 				if (!beatLimiter.hit(`beat:${row.id}`, BEAT_LIMIT_PER_MIN).allowed)
 					return yield* Effect.fail(
 						new MachineError({ reason: "rate-limited", detail: "beat too frequent" }),
