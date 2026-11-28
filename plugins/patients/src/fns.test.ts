@@ -122,6 +122,7 @@ describe("createPatientFn — ciphered drafts", () => {
 			tenantId: 9,
 			entityType: "patient",
 			entityId: 1,
+			bootstrap: true,
 			grants: [grant],
 		});
 	});

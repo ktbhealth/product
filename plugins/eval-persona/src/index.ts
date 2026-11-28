@@ -14,13 +14,13 @@ import {
 	buildScriptPrompt,
 	DEFAULT_MATRIX,
 	enrichPersona,
+	expandPersonaMatrix,
 	LlmFactory,
 	LlmPort,
 	parseScriptTurns,
 	renderScript,
 	rng,
 	ptBR,
-	sampleMatrix,
 	turnsToScript,
 	voiceFor,
 	type Persona,
@@ -450,17 +450,19 @@ export const EvalPersonasLive = Layer.effect(
 				const sampled =
 					llmDefs.length >= input.count
 						? []
-						: sampleMatrix(DEFAULT_MATRIX, 1, seed)
-								.slice(0, input.count - llmDefs.length)
-								.map((cell, i) => {
-									const p = enrichPersona(cell, rng(seed + i));
-									return {
-										/* v8 ignore next -- enrichPersona fills name; matrix cells carry region */
-										name: `${p.name ?? "Paciente"} · ${cell.region ?? ""}`.trim(),
-										persona: p,
-										notes: `seed ${seed + i} — sampled`,
-									};
-								});
+						: seededPick(
+								expandPersonaMatrix(DEFAULT_MATRIX),
+								input.count - llmDefs.length,
+								seed,
+							).map((cell, i) => {
+								const p = enrichPersona(cell, rng(seed + i));
+								return {
+									/* v8 ignore next -- enrichPersona fills name; matrix cells carry region */
+									name: `${p.name ?? "Paciente"} · ${cell.region ?? ""}`.trim(),
+									persona: p,
+									notes: `seed ${seed + i} — sampled`,
+								};
+							});
 				const defs = [...llmDefs, ...sampled];
 				for (const d of defs) {
 					yield* Effect.promise(() =>
@@ -756,15 +758,21 @@ export const EvalInstancesLive = Layer.effect(
 					? Effect.fail(new Error("item has no resolved persona — recreate the instance"))
 					: generateItem(instanceId, pending, persona, llmLayer, params.minutes)
 			).pipe(Effect.catch(recordError), Effect.catchDefect(recordError));
+			// Recount from a FRESH item scan — `items` was snapshotted at
+			// tick start, so concurrent ticks finishing sibling items
+			// would leave `done` stale/under-counted. The absolute count
+			// converges regardless of interleaving.
+			const fresh = yield* Effect.promise(() =>
+				db
+					.select({ status: evalInstanceItem.status })
+					.from(evalInstanceItem)
+					.where(eq(evalInstanceItem.instanceId, instanceId)),
+			);
 			yield* Effect.promise(() =>
 				db
 					.update(evalInstance)
 					.set({
-						done:
-							items.filter(
-								(it) =>
-									it.id !== pending.id && it.status !== "pending" && it.status !== "generating",
-							).length + 1,
+						done: fresh.filter((i) => i.status === "done" || i.status === "error").length,
 					})
 					.where(eq(evalInstance.id, instanceId)),
 			);

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { PageBeforeLoad, PageContext } from "@ktb/kernel";
 
@@ -39,8 +39,17 @@ export const CaptureTestPage = ({ ctx }: { data: unknown; ctx: PageContext }) =>
 		raf?: number;
 	}>({});
 
+	// Release the mic/screen capture and AudioContext if the page
+	// unmounts mid-capture — the refs die with the component otherwise
+	// and the browser keeps the stream alive.
+	// eslint-disable-next-line react-hooks/exhaustive-deps -- stop() only touches refs + stable setters
+	useEffect(() => () => stop(), []);
+
 	async function start() {
 		setError(null);
+		// A second Start while capturing must not orphan the previous
+		// stream/context — release it before opening a new one.
+		stop();
 		setStatus(messages.statusRequesting);
 		try {
 			const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -50,6 +59,9 @@ export const CaptureTestPage = ({ ctx }: { data: unknown; ctx: PageContext }) =>
 			for (const track of stream.getVideoTracks()) track.stop();
 			const audioTrack = stream.getAudioTracks()[0];
 			if (!audioTrack) {
+				// No usable audio — release EVERY track (the audio track
+				// is still live) before bailing out.
+				for (const t of stream.getTracks()) t.stop();
 				setError(messages.errorNoAudio);
 				return;
 			}
@@ -80,6 +92,7 @@ export const CaptureTestPage = ({ ctx }: { data: unknown; ctx: PageContext }) =>
 		if (refs.current.raf) cancelAnimationFrame(refs.current.raf);
 		for (const t of refs.current.stream?.getTracks() ?? []) t.stop();
 		void refs.current.ctx?.close();
+		refs.current = {};
 		setLevel(0);
 		setStatus(null);
 	}

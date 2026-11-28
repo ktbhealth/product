@@ -14,6 +14,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { EVAL_RUN_JOB_KIND, evalRunJobRegistration, executeEvalRun } from "./run-job.ts";
 import { evalRun, evalRunSample } from "./schema.ts";
+import * as Fiber from "effect/Fiber";
 
 /** WS-E: eval.run job kind — payload decode, the DB-driven
  * executeEvalRun (pending-only resume), and the consumer handler's
@@ -180,18 +181,85 @@ describe("eval.run job — executeEvalRun", () => {
 		expect(run?.startedAt).toEqual(startedAt);
 	});
 
-	it("redelivers a done run idempotently: no pending samples reach the runner", async () => {
+	it("redelivers a done run idempotently: the claim aborts before the runner", async () => {
 		const db = makeDb(makeTestD1());
 		const { runId } = await seedRun(db, { statuses: ["ok", "ok"] });
-		await db.update(evalRun).set({ status: "done" }).where(eq(evalRun.id, runId));
+		await db
+			.update(evalRun)
+			.set({ status: "done", done: 2, experiment: "{}" })
+			.where(eq(evalRun.id, runId));
 		const seen: number[] = [];
 		await Effect.runPromise(executeEvalRun(db, okRunner(seen), runId));
-		// pendingSamples empty → the item load is skipped entirely.
+		// Terminal state → the atomic claim matches nothing: no pending
+		// samples are even read, the runner never fires.
 		expect(seen).toEqual([]);
 		const [run] = await db.select().from(evalRun);
 		expect(run?.status).toBe("done");
 		expect(run?.done).toBe(2);
 		expect(run?.experiment).not.toBeNull();
+	});
+
+	it("aborts a duplicate delivery while another attempt holds the lease", async () => {
+		const db = makeDb(makeTestD1());
+		const { runId } = await seedRun(db);
+		// Simulate a live in-flight attempt: running + unexpired lease.
+		await db
+			.update(evalRun)
+			.set({ status: "running", leaseUntil: new Date(Date.now() + 60_000) })
+			.where(eq(evalRun.id, runId));
+		const seen: number[] = [];
+		await Effect.runPromise(executeEvalRun(db, okRunner(seen), runId));
+		expect(seen).toEqual([]);
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("running");
+	});
+
+	it("reclaims a running run whose lease lapsed — the dead-predecessor resume", async () => {
+		const db = makeDb(makeTestD1());
+		const { runId } = await seedRun(db);
+		await db
+			.update(evalRun)
+			.set({ status: "running", leaseUntil: new Date(Date.now() - 1_000) })
+			.where(eq(evalRun.id, runId));
+		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+	});
+
+	it("a concurrent delivery aborts while the first attempt is mid-run", async () => {
+		const db = makeDb(makeTestD1());
+		const { runId } = await seedRun(db, { statuses: ["pending", "pending"] });
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let slowCalls = 0;
+		const slow = EvalRunner.of({
+			run: ({ items, onSample }) => {
+				slowCalls += 1;
+				return Effect.promise(() => gate).pipe(
+					Effect.andThen(
+						Effect.forEach(
+							items,
+							(item) => onSample(item.id, { status: "ok" as const, result: { wer: 0 } }),
+							{ discard: true },
+						),
+					),
+				);
+			},
+		});
+		const first = Effect.runFork(executeEvalRun(db, slow, runId));
+		// Let the first attempt claim the run and reach the runner.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const dupSeen: number[] = [];
+		await Effect.runPromise(executeEvalRun(db, okRunner(dupSeen), runId));
+		// The duplicate delivery claimed nothing and ran nothing.
+		expect(slowCalls).toBe(1);
+		expect(dupSeen).toEqual([]);
+		release();
+		await Effect.runPromise(Fiber.join(first));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
 	});
 
 	it("writes pipeline outputs back onto the item's synthetic consultations row", async () => {

@@ -339,7 +339,13 @@ describe("Vault service", () => {
 					tenantId: TENANT_ID,
 					entityType: "patient",
 					entityId: 1,
-					grants: [{ readerKind: "device" as const, readerPubkey: "wSys", wrappedDek: "w1.d" }],
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wSys",
+							wrappedDek: "w1.a.b.c",
+						},
+					],
 				}),
 			),
 		);
@@ -469,7 +475,13 @@ describe("Vault service", () => {
 					tenantId: TENANT_ID,
 					entityType: "consultation",
 					entityId: 9,
-					grants: [{ readerKind: "device", readerPubkey: "wD", wrappedDek: "w1.dek" }],
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wD",
+							wrappedDek: "w1.a.b.c",
+						},
+					],
 				}),
 			),
 			{ role: "member", userId: "u-member" },
@@ -486,7 +498,7 @@ describe("Vault service", () => {
 			),
 			{ role: "member" },
 		);
-		expect(env).toBe("w1.dek");
+		expect(env).toBe("w1.a.b.c");
 		const readers = await run(
 			runtime,
 			Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "consultation", 9)),
@@ -494,6 +506,8 @@ describe("Vault service", () => {
 		);
 		expect(readers).toHaveLength(1);
 		expect(readers[0]!.readerPubkey).toBe("wD");
+		// Revoke is holder-gated too — u-member's approved device wD
+		// holds the envelope, so the write is allowed.
 		await run(
 			runtime,
 			Effect.flatMap(Vault, (v) =>
@@ -504,7 +518,7 @@ describe("Vault service", () => {
 					readerPubkey: "wD",
 				}),
 			),
-			{ role: "member" },
+			{ role: "member", userId: "u-member" },
 		);
 		expect(
 			await run(
@@ -520,6 +534,187 @@ describe("Vault service", () => {
 				{ role: "member" },
 			),
 		).toBeNull();
+	});
+
+	it("denies a member re-granting a record their devices cannot read", async () => {
+		// Claim consultation/10 for u-member's approved device wD — the
+		// open first write on an unclaimed record.
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "consultation",
+					entityId: 10,
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wD",
+							wrappedDek: "w1.a.b.c",
+						},
+					],
+				}),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		// u-other holds no envelope for it — overwriting wD's row must
+		// fail, not clobber.
+		const denied = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v
+					.grantAccess({
+						tenantId: TENANT_ID,
+						entityType: "consultation",
+						entityId: 10,
+						grants: [
+							{
+								readerKind: "device" as const,
+								readerPubkey: "wD",
+								wrappedDek: "w1.e.f.g",
+							},
+						],
+					})
+					.pipe(Effect.exit),
+			),
+			{ role: "member", userId: "u-other" },
+		);
+		expect(denied._tag).toBe("Failure");
+		// The stored envelope is untouched.
+		const env = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.dekEnvelope({
+					tenantId: TENANT_ID,
+					entityType: "consultation",
+					entityId: 10,
+					readerPubkey: "wD",
+				}),
+			),
+			{ role: "member" },
+		);
+		expect(env).toBe("w1.a.b.c");
+		// u-other cannot revoke it either.
+		const revoked = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v
+					.revokeAccess({
+						tenantId: TENANT_ID,
+						entityType: "consultation",
+						entityId: 10,
+						readerPubkey: "wD",
+					})
+					.pipe(Effect.exit),
+			),
+			{ role: "member", userId: "u-other" },
+		);
+		expect(revoked._tag).toBe("Failure");
+	});
+
+	it("lets a member re-grant a record their approved device already reads", async () => {
+		// u-member's approved device wD holds consultation/10's envelope —
+		// re-granting (DEK re-wrap) is delegation, not vandalism.
+		const rows = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "consultation",
+					entityId: 10,
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wD",
+							wrappedDek: "w1.h.i.j",
+						},
+					],
+				}),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		expect(rows).toHaveLength(1);
+	});
+
+	it("rejects malformed wrappedDek envelopes before any write", async () => {
+		const exit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v
+					.grantAccess({
+						tenantId: TENANT_ID,
+						entityType: "patient",
+						entityId: 10,
+						grants: [
+							{
+								readerKind: "device" as const,
+								readerPubkey: "wD",
+								wrappedDek: "w1.only.two",
+							},
+						],
+					})
+					.pipe(Effect.exit),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		expect(exit._tag).toBe("Failure");
+		expect(
+			await run(
+				runtime,
+				Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "patient", 10)),
+				{ role: "member" },
+			),
+		).toHaveLength(0);
+	});
+
+	it("bootstrap grants establish the set authoritatively, wiping planted rows", async () => {
+		// First write on an unclaimed record stays open — a member can
+		// seed it (creation-time semantics without the flag).
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "patient",
+					entityId: 77,
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wD",
+							wrappedDek: "w1.p.q.r",
+						},
+					],
+				}),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		// The creation bootstrap replaces the whole set — anything
+		// planted before the record existed cannot survive it.
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "patient",
+					entityId: 77,
+					bootstrap: true,
+					grants: [
+						{
+							readerKind: "patient" as const,
+							readerPubkey: "patW",
+							wrappedDek: "w1.s.t.u",
+						},
+					],
+				}),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		const readers = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "patient", 77)),
+			{ role: "member" },
+		);
+		expect(readers.map((r) => r.readerPubkey)).toEqual(["patW"]);
 	});
 
 	it("isZk reflects the bound tenant's flag, false when mismatched", async () => {

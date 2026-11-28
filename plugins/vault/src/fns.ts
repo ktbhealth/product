@@ -215,10 +215,20 @@ export const vaultGrantAccessFn = createServerFn({ method: "POST" })
 					const tenantId = yield* boundTenantId;
 					if (tenantId === null) return { ok: false as const };
 					const vault = yield* Vault;
-					return yield* vault.grantAccess({ tenantId, ...data }).pipe(
-						Effect.map((rows) => ({ ok: true as const, data: rows })),
-						denyToFalse({ ok: false as const }),
-					);
+					// Explicit field list — `bootstrap` is creation-path-only
+					// and must never cross the wire (a remote caller could
+					// otherwise wipe a claimed record's grant set).
+					return yield* vault
+						.grantAccess({
+							tenantId,
+							entityType: data.entityType,
+							entityId: data.entityId,
+							grants: data.grants,
+						})
+						.pipe(
+							Effect.map((rows) => ({ ok: true as const, data: rows })),
+							denyToFalse({ ok: false as const }),
+						);
 				}),
 			);
 		}),

@@ -131,6 +131,7 @@ describe("saveConsultationFn — ciphered writes", () => {
 			tenantId: 9,
 			entityType: "consultation",
 			entityId: 1,
+			bootstrap: true,
 			grants: [grant],
 		});
 	});

@@ -2,11 +2,14 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { and, eq, inArray } from "drizzle-orm";
 import { KeyRoundIcon } from "lucide-react";
 
+import { Audit } from "@ktb/audit";
 import { Forbidden, Principal } from "@ktb/authz";
 import { AEAD_ENVELOPE_VERSION } from "@ktb/crypto/aead";
+import { WRAP_VERSION } from "@ktb/crypto/wrap";
 import { Db, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -57,7 +60,12 @@ export {
 /** Vault operation failures distinct from authz — missing rows,
  * wrong lifecycle state, duplicate grants. */
 export class VaultError extends Data.TaggedError("VaultError")<{
-	readonly reason: "device-not-found" | "device-not-pending" | "tenant-mismatch";
+	readonly reason:
+		| "device-not-found"
+		| "device-not-pending"
+		| "tenant-mismatch"
+		| "invalid-envelope"
+		| "not-a-reader";
 }> {}
 
 /**
@@ -180,7 +188,10 @@ export async function revokeClinicDevice(db: DbClient, clinicKeyId: number): Pro
 }
 
 /** Insert-or-replace DEK envelopes for a record — the write path for
- * record creation (fresh DEK minted client-side) and access grants. */
+ * record creation (fresh DEK minted client-side) and access grants.
+ * `replace` makes the call authoritative: every existing envelope for
+ * the record is deleted first, so a creation-time grant set cannot be
+ * polluted by rows planted before the record existed. */
 export async function grantEntityDeks(
 	db: DbClient,
 	input: {
@@ -188,6 +199,7 @@ export async function grantEntityDeks(
 		readonly entityType: string;
 		readonly entityId: string | number;
 		readonly grantedByUserId: string | null;
+		readonly replace?: boolean;
 		readonly grants: readonly {
 			readonly readerKind: EntityDekReaderKind;
 			readonly readerPubkey: string;
@@ -197,6 +209,17 @@ export async function grantEntityDeks(
 	},
 ): Promise<EntityDek[]> {
 	const entityId = String(input.entityId);
+	if (input.replace === true) {
+		await db
+			.delete(entityDeks)
+			.where(
+				and(
+					eq(entityDeks.tenantId, input.tenantId),
+					eq(entityDeks.entityType, input.entityType),
+					eq(entityDeks.entityId, entityId),
+				),
+			);
+	}
 	const written: EntityDek[] = [];
 	for (const grant of input.grants) {
 		const rows = await db
@@ -215,7 +238,12 @@ export async function grantEntityDeks(
 			// Re-granting to the same reader replaces the envelope —
 			// DEK rotation (T-150 re-wrap) depends on this.
 			.onConflictDoUpdate({
-				target: [entityDeks.entityType, entityDeks.entityId, entityDeks.readerPubkey],
+				target: [
+					entityDeks.tenantId,
+					entityDeks.entityType,
+					entityDeks.entityId,
+					entityDeks.readerPubkey,
+				],
 				set: { wrappedDek: grant.wrappedDek, readerId: grant.readerId ?? null },
 			})
 			.returning();
@@ -282,6 +310,77 @@ export async function revokeEntityDek(
 				eq(entityDeks.readerPubkey, readerPubkey),
 			),
 		);
+}
+
+/** Whether ANY envelope row exists for the record — the grant-write
+ * gate treats an empty record as unclaimed: with no envelopes there is
+ * nothing to destroy, so the first write stays open (record creation). */
+export async function entityDekExists(
+	db: DbClient,
+	tenantId: number,
+	entityType: string,
+	entityId: string | number,
+): Promise<boolean> {
+	const rows = await db
+		.select({ id: entityDeks.id })
+		.from(entityDeks)
+		.where(
+			and(
+				eq(entityDeks.tenantId, tenantId),
+				eq(entityDeks.entityType, entityType),
+				eq(entityDeks.entityId, String(entityId)),
+			),
+		)
+		.limit(1);
+	return rows.length > 0;
+}
+
+/** Wrap pubkeys of the member's APPROVED devices — the set the
+ * grant-write hold-check matches against `entity_deks` rows. Pending
+ * devices cannot unwrap anything yet, so they prove no read access. */
+export async function approvedDeviceWrapKeys(
+	db: DbClient,
+	tenantId: number,
+	userId: string,
+): Promise<readonly string[]> {
+	const rows = await db
+		.select({ wrapPublicKey: clinicKeys.wrapPublicKey })
+		.from(clinicKeys)
+		.where(
+			and(
+				eq(clinicKeys.tenantId, tenantId),
+				eq(clinicKeys.userId, userId),
+				eq(clinicKeys.status, "approved"),
+			),
+		);
+	return rows.map((r) => r.wrapPublicKey);
+}
+
+/** Whether any of `readerPubkeys` already holds an envelope for the
+ * record — server-side proof that the caller's devices were granted
+ * read access (someone else wrote their row; self-planted rows can
+ * only exist on records that were already unclaimed). */
+export async function entityDekHeldBy(
+	db: DbClient,
+	tenantId: number,
+	entityType: string,
+	entityId: string | number,
+	readerPubkeys: readonly string[],
+): Promise<boolean> {
+	if (readerPubkeys.length === 0) return false;
+	const rows = await db
+		.select({ id: entityDeks.id })
+		.from(entityDeks)
+		.where(
+			and(
+				eq(entityDeks.tenantId, tenantId),
+				eq(entityDeks.entityType, entityType),
+				eq(entityDeks.entityId, String(entityId)),
+				inArray(entityDeks.readerPubkey, [...readerPubkeys]),
+			),
+		)
+		.limit(1);
+	return rows.length > 0;
 }
 
 // ── Portal device keys (T-148) ──────────────────────────────────
@@ -440,7 +539,13 @@ export async function tenantZkOrClosed(db: DbClient, tenantId: number | null): P
  * Authz: every method requires the bound `Tenant` to BE the target
  * tenant (`tenant-mismatch` otherwise); writes and reads need
  * `member+`, device approval/revocation needs `admin+` (a member may
- * still revoke their OWN device).
+ * still revoke their OWN device). `grantAccess`/`revokeAccess` are
+ * tighter: envelopes are capabilities — overwriting one silently
+ * bricks that reader's access — so a non-admin member may only write
+ * a record that is unclaimed (no envelopes yet) or one their own
+ * approved devices already hold an envelope for. `bootstrap` (the
+ * record-creation path) is the single exception: it establishes the
+ * initial grant set and wipes anything pre-planted.
  */
 export class Vault extends Context.Service<
 	Vault,
@@ -473,11 +578,18 @@ export class Vault extends Context.Service<
 			tenantId: number,
 			wrapPublicKey: string,
 		) => Effect.Effect<ClinicKey | null, VaultError | TenantForbidden>;
-		/** Store DEK envelopes for a record (create + grant paths). */
+		/** Store DEK envelopes for a record (create + grant paths).
+		 * `bootstrap` marks the record-creation write: it skips the
+		 * read-access hold-check and makes the grant set authoritative
+		 * (pre-existing rows for the record are replaced). ONLY
+		 * record-creation call sites may set it — the wire fn
+		 * (`vaultGrantAccessFn`) never forwards the flag, so remote
+		 * callers cannot claim creation on arbitrary entityIds. */
 		readonly grantAccess: (input: {
 			readonly tenantId: number;
 			readonly entityType: string;
 			readonly entityId: string | number;
+			readonly bootstrap?: boolean;
 			readonly grants: readonly {
 				readonly readerKind: EntityDekReaderKind;
 				readonly readerPubkey: string;
@@ -514,6 +626,85 @@ export class Vault extends Context.Service<
 		readonly enableZk: (tenantId: number) => Effect.Effect<void, VaultError | TenantForbidden>;
 	}
 >()("@ktb/vault/Vault") {}
+
+/** `w1.<ephPub>.<iv>.<ct>` — the same shape `unwrapDek` enforces; a
+ * stored envelope that fails this can never unwrap, so it is rejected
+ * at write time instead of bricking the reader silently. */
+const isDekEnvelope = (value: string): boolean => {
+	const parts = value.split(".");
+	return (
+		parts.length === 4 && parts[0] === WRAP_VERSION && parts.slice(1).every((part) => part !== "")
+	);
+};
+
+/** Grant-write gate for `grantAccess`/`revokeAccess`: admins manage
+ * every record; a member may write an UNCLAIMED record (no envelopes —
+ * first write cannot destroy anything) or one their own approved
+ * devices already hold an envelope for (they were granted read access,
+ * so re-granting/revoking is delegation, not vandalism). Everyone
+ * else gets `not-a-reader`. */
+const assertRecordGrantAllowed = (
+	db: DbClient,
+	input: {
+		readonly tenantId: number;
+		readonly entityType: string;
+		readonly entityId: string | number;
+	},
+): Effect.Effect<void, VaultError> =>
+	Effect.gen(function* () {
+		const tenant = yield* Tenant;
+		if (tenant !== null && tenantRoleAtLeast(tenant.role, "admin")) return;
+		const claimed = yield* Effect.promise(() =>
+			entityDekExists(db, input.tenantId, input.entityType, input.entityId),
+		);
+		if (!claimed) return;
+		const principal = yield* Principal;
+		const pubkeys =
+			principal?.userId == null || principal.userId === ""
+				? []
+				: yield* Effect.promise(() => approvedDeviceWrapKeys(db, input.tenantId, principal.userId));
+		const held = yield* Effect.promise(() =>
+			entityDekHeldBy(db, input.tenantId, input.entityType, input.entityId, pubkeys),
+		);
+		if (!held) return yield* Effect.fail(new VaultError({ reason: "not-a-reader" }));
+	});
+
+/** Best-effort audit for grant/revoke writes — `Audit.record` never
+ * fails by contract; pubkeys and correlation ids only, never DEK
+ * material (envelopes stay opaque even here). */
+const recordVaultAudit = (
+	action: "vault.entity-dek.grant" | "vault.entity-dek.revoke",
+	input: {
+		readonly tenantId: number;
+		readonly entityType: string;
+		readonly entityId: string | number;
+		readonly grants?: readonly {
+			readonly readerKind: EntityDekReaderKind;
+			readonly readerPubkey: string;
+			readonly readerId?: string | null;
+		}[];
+		readonly readerPubkey?: string;
+	},
+) =>
+	Effect.gen(function* () {
+		const audit = yield* Effect.serviceOption(Audit);
+		if (Option.isNone(audit)) return;
+		yield* audit.value.record({
+			action,
+			targetType: "entity_deks",
+			targetId: `${input.entityType}:${String(input.entityId)}`,
+			detail: {
+				entityType: input.entityType,
+				entityId: String(input.entityId),
+				readers: input.grants?.map((g) => ({
+					kind: g.readerKind,
+					pubkey: g.readerPubkey,
+					readerId: g.readerId ?? null,
+				})) ?? [{ pubkey: input.readerPubkey ?? null }],
+			},
+			tenantId: input.tenantId,
+		});
+	});
 
 export const VaultLive = Layer.effect(
 	Vault,
@@ -566,16 +757,35 @@ export const VaultLive = Layer.effect(
 			}),
 			grantAccess: Effect.fn("Vault.grantAccess")(function* (input) {
 				yield* requireBoundTenant(input.tenantId, "member");
+				// Envelopes are write-once capabilities: a member may only
+				// (re)write a record they can already read — or establish
+				// a fresh record's grant set via the creation bootstrap.
+				for (const grant of input.grants) {
+					if (!isDekEnvelope(grant.wrappedDek)) {
+						return yield* Effect.fail(new VaultError({ reason: "invalid-envelope" }));
+					}
+				}
+				if (input.bootstrap !== true) {
+					yield* assertRecordGrantAllowed(db, input);
+				}
 				const principal = yield* Principal;
-				return yield* Effect.promise(() =>
-					grantEntityDeks(db, { ...input, grantedByUserId: principal?.userId ?? null }),
+				const rows = yield* Effect.promise(() =>
+					grantEntityDeks(db, {
+						...input,
+						grantedByUserId: principal?.userId ?? null,
+						replace: input.bootstrap === true,
+					}),
 				);
+				yield* recordVaultAudit("vault.entity-dek.grant", input);
+				return rows;
 			}),
 			revokeAccess: Effect.fn("Vault.revokeAccess")(function* (input) {
 				yield* requireBoundTenant(input.tenantId, "member");
-				return yield* Effect.promise(() =>
+				yield* assertRecordGrantAllowed(db, input);
+				yield* Effect.promise(() =>
 					revokeEntityDek(db, input.tenantId, input.entityType, input.entityId, input.readerPubkey),
 				);
+				yield* recordVaultAudit("vault.entity-dek.revoke", input);
 			}),
 			readers: Effect.fn("Vault.readers")(function* (tenantId, entityType, entityId) {
 				yield* requireBoundTenant(tenantId, "member");
@@ -619,6 +829,9 @@ export const vaultTablesPlugin = definePlugin({
 export const vaultServicesPlugin = definePlugin({
 	id: "vault.services",
 	meta: { keywords: ["vault", "services"] },
+	// Grant/revoke writes are audit-logged when the audit plugin is
+	// present — same optional-dep contract as vault.secrets.
+	optionalDeps: ["audit.services"],
 	services: VaultLive,
 });
 

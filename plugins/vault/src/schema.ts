@@ -93,8 +93,12 @@ export const entityDeks = sqliteTable(
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
-		// One envelope per (record, reader) — re-granting replaces.
+		// One envelope per (tenant, record, reader) — re-granting
+		// replaces. tenantId leads the key so the upsert conflict target
+		// can never reach across tenants: entityId is caller-shaped text
+		// and two clinics can legitimately name the same (type, id).
 		uniqueIndex("entity_deks_record_reader_idx").on(
+			table.tenantId,
 			table.entityType,
 			table.entityId,
 			table.readerPubkey,

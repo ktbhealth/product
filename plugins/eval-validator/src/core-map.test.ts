@@ -22,6 +22,7 @@ const runRow = (over: Partial<EvalRun> = {}): EvalRun => ({
 	experiment: null,
 	startedAt: new Date(1_700_000_000_000),
 	finishedAt: new Date(1_700_000_060_000),
+	leaseUntil: null,
 	createdBy: "v@x.com",
 	createdAt: new Date(1_699_999_999_000),
 	...over,

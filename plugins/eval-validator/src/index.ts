@@ -442,6 +442,13 @@ export const EvalValidatorLive = Layer.effect(
 						),
 				);
 				const picked = items.filter(runnable);
+				// Nothing runnable (empty cohort or an itemIds subset that
+				// filters to zero) must not leave a queued zombie row —
+				// reject before the run exists. `Forbidden` collapses to
+				// `{ ok: false }` on the wire like every other denial.
+				if (picked.length === 0) {
+					return yield* Effect.fail(new Forbidden({ path: "eval.validator.startRun" }));
+				}
 				const runRows = yield* Effect.promise(() =>
 					db
 						.insert(evalRun)
@@ -462,17 +469,15 @@ export const EvalValidatorLive = Layer.effect(
 						.returning(),
 				);
 				const run = runRows[0]!;
-				if (picked.length > 0) {
-					yield* Effect.promise(() =>
-						db.insert(evalRunSample).values(
-							picked.map((p) => ({
-								runId: run.id,
-								itemId: p.id,
-								createdAt: new Date(),
-							})),
-						),
-					);
-				}
+				yield* Effect.promise(() =>
+					db.insert(evalRunSample).values(
+						picked.map((p) => ({
+							runId: run.id,
+							itemId: p.id,
+							createdAt: new Date(),
+						})),
+					),
+				);
 				// WS-E: with the jobs queue bound the run is handed to the
 				// eval.run consumer — it flips queued→running and drives
 				// executeEvalRun, which resumes pending samples so a
@@ -480,7 +485,7 @@ export const EvalValidatorLive = Layer.effect(
 				// Without the queue but with a runner, keep the
 				// request-scoped fork (tests + minimal runtimes). Neither
 				// → the row stays honestly queued.
-				if (Option.isSome(jobs) && picked.length > 0) {
+				if (Option.isSome(jobs)) {
 					yield* Effect.tryPromise({
 						try: () => jobs.value.enqueue(EVAL_RUN_JOB_KIND, { runId: run.id }),
 						catch: (error) => error,
@@ -504,7 +509,7 @@ export const EvalValidatorLive = Layer.effect(
 							).pipe(Effect.andThen(Effect.die(error))),
 						),
 					);
-				} else if (Option.isSome(runner) && picked.length > 0) {
+				} else if (Option.isSome(runner)) {
 					// forkDetach: the run outlives this request's scope —
 					// evals take minutes; progress is polled via
 					// `progress`. executeEvalRun re-reads the samples it

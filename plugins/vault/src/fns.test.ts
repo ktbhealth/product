@@ -241,8 +241,8 @@ describe("vault fns", () => {
 				entityType: "patient",
 				entityId: 42,
 				grants: [
-					{ readerKind: "device", readerPubkey: "wMem", wrappedDek: "w1.dek42" },
-					{ readerKind: "device", readerPubkey: "wOther", wrappedDek: "w1.dek42b" },
+					{ readerKind: "device", readerPubkey: "wMem", wrappedDek: "w1.a.b.c" },
+					{ readerKind: "device", readerPubkey: "wOther", wrappedDek: "w1.d.e.f" },
 				],
 			},
 		});
@@ -254,7 +254,7 @@ describe("vault fns", () => {
 			await vaultDekEnvelopesFn({
 				data: { entityType: "patient", entityIds: [42, 43], wrapPublicKey: "wMem" },
 			}),
-		).toEqual({ "42": "w1.dek42" });
+		).toEqual({ "42": "w1.a.b.c" });
 		expect(
 			await vaultDekEnvelopesFn({
 				data: { entityType: "patient", entityIds: [42], wrapPublicKey: "wNobody" },

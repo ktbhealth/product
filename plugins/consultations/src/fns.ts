@@ -303,6 +303,9 @@ export const saveConsultationFn = createServerFn({ method: "POST" })
 										tenantId,
 										entityType: consultationCipher.entity,
 										entityId: saved.id,
+										// Creation path: establishes the record's
+										// initial grant set (authoritative).
+										bootstrap: true,
 										grants,
 									})
 									.pipe(

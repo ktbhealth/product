@@ -104,14 +104,21 @@ export async function getSecretById(db: DbClient, id: number): Promise<VaultSecr
 	return rows[0] ?? null;
 }
 
-async function insertSecret(
+/** Atomic create-or-replace on (scope, name): a single
+ * INSERT … ON CONFLICT DO UPDATE, so concurrent same-name puts
+ * serialize on the unique index instead of the loser surfacing a
+ * raw SQLite constraint defect. The update arm mirrors
+ * replaceSecretMaterial: material columns are always replaced,
+ * provider/kind/hint keep the stored value unless the caller
+ * supplies one, `version` bumps. */
+async function upsertSecret(
 	db: DbClient,
 	row: {
 		readonly scope: string;
 		readonly tenantId: number | null;
 		readonly name: string;
-		readonly provider: string | null;
-		readonly kind: VaultSecretKind;
+		readonly provider?: string | null;
+		readonly kind?: VaultSecretKind;
 		readonly hint?: string | null;
 		readonly wrappedDek: string;
 		readonly ciphertext: string;
@@ -121,7 +128,34 @@ async function insertSecret(
 ): Promise<VaultSecret> {
 	const rows = await db
 		.insert(vaultSecret)
-		.values({ ...row, status: "active", version: 1, createdAt: new Date() })
+		.values({
+			scope: row.scope,
+			tenantId: row.tenantId,
+			hint: row.hint ?? null,
+			name: row.name,
+			provider: row.provider ?? null,
+			kind: row.kind ?? "generic",
+			wrappedDek: row.wrappedDek,
+			ciphertext: row.ciphertext,
+			kekVersion: row.kekVersion,
+			createdBy: row.createdBy,
+			status: "active",
+			version: 1,
+			createdAt: new Date(),
+		})
+		.onConflictDoUpdate({
+			target: [vaultSecret.scope, vaultSecret.name],
+			set: {
+				wrappedDek: row.wrappedDek,
+				ciphertext: row.ciphertext,
+				kekVersion: row.kekVersion,
+				provider: row.provider ?? sql`${vaultSecret.provider}`,
+				kind: row.kind ?? sql`${vaultSecret.kind}`,
+				hint: row.hint !== undefined ? row.hint : sql`${vaultSecret.hint}`,
+				version: sql`${vaultSecret.version} + 1`,
+				updatedAt: new Date(),
+			},
+		})
 		.returning();
 	return rows[0]!;
 }
@@ -366,34 +400,26 @@ export const SecretsLive = Layer.effect(
 				const principal = yield* Effect.serviceOption(Principal);
 				/* v8 ignore next -- Principal is a Context.Reference; serviceOption always yields Some */
 				const createdBy = Option.isSome(principal) ? (principal.value?.userId ?? null) : null;
+				// Pre-read is only for the audit label — the write itself
+				// is a single atomic upsert, so a concurrent same-name put
+				// cannot defect on the unique index. Under a true create
+				// race the loser may be labelled "create" once; the row
+				// outcome (last writer wins, version bumped) is correct.
 				const existing = yield* Effect.promise(() => getSecretByName(db, scope, name));
-				const row =
-					existing === null
-						? yield* Effect.promise(() =>
-								insertSecret(db, {
-									scope,
-									tenantId: scope === String(input.tenantId) ? input.tenantId : null,
-									hint: input.hint ?? null,
-									name,
-									provider: input.provider ?? null,
-									kind: input.kind ?? "generic",
-									wrappedDek: sealed.wrappedDek,
-									ciphertext: sealed.ciphertext,
-									kekVersion: sealed.kekVersion,
-									createdBy,
-								}),
-							)
-						: yield* Effect.promise(() =>
-								replaceSecretMaterial(db, {
-									id: existing.id,
-									wrappedDek: sealed.wrappedDek,
-									ciphertext: sealed.ciphertext,
-									kekVersion: sealed.kekVersion,
-									provider: input.provider ?? existing.provider,
-									kind: input.kind ?? (existing.kind as VaultSecretKind),
-									hint: input.hint !== undefined ? input.hint : existing.hint,
-								}),
-							);
+				const row = yield* Effect.promise(() =>
+					upsertSecret(db, {
+						scope,
+						tenantId: scope === String(input.tenantId) ? input.tenantId : null,
+						hint: input.hint,
+						name,
+						provider: input.provider,
+						kind: input.kind,
+						wrappedDek: sealed.wrappedDek,
+						ciphertext: sealed.ciphertext,
+						kekVersion: sealed.kekVersion,
+						createdBy,
+					}),
+				);
 				yield* recordAudit(existing === null ? "vault.secret.create" : "vault.secret.update", row, {
 					provider: row.provider,
 					kind: row.kind,

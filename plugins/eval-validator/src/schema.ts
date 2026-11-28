@@ -49,6 +49,13 @@ export const evalRun = sqliteTable(
 		experiment: text(),
 		startedAt: integer("started_at", { mode: "timestamp_ms" }),
 		finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+		/** Execution lease (eval.run mutual exclusion): the consumer that
+		 * claimed the run writes it and renews it by heartbeat while it
+		 * works. A `running` row is reclaimable only once this lapses —
+		 * a redelivery racing a LIVE attempt aborts instead of
+		 * double-executing; a dead predecessor's lease simply expires.
+		 * NULL = never claimed (or pre-lease rows — reclaimable). */
+		leaseUntil: integer("lease_until", { mode: "timestamp_ms" }),
 		createdBy: text("created_by"),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
