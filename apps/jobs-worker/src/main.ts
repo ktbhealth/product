@@ -28,9 +28,11 @@ import { registerWorkerHandlers } from "./handlers.ts";
 import { makeOrchestrationWorker } from "./orchestration.ts";
 import { runJobWorker } from "./worker.ts";
 
-// Composition-built kind → handler registry: builtin kinds only —
-// this process composes no plugins, so plugin-owned kinds (eval.run,
-// …) stay unregistered and degrade to "unknown job kind".
+// Composition-built kind → handler registry: builtin kinds plus the
+// orchestrator.step registration (which itself loads plugin
+// orchestrations packs — see orchestration.ts/packs.ts). Plugin-owned
+// job kinds (eval.run, …) stay unregistered and degrade to
+// "unknown job kind".
 const jobHandlerRegistry = makeJobHandlerRegistry();
 registerWorkerHandlers(jobHandlerRegistry);
 
@@ -43,8 +45,8 @@ const db = openWorkerDb();
 if (db !== undefined) {
 	// orchestrator.step re-enqueues itself through the same transport;
 	// makeJobs also writes the job_runs projection rows the /platform
-	// queue console reads. See orchestration.ts for the dev-mode gaps
-	// (no plugin packs, registry-only ambientContext).
+	// queue console reads. See orchestration.ts/packs.ts for the
+	// dev-mode gaps (explicit pack list, registry-only ambientContext).
 	const jobs = makeJobs({ send: (envelope) => transport.send(envelope), db });
 	makeOrchestrationWorker({ db, jobs }).registerStepHandler(jobHandlerRegistry);
 	console.log("jobs worker: orchestrator.step registered");

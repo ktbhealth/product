@@ -98,6 +98,12 @@ export {
 	type SignedVersion,
 } from "./shared.ts";
 export { consultationScope } from "./tenant-visibility.ts";
+export {
+	consultationAudioMachine,
+	AUDIO_RETRY_SOURCES,
+	type ConsultationAudioEvent,
+	type ConsultationAudioStatus,
+} from "./audio-status.ts";
 
 export const consultationsTablesPlugin = definePlugin({
 	id: "consultations.tables",

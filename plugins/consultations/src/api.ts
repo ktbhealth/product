@@ -2,6 +2,8 @@ import * as Schema from "effect/Schema";
 import { Event, Query } from "@effect-server-utils/cqrs";
 import { Forbidden } from "@ktb/authz";
 
+import { AUDIO_RETRY_SOURCES } from "./audio-status.ts";
+
 /** `Forbidden` is a `Data.TaggedError`, not a `Schema` — declare a schema
  * view of it so query failures stay typed end to end. */
 const ForbiddenSchema = Schema.declare<Forbidden>((u): u is Forbidden => u instanceof Forbidden);
@@ -88,5 +90,9 @@ export type AudioJobStatus = (typeof AUDIO_JOB_STATUSES)[number];
  * flight — re-enqueueing them risks duplicate transcription — and
  * "done" is terminal-success. A job stuck in "queued" with no pending
  * message has no staleness signal to detect it; recovery stays manual.
+ *
+ * Derived from `consultationAudioMachine` (audio-status.ts) — the
+ * `retry → queued` sources — so the set cannot drift from the
+ * declared lifecycle.
  */
-export const AUDIO_RETRY_STATUSES = ["stored", "failed"] as const;
+export const AUDIO_RETRY_STATUSES: readonly string[] = AUDIO_RETRY_SOURCES;

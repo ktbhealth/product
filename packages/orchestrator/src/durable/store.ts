@@ -67,6 +67,7 @@ const eventValues = (runId: string, seq: number, event: OrchestrationEvent) => (
 	payload: stringify(event.payload ?? {}),
 	source: event.source,
 	ts: event.ts,
+	notBefore: event.notBefore ?? null,
 });
 
 const toEvent = (row: typeof orchestrationEvents.$inferSelect): OrchestrationEvent => ({
@@ -75,6 +76,7 @@ const toEvent = (row: typeof orchestrationEvents.$inferSelect): OrchestrationEve
 	source: row.source,
 	id: row.eventId,
 	ts: row.ts,
+	...(row.notBefore === null ? {} : { notBefore: row.notBefore }),
 });
 
 // ---------------------------------------------------------------------------

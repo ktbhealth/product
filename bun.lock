@@ -43,6 +43,7 @@
         "@ktb/jobs-transport-redis": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/orchestrator-ai": "workspace:*",
+        "@ktb/plugin-pipeline-transcript": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -896,6 +897,12 @@
         "effect": "4.1.2",
       },
     },
+    "packages/statemachine": {
+      "name": "@ktb/statemachine",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
     "packages/tenant": {
       "name": "@ktb/tenant",
       "dependencies": {
@@ -1244,6 +1251,7 @@
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/statemachine": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/transcription": "workspace:*",
         "@ktb/transcription-webspeech": "workspace:*",
@@ -1467,6 +1475,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/statemachine": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -1499,6 +1508,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/statemachine": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -3372,6 +3382,8 @@
     "@ktb/site": ["@ktb/site@workspace:plugins/site"],
 
     "@ktb/site-builder": ["@ktb/site-builder@workspace:plugins/site-builder"],
+
+    "@ktb/statemachine": ["@ktb/statemachine@workspace:packages/statemachine"],
 
     "@ktb/storage-dataset": ["@ktb/storage-dataset@workspace:plugins/storage-dataset"],
 

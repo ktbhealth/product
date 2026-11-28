@@ -12,6 +12,12 @@ import { peekServerRuntime } from "@ktb/server-fns";
 
 import { datasetPinFor, parseJson, runRecordRows, runToExperiment } from "./core-map.ts";
 import { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
+import {
+	EVAL_RUN_FAIL_SOURCES,
+	EVAL_RUN_FINALIZE_SOURCES,
+	EVAL_RUN_START_SOURCES,
+	evalRunMachine,
+} from "./status-machine.ts";
 
 /**
  * WS-E (PL-009): eval run execution on the generic jobs queue
@@ -97,7 +103,7 @@ const failRun = (db: DbClient, runId: number, error: string) =>
 				finishedAt: new Date(),
 				summary: JSON.stringify({ error }),
 			})
-			.where(and(eq(evalRun.id, runId), inArray(evalRun.status, ["queued", "running"]))),
+			.where(and(eq(evalRun.id, runId), inArray(evalRun.status, [...EVAL_RUN_FAIL_SOURCES]))),
 	);
 
 /**
@@ -123,12 +129,12 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 	const run = runRows[0];
 	// Deleted between enqueue and delivery — nothing to do.
 	if (run === undefined) return;
-	if (run.status === "queued" || run.status === "failed") {
+	if (evalRunMachine.isState(run.status) && evalRunMachine.can(run.status, "start")) {
 		yield* Effect.promise(() =>
 			db
 				.update(evalRun)
 				.set({ status: "running", startedAt: run.startedAt ?? new Date() })
-				.where(eq(evalRun.id, run.id)),
+				.where(and(eq(evalRun.id, run.id), inArray(evalRun.status, [...EVAL_RUN_START_SOURCES]))),
 		);
 	}
 	const pendingSamples = yield* Effect.promise(() =>
@@ -229,7 +235,7 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 				summary: JSON.stringify(summary),
 				finishedAt: new Date(),
 			})
-			.where(eq(evalRun.id, run.id)),
+			.where(and(eq(evalRun.id, run.id), inArray(evalRun.status, [...EVAL_RUN_FINALIZE_SOURCES]))),
 	);
 	// Experiment projection (WS-D): re-read the run row — the captured
 	// `run` predates the running/startedAt flip, and the summary above

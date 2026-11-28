@@ -20,6 +20,8 @@ import {
 	makeJobConsumer,
 	makeJobHandlerRegistry,
 	makeJobs,
+	queueSend,
+	QUEUE_MAX_DELAY_SECONDS,
 	upsertJobRun,
 	type JobEnvelope,
 	type JobRecord,
@@ -237,6 +239,22 @@ describe("makeJobs (enqueue port)", () => {
 		const jobs = makeJobs({ send: async () => ({}) });
 		const envelope = await jobs.enqueue("k", null);
 		expect("tenantId" in envelope).toBe(false);
+	});
+
+	it("stamps a finite runAt on the envelope and omits it otherwise", async () => {
+		const sent: JobEnvelope[] = [];
+		const jobs = makeJobs({
+			send: async (e) => {
+				sent.push(e);
+			},
+		});
+		const delayed = await jobs.enqueue("k", null, { runAt: 1234.5 });
+		expect(delayed.runAt).toBe(1234.5);
+		// Non-finite runAt is dropped — the field is advisory, never a
+		// reason to emit a corrupt envelope.
+		const invalid = await jobs.enqueue("k", null, { runAt: Number.NaN });
+		expect("runAt" in invalid).toBe(false);
+		expect(sent.map((e) => e.runAt)).toEqual([1234.5, undefined]);
 	});
 
 	it("rejects empty kinds before touching transport or projection", async () => {
@@ -879,5 +897,39 @@ describe("makeJobHandlerRegistry", () => {
 		registry.register("test.late", { handle: async () => {} });
 		expect(before["test.late"]).toBeUndefined();
 		expect(registry.handlers()["test.late"]).toBeDefined();
+	});
+});
+
+describe("queueSend (Cloudflare delaySeconds adapter)", () => {
+	it("sends immediately when the envelope has no runAt", async () => {
+		const calls: { body: unknown; options?: { delaySeconds?: number } }[] = [];
+		const send = queueSend({
+			send: async (body, options) => {
+				calls.push({ body, options });
+			},
+		});
+		const envelope: JobEnvelope = { id: "j", kind: "k", payload: null };
+		await send(envelope);
+		expect(calls).toEqual([{ body: envelope, options: undefined }]);
+	});
+
+	it("maps a future runAt to rounded-up delaySeconds, clamped to the CF cap", async () => {
+		const calls: { options?: { delaySeconds?: number } }[] = [];
+		const send = queueSend({
+			send: async (_body, options) => {
+				calls.push({ options });
+			},
+		});
+		const now = Date.now();
+		await send({ id: "j", kind: "k", payload: null, runAt: now + 2_500 });
+		const delay = calls[0]?.options?.delaySeconds ?? 0;
+		expect(delay).toBeGreaterThanOrEqual(2);
+		expect(delay).toBeLessThanOrEqual(4);
+		// Far-future runAt clamps to the 12h Cloudflare cap.
+		await send({ id: "j", kind: "k", payload: null, runAt: now + 100 * 24 * 3600 * 1000 });
+		expect(calls[1]?.options?.delaySeconds).toBe(QUEUE_MAX_DELAY_SECONDS);
+		// Past runAt delivers immediately (delaySeconds 0).
+		await send({ id: "j", kind: "k", payload: null, runAt: now - 1000 });
+		expect(calls[2]?.options?.delaySeconds).toBe(0);
 	});
 });

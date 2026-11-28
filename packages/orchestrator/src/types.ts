@@ -34,18 +34,29 @@ export interface OrchestrationEvent {
 	readonly source: string;
 	readonly id: string;
 	readonly ts: number;
+	/** Delayed routing (epoch ms): the runner holds the event out of
+	 * routing until this instant — it sits in the pending queue but is
+	 * not dequeued early. Absent/past → due immediately. This is how
+	 * the `poll` kind expresses `intervalMs`: its tick event carries
+	 * `notBefore = firedAt + intervalMs`, so a self-subscribed poll
+	 * re-fires on a real wall-clock cadence instead of spinning the
+	 * event budget. The durable runner surfaces the earliest pending
+	 * `notBefore` as the next step job's `runAt`. */
+	readonly notBefore?: number;
 }
 
 const makeEvent = (
 	type: string,
 	payload: JsonObject = {},
 	source = "orchestrator",
+	notBefore?: number,
 ): OrchestrationEvent => ({
 	type,
 	payload,
 	source,
 	id: `evt-${crypto.randomUUID().slice(0, 13)}`,
 	ts: Date.now(),
+	...(notBefore !== undefined ? { notBefore } : {}),
 });
 
 /** Constructors and lifecycle helpers for {@link OrchestrationEvent}.
@@ -189,7 +200,11 @@ export interface NodeContext {
 	readonly config: Readonly<JsonObject>;
 	readonly state: Readonly<Record<string, unknown>>;
 	readonly params: Readonly<JsonObject>;
-	readonly emit: (type: string, payload?: JsonObject) => Effect.Effect<void>;
+	readonly emit: (
+		type: string,
+		payload?: JsonObject,
+		opts?: { readonly notBefore?: number },
+	) => Effect.Effect<void>;
 }
 
 /** What a kind returns: `state` merges into the run state,
@@ -200,6 +215,8 @@ export interface KindResult {
 	readonly events?: readonly {
 		readonly type: string;
 		readonly payload?: JsonObject;
+		/** Delayed routing (epoch ms) — see {@link OrchestrationEvent.notBefore}. */
+		readonly notBefore?: number;
 	}[];
 	readonly output?: unknown;
 }

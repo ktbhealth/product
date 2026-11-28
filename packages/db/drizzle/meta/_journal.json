@@ -505,6 +505,13 @@
       "when": 1795817380357,
       "tag": "0072_faulty_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1795864232446,
+      "tag": "0073_round_hardball",
+      "breakpoints": true
     }
   ]
 }

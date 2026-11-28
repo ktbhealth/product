@@ -13,6 +13,7 @@ import {
 	OrchestratorRegistry,
 	OrchestratorRegistryLive,
 	OrchestrationRunError,
+	createOrchestrationSession,
 	runOrchestration,
 	UnknownKindError,
 	UnknownOrchestrationError,
@@ -829,5 +830,122 @@ describe("OrchestratorRegistry service + live layer", () => {
 		);
 		const squashed = exit._tag === "Failure" ? Cause.squash(exit.cause) : exit;
 		expect(squashed).toBeInstanceOf(DuplicateKindError);
+	});
+});
+
+describe("delayed routing (notBefore)", () => {
+	it("holds not-yet-due events out of routing and reports nextWakeAt", async () => {
+		const delayEmit = kind("delay-emit", () =>
+			Effect.succeed({
+				events: [
+					{ type: "wake", payload: {}, notBefore: Date.now() + 60_000 },
+					{ type: "now", payload: {} },
+				],
+			}),
+		);
+		const seen: string[] = [];
+		const sink = kind("sink", (ctx) =>
+			Effect.sync(() => {
+				seen.push(ctx.event.type);
+				return {};
+			}),
+		);
+		const session = await Effect.runPromise(
+			createOrchestrationSession(
+				def("d", [node("a", "delay-emit", ["start"]), node("b", "sink", ["wake", "now"])]),
+				new Map([
+					["delay-emit", delayEmit],
+					["sink", sink],
+				]),
+			),
+		);
+		await Effect.runPromise(session.step());
+		// "now" routed; "wake" is still pending — the run is NOT finished
+		// (quiescence waits for delayed events too).
+		expect(seen).toEqual(["now"]);
+		expect(session.isFinished()).toBe(false);
+		expect(session.pendingEvents().map((e) => e.type)).toEqual(["wake"]);
+		const wakeAt = session.nextWakeAt();
+		expect(wakeAt).not.toBeNull();
+		expect(wakeAt as number).toBeGreaterThan(Date.now());
+		// A second step changes nothing until the wake instant.
+		await Effect.runPromise(session.step());
+		expect(seen).toEqual(["now"]);
+	});
+
+	it("routes a delayed event once its notBefore has passed", async () => {
+		const delayEmit = kind("delay-emit", () =>
+			Effect.succeed({
+				events: [{ type: "wake", payload: {}, notBefore: Date.now() + 30 }],
+			}),
+		);
+		const seen: string[] = [];
+		const sink = kind("sink", (ctx) =>
+			Effect.sync(() => {
+				seen.push(ctx.event.type);
+				return {};
+			}),
+		);
+		const session = await Effect.runPromise(
+			createOrchestrationSession(
+				def("d", [node("a", "delay-emit", ["start"]), node("b", "sink", ["wake"])]),
+				new Map([
+					["delay-emit", delayEmit],
+					["sink", sink],
+				]),
+			),
+		);
+		await Effect.runPromise(session.step());
+		expect(seen).toEqual([]);
+		await Effect.runPromise(Effect.sleep(50));
+		await Effect.runPromise(session.step());
+		expect(seen).toEqual(["wake"]);
+	});
+
+	it("nextWakeAt is null when due work remains queued", async () => {
+		const mixed = kind("mixed", () =>
+			Effect.succeed({
+				events: [
+					{ type: "later", payload: {}, notBefore: Date.now() + 60_000 },
+					{ type: "soon", payload: {} },
+				],
+			}),
+		);
+		// batchSize 1: step stops after the first event with "soon"
+		// still queued → next step must run immediately.
+		const session = await Effect.runPromise(
+			createOrchestrationSession(
+				def("d", [node("a", "mixed", ["start"])]),
+				new Map([["mixed", mixed]]),
+			),
+		);
+		await Effect.runPromise(session.step(1));
+		expect(session.pendingEvents().map((e) => e.type)).toEqual(["later", "soon"]);
+		expect(session.nextWakeAt()).toBeNull();
+	});
+
+	it("nextWakeAt reports the earliest notBefore across multiple delayed events", async () => {
+		const delays = kind("delays", () =>
+			Effect.succeed({
+				events: [
+					{ type: "late", payload: {}, notBefore: Date.now() + 90_000 },
+					{ type: "early", payload: {}, notBefore: Date.now() + 30_000 },
+					{ type: "mid", payload: {}, notBefore: Date.now() + 60_000 },
+				],
+			}),
+		);
+		const session = await Effect.runPromise(
+			createOrchestrationSession(
+				def("d", [node("a", "delays", ["start"])]),
+				new Map([["delays", delays]]),
+			),
+		);
+		await Effect.runPromise(session.step());
+		expect(session.pendingEvents().map((e) => e.type)).toEqual(["late", "early", "mid"]);
+		const wakeAt = session.nextWakeAt();
+		expect(wakeAt).not.toBeNull();
+		expect(wakeAt as number).toBeGreaterThan(Date.now());
+		// The earliest notBefore wins even though "late" was queued first.
+		expect(wakeAt as number).toBeLessThan(Date.now() + 60_000);
 	});
 });

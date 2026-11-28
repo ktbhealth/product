@@ -6,6 +6,7 @@ import {
 	makeOrchestratorRegistry,
 	OrchestratorRegistry,
 	OrchestrationEvent,
+	pollKind,
 	type JsonObject,
 	type NodeContext,
 	type OrchestrationDef,
@@ -37,6 +38,13 @@ const def = (
 });
 
 const registry = () => makeOrchestratorRegistry([...builtinKinds]);
+
+/** Kind `run` effects declare R=unknown (ambient-probe idiom) — tests
+ * provide no services, so the requirement channel is erased for
+ * `Effect.runPromise` (which demands R=never). Same idiom as
+ * packages/pipeline/src/bridge.test.ts. */
+const runPromise = <A, E>(eff: Effect.Effect<A, E, unknown>): Promise<A> =>
+	Effect.runPromise(eff as Effect.Effect<A, E, never>);
 
 const eventTypes = (result: OrchestrationRunResult): string[] =>
 	result.events.map((event) => event.type);
@@ -86,6 +94,28 @@ describe("poll kind", () => {
 		);
 		const result = await Effect.runPromise(r.run("poll-custom"));
 		expect(result.events.filter((e) => e.type === "custom.tick")).toHaveLength(2);
+	});
+
+	it("stamps notBefore = firedAt + intervalMs on the tick (real intervals)", async () => {
+		const ctx = (intervalMs?: number): NodeContext => ({
+			event: OrchestrationEvent.new("start", {}, "test"),
+			node: node("p", "poll", ["start", "p.tick"]),
+			config: {},
+			state: {},
+			params: intervalMs === undefined ? {} : { intervalMs },
+			emit: () => Effect.void,
+		});
+		const before = Date.now();
+		const delayed = await runPromise(pollKind.run(ctx(5_000)));
+		const tick = delayed.events?.[0];
+		expect(tick?.notBefore).toBeGreaterThanOrEqual(before + 5_000);
+		expect(tick?.notBefore).toBeLessThanOrEqual(Date.now() + 5_000);
+		// No intervalMs → immediate tick, phase-1 emit-per-fire behavior.
+		const immediate = await runPromise(pollKind.run(ctx()));
+		expect(immediate.events?.[0]?.notBefore).toBeUndefined();
+		// Non-positive intervalMs is not an interval either.
+		const zero = await runPromise(pollKind.run(ctx(0)));
+		expect(zero.events?.[0]?.notBefore).toBeUndefined();
 	});
 });
 

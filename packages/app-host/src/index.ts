@@ -67,7 +67,7 @@ import {
 import { builtinKinds } from "@ktb/orchestrator";
 import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
 import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
-import { Jobs, makeJobs } from "@ktb/jobs-port";
+import { Jobs, makeJobs, queueSend } from "@ktb/jobs-port";
 import { insertOutboxRecord, kickOutboxDrain, makeOutbox, Outbox } from "@ktb/outbox";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
@@ -267,7 +267,7 @@ export interface AppEnv extends ObservabilityEnv {
 	 * port is composed as an Effect service so plugin layers can
 	 * enqueue kind-dispatched jobs (eval.run, …) via serviceOption. */
 	readonly AUDIO_QUEUE?: {
-		send(body: unknown): Promise<unknown>;
+		send(body: unknown, options?: { readonly delaySeconds?: number }): Promise<unknown>;
 	};
 }
 
@@ -669,7 +669,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 	const JobsLive =
 		jobsQueue === undefined
 			? Layer.empty
-			: Layer.succeed(Jobs, makeJobs({ send: (envelope) => jobsQueue.send(envelope), db }));
+			: Layer.succeed(Jobs, makeJobs({ send: queueSend(jobsQueue), db }));
 	// Outbox port (@ktb/outbox): reliable-delivery writes — always bound
 	// (Db is unconditional); plugins enqueue via serviceOption and the
 	// edge's drain sweep + deliverer registry handle delivery. The auth
