@@ -46,6 +46,7 @@ describe("vault schema", () => {
 		]);
 		const unique = cfg.indexes.find((i) => i.config.unique);
 		expect(unique?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
+			"tenant_id",
 			"entity_type",
 			"entity_id",
 			"reader_pubkey",

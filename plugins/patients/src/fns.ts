@@ -275,6 +275,9 @@ export const createPatientFn = createServerFn({ method: "POST" })
 										tenantId,
 										entityType: patientCipher.entity,
 										entityId: patient.id,
+										// Creation path: establishes the record's
+										// initial grant set (authoritative).
+										bootstrap: true,
 										grants,
 									})
 									.pipe(

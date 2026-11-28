@@ -704,10 +704,9 @@ describe("EvalValidator", () => {
 		await failing.rt.dispose();
 	});
 
-	it("a null persona cards as null and an unreviewed cohort stays queued", async () => {
-		// Default runner IS bound — but nothing is approved, so the
-		// runnable pick is empty and the runner block is skipped: the
-		// run row keeps status "queued" with total 0.
+	it("a null persona cards as null; startRun with nothing runnable is rejected", async () => {
+		// Nothing approved → the runnable pick is empty: startRun must
+		// refuse instead of leaving a queued 0/0 zombie row behind.
 		const { rt, run, db } = make();
 		const { instanceId } = await seedCohort(db, {
 			count: 1,
@@ -715,13 +714,23 @@ describe("EvalValidator", () => {
 		});
 		const cards = await run(Effect.flatMap(EvalValidator, (v) => v.listItems(instanceId)));
 		expect(cards[0]?.persona).toBeNull();
-		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })));
-		const [runRow] = await db.select().from(evalRun);
-		expect(runRow?.status).toBe("queued");
-		expect(runRow?.total).toBe(0);
-		const progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
-		expect(progress?.status).toBe("queued");
-		expect(progress?.total).toBe(0);
+		await expect(
+			run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId }))),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		expect(await db.select().from(evalRun)).toHaveLength(0);
+		await rt.dispose();
+	});
+
+	it("startRun rejects an itemIds subset that filters to zero runnable", async () => {
+		const { rt, run, db } = make();
+		const { instanceId, itemIds } = await seedCohort(db, {
+			count: 1,
+			items: [{ state: "under_review" }],
+		});
+		await expect(
+			run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId, itemIds: [itemIds[0]!] }))),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		expect(await db.select().from(evalRun)).toHaveLength(0);
 		await rt.dispose();
 	});
 

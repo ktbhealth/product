@@ -1,7 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { Schema } from "effect";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 
 import { Db, type DbClient } from "@ktb/db";
 import { consultations } from "@ktb/db/schema";
@@ -52,7 +55,9 @@ const toEvalRunnerItem = (item: EvalInstanceItem): EvalRunnerItem => ({
 							? { age: 40 }
 							: persona.ageBand === "elderly"
 								? { age: 70 }
-								: { age: 8 }),
+								: persona.ageBand === "teen"
+									? { age: 15 }
+									: { age: 8 }),
 					};
 				})(),
 });
@@ -100,17 +105,30 @@ const failRun = (db: DbClient, runId: number, error: string) =>
 			.where(and(eq(evalRun.id, runId), inArray(evalRun.status, ["queued", "running"]))),
 	);
 
+/** Run-execution lease: claimed atomically by executeEvalRun and
+ * renewed by heartbeat while the runner works. A `running` row stays
+ * claimed until the lease lapses, so a queue redelivery racing a LIVE
+ * attempt aborts instead of double-running the same samples; a dead
+ * predecessor's lease simply expires and the next delivery resumes. */
+const RUN_LEASE_MS = 5 * 60_000;
+const LEASE_HEARTBEAT_MS = 30_000;
+
 /**
  * Drive one eval run to completion — DB-sourced so it serves both the
  * queue consumer and the inline forkDetach fallback, and so a crashed
  * attempt RESUMES: only samples still `pending` go back through the
  * runner (a redelivery after a mid-run crash picks up the tail).
  *
- * Status ownership: a `queued` (or previously `failed`) row flips to
- * `running` here; `done` rows still flow through — their pending set
- * is empty so the runner no-ops and finalize rewrites identical
- * values (idempotent redelivery). A wholesale runner failure lands
- * `failed` via the finalize block, never a stuck `running`.
+ * Mutual exclusion: the jobs transport is at-least-once and eval runs
+ * take minutes, so a redelivery can land while a previous attempt is
+ * still in-flight. The run is CLAIMED atomically up front —
+ * `queued`/`failed` rows, or `running` rows whose lease lapsed — and
+ * anything else (live lease, `done`) aborts the duplicate delivery.
+ * While the runner works a heartbeat renews `lease_until`; losing the
+ * compare-and-swap means another consumer took over, which interrupts
+ * the runner and skips finalize (the new owner resumes + finalizes).
+ * A wholesale runner failure lands `failed` via the finalize block,
+ * never a stuck `running`.
  */
 export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function* (
 	db: DbClient,
@@ -123,14 +141,64 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 	const run = runRows[0];
 	// Deleted between enqueue and delivery — nothing to do.
 	if (run === undefined) return;
-	if (run.status === "queued" || run.status === "failed") {
-		yield* Effect.promise(() =>
-			db
-				.update(evalRun)
-				.set({ status: "running", startedAt: run.startedAt ?? new Date() })
-				.where(eq(evalRun.id, run.id)),
-		);
-	}
+	const now = Date.now();
+	const leaseMs = now + RUN_LEASE_MS;
+	const claimed = yield* Effect.promise(() =>
+		db
+			.update(evalRun)
+			.set({
+				status: "running",
+				startedAt: run.startedAt ?? new Date(now),
+				leaseUntil: new Date(leaseMs),
+			})
+			.where(
+				and(
+					eq(evalRun.id, run.id),
+					or(
+						inArray(evalRun.status, ["queued", "failed"]),
+						and(
+							eq(evalRun.status, "running"),
+							or(isNull(evalRun.leaseUntil), lt(evalRun.leaseUntil, new Date(now))),
+						),
+					),
+				),
+			)
+			.returning({ id: evalRun.id }),
+	);
+	// Live duplicate delivery (lease held) or terminal state — the
+	// owning consumer drives the run; nothing to do.
+	if (claimed.length === 0) return;
+
+	// Lease heartbeat: CAS-renew `lease_until` on the value this
+	// attempt last wrote. A mismatch means the lease lapsed and another
+	// consumer claimed the run — signal the race below.
+	const leaseRef = yield* Ref.make(leaseMs);
+	const leaseLost = yield* Deferred.make<void>();
+	let leaseAlive = true;
+	const heartbeat = Effect.whileLoop({
+		while: () => leaseAlive,
+		body: () =>
+			Effect.gen(function* () {
+				yield* Effect.sleep(LEASE_HEARTBEAT_MS);
+				const next = Date.now() + RUN_LEASE_MS;
+				const last = yield* Ref.get(leaseRef);
+				const renewed = yield* Effect.promise(() =>
+					db
+						.update(evalRun)
+						.set({ leaseUntil: new Date(next) })
+						.where(and(eq(evalRun.id, run.id), eq(evalRun.leaseUntil, new Date(last))))
+						.returning({ id: evalRun.id }),
+				);
+				if (renewed.length === 0) {
+					leaseAlive = false;
+					yield* Deferred.succeed(leaseLost, undefined);
+					return;
+				}
+				yield* Ref.set(leaseRef, next);
+			}),
+		step: () => {},
+	});
+	const heartbeatFiber = yield* heartbeat.pipe(Effect.forkChild);
 	const pendingSamples = yield* Effect.promise(() =>
 		db
 			.select({ itemId: evalRunSample.itemId })
@@ -154,45 +222,56 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 	// Corpus rows deleted/edited after enqueue drop out — their samples
 	// stay pending and land in the failed count at finalize.
 	const items = itemRows.filter((item) => item.script !== null).map(toEvalRunnerItem);
-	const runnerFailed = yield* runner
-		.run({
-			runId: run.id,
-			items,
-			onSample: (id, outcome) =>
-				Effect.promise(async () => {
-					await db
-						.update(evalRunSample)
-						.set({
-							status: outcome.status,
-							result: outcome.result === undefined ? null : JSON.stringify(outcome.result),
-							error: outcome.error ?? null,
-						})
-						.where(and(eq(evalRunSample.runId, run.id), eq(evalRunSample.itemId, Number(id))));
-					// Per-stage audit trail (WS-D): the runner's RunRecords
-					// land as eval_run_record rows — itemId stays a soft ref
-					// (no FK) so records survive corpus edits like
-					// run.params does.
-					if (outcome.records !== undefined && outcome.records.length > 0) {
+	const runOutcome = yield* Effect.raceFirst(
+		runner
+			.run({
+				runId: run.id,
+				items,
+				onSample: (id, outcome) =>
+					Effect.promise(async () => {
 						await db
-							.insert(evalRunRecord)
-							.values(runRecordRows(outcome.records, { runId: run.id, itemId: Number(id) }));
-					}
-					// WS-F: the sample's pipeline outputs land on the item's
-					// synthetic consultations row.
-					if (outcome.status === "ok" && outcome.result !== undefined) {
-						await consultationWriteBack(db, Number(id), outcome.result);
-					}
-				}),
-		})
-		.pipe(
-			// A wholesale runner failure must NOT leave the run
-			// "running" forever — flag it so finalize lands `failed`
-			// (with whatever samples landed).
-			Effect.as(false),
-			Effect.catch((error) =>
-				Effect.logWarning("eval runner failed", { error: String(error) }).pipe(Effect.as(true)),
+							.update(evalRunSample)
+							.set({
+								status: outcome.status,
+								result: outcome.result === undefined ? null : JSON.stringify(outcome.result),
+								error: outcome.error ?? null,
+							})
+							.where(and(eq(evalRunSample.runId, run.id), eq(evalRunSample.itemId, Number(id))));
+						// Per-stage audit trail (WS-D): the runner's RunRecords
+						// land as eval_run_record rows — itemId stays a soft ref
+						// (no FK) so records survive corpus edits like
+						// run.params does.
+						if (outcome.records !== undefined && outcome.records.length > 0) {
+							await db
+								.insert(evalRunRecord)
+								.values(runRecordRows(outcome.records, { runId: run.id, itemId: Number(id) }));
+						}
+						// WS-F: the sample's pipeline outputs land on the item's
+						// synthetic consultations row.
+						if (outcome.status === "ok" && outcome.result !== undefined) {
+							await consultationWriteBack(db, Number(id), outcome.result);
+						}
+					}),
+			})
+			.pipe(
+				Effect.as("finished" as const),
+				// A wholesale runner failure must NOT leave the run
+				// "running" forever — flag it so finalize lands `failed`
+				// (with whatever samples landed).
+				Effect.catch((error) =>
+					Effect.logWarning("eval runner failed", { error: String(error) }).pipe(
+						Effect.as("runner-error" as const),
+					),
+				),
 			),
-		);
+		Deferred.await(leaseLost).pipe(Effect.as("lease-lost" as const)),
+	);
+	yield* Fiber.interrupt(heartbeatFiber);
+	// The lease was lost mid-run — another consumer owns the run now:
+	// it resumes the still-pending samples and writes the finalize.
+	// Our partial sample writes stand; theirs complete the set.
+	if (runOutcome === "lease-lost") return;
+	const runnerFailed = runOutcome === "runner-error";
 	const finished = yield* Effect.promise(() =>
 		db.select().from(evalRunSample).where(eq(evalRunSample.runId, run.id)),
 	);
@@ -220,7 +299,11 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 		meanWerAfter: mean(werAfters),
 		meanCompleteness: mean(completeness),
 	};
-	yield* Effect.promise(() =>
+	// Finalize is lease-guarded too: if the lease lapsed between the
+	// race and here and another consumer claimed the run, this write
+	// matches nothing and the new owner finalizes instead.
+	const lastLease = yield* Ref.get(leaseRef);
+	const finalized = yield* Effect.promise(() =>
 		db
 			.update(evalRun)
 			.set({
@@ -229,8 +312,10 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 				summary: JSON.stringify(summary),
 				finishedAt: new Date(),
 			})
-			.where(eq(evalRun.id, run.id)),
+			.where(and(eq(evalRun.id, run.id), eq(evalRun.leaseUntil, new Date(lastLease))))
+			.returning({ id: evalRun.id }),
 	);
+	if (finalized.length === 0) return;
 	// Experiment projection (WS-D): re-read the run row — the captured
 	// `run` predates the running/startedAt flip, and the summary above
 	// must land inside the experiment's metrics bag. The dataset pin
