@@ -49,6 +49,8 @@ import { Route as ApiThemeDotfontsRouteImport } from './../../../plugins/theme/s
 import { Route as PatientsIdIndexRouteImport } from './../../../plugins/patients/src/routes/$id/index'
 import { Route as PatientsIdEditRouteImport } from './../../../plugins/patients/src/routes/$id/edit'
 import { Route as PortalConsultationsDotidRouteImport } from './../../../plugins/patient-portal/src/routes/consultations.$id'
+import { Route as ApiCalendarDotgoogleDotcallbackRouteImport } from './../../../plugins/agenda/src/api-routes/calendar.google.callback'
+import { Route as ApiCalendarDotgoogleDotconnectRouteImport } from './../../../plugins/agenda/src/api-routes/calendar.google.connect'
 import { Route as ApiConsultationsDotidDotaudioRouteImport } from './../../../plugins/consultations/src/api-routes/consultations.$id.audio'
 import { Route as ApiConsultationsDotidDotpdfRouteImport } from './../../../plugins/consultations/src/api-routes/consultations.$id.pdf'
 import { Route as ApiEvalDotsampleIdDotaudioRouteImport } from './../../../plugins/eval-validator/src/api-routes/eval.$sampleId.audio'
@@ -262,6 +264,18 @@ const PortalConsultationsDotidRoute =
     path: '/portal/consultations/$id',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCalendarDotgoogleDotcallbackRoute =
+  ApiCalendarDotgoogleDotcallbackRouteImport.update({
+    id: '/api/calendar/google/callback',
+    path: '/api/calendar/google/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCalendarDotgoogleDotconnectRoute =
+  ApiCalendarDotgoogleDotconnectRouteImport.update({
+    id: '/api/calendar/google/connect',
+    path: '/api/calendar/google/connect',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiConsultationsDotidDotaudioRoute =
   ApiConsultationsDotidDotaudioRouteImport.update({
     id: '/api/consultations/$id/audio',
@@ -328,6 +342,8 @@ export interface FileRoutesByFullPath {
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
   '/patients/$id/': typeof PatientsIdIndexRoute
+  '/api/calendar/google/callback': typeof ApiCalendarDotgoogleDotcallbackRoute
+  '/api/calendar/google/connect': typeof ApiCalendarDotgoogleDotconnectRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
   '/api/consultations/$id/pdf': typeof ApiConsultationsDotidDotpdfRoute
   '/api/eval/$sampleId/audio': typeof ApiEvalDotsampleIdDotaudioRoute
@@ -374,6 +390,8 @@ export interface FileRoutesByTo {
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
   '/patients/$id': typeof PatientsIdIndexRoute
+  '/api/calendar/google/callback': typeof ApiCalendarDotgoogleDotcallbackRoute
+  '/api/calendar/google/connect': typeof ApiCalendarDotgoogleDotconnectRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
   '/api/consultations/$id/pdf': typeof ApiConsultationsDotidDotpdfRoute
   '/api/eval/$sampleId/audio': typeof ApiEvalDotsampleIdDotaudioRoute
@@ -421,6 +439,8 @@ export interface FileRoutesById {
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
   '/patients/$id/': typeof PatientsIdIndexRoute
+  '/api/calendar/google/callback': typeof ApiCalendarDotgoogleDotcallbackRoute
+  '/api/calendar/google/connect': typeof ApiCalendarDotgoogleDotconnectRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
   '/api/consultations/$id/pdf': typeof ApiConsultationsDotidDotpdfRoute
   '/api/eval/$sampleId/audio': typeof ApiEvalDotsampleIdDotaudioRoute
@@ -469,6 +489,8 @@ export interface FileRouteTypes {
     | '/patients/$id/edit'
     | '/portal/consultations/$id'
     | '/patients/$id/'
+    | '/api/calendar/google/callback'
+    | '/api/calendar/google/connect'
     | '/api/consultations/$id/audio'
     | '/api/consultations/$id/pdf'
     | '/api/eval/$sampleId/audio'
@@ -515,6 +537,8 @@ export interface FileRouteTypes {
     | '/patients/$id/edit'
     | '/portal/consultations/$id'
     | '/patients/$id'
+    | '/api/calendar/google/callback'
+    | '/api/calendar/google/connect'
     | '/api/consultations/$id/audio'
     | '/api/consultations/$id/pdf'
     | '/api/eval/$sampleId/audio'
@@ -561,6 +585,8 @@ export interface FileRouteTypes {
     | '/patients/$id/edit'
     | '/portal/consultations/$id'
     | '/patients/$id/'
+    | '/api/calendar/google/callback'
+    | '/api/calendar/google/connect'
     | '/api/consultations/$id/audio'
     | '/api/consultations/$id/pdf'
     | '/api/eval/$sampleId/audio'
@@ -605,6 +631,8 @@ export interface RootRouteChildren {
   PatientsIdEditRoute: typeof PatientsIdEditRoute
   PortalConsultationsDotidRoute: typeof PortalConsultationsDotidRoute
   PatientsIdIndexRoute: typeof PatientsIdIndexRoute
+  ApiCalendarDotgoogleDotcallbackRoute: typeof ApiCalendarDotgoogleDotcallbackRoute
+  ApiCalendarDotgoogleDotconnectRoute: typeof ApiCalendarDotgoogleDotconnectRoute
   ApiConsultationsDotidDotaudioRoute: typeof ApiConsultationsDotidDotaudioRoute
   ApiConsultationsDotidDotpdfRoute: typeof ApiConsultationsDotidDotpdfRoute
   ApiEvalDotsampleIdDotaudioRoute: typeof ApiEvalDotsampleIdDotaudioRoute
@@ -893,6 +921,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalConsultationsDotidRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/calendar/google/callback': {
+      id: '/api/calendar/google/callback'
+      path: '/api/calendar/google/callback'
+      fullPath: '/api/calendar/google/callback'
+      preLoaderRoute: typeof ApiCalendarDotgoogleDotcallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/calendar/google/connect': {
+      id: '/api/calendar/google/connect'
+      path: '/api/calendar/google/connect'
+      fullPath: '/api/calendar/google/connect'
+      preLoaderRoute: typeof ApiCalendarDotgoogleDotconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/consultations/$id/audio': {
       id: '/api/consultations/$id/audio'
       path: '/api/consultations/$id/audio'
@@ -1002,6 +1044,8 @@ const rootRouteChildren: RootRouteChildren = {
   PatientsIdEditRoute: PatientsIdEditRoute,
   PortalConsultationsDotidRoute: PortalConsultationsDotidRoute,
   PatientsIdIndexRoute: PatientsIdIndexRoute,
+  ApiCalendarDotgoogleDotcallbackRoute: ApiCalendarDotgoogleDotcallbackRoute,
+  ApiCalendarDotgoogleDotconnectRoute: ApiCalendarDotgoogleDotconnectRoute,
   ApiConsultationsDotidDotaudioRoute: ApiConsultationsDotidDotaudioRoute,
   ApiConsultationsDotidDotpdfRoute: ApiConsultationsDotidDotpdfRoute,
   ApiEvalDotsampleIdDotaudioRoute: ApiEvalDotsampleIdDotaudioRoute,

@@ -1,4 +1,5 @@
 import type { Plugin } from "@ktb/kernel";
+import { plugins as agendaPlugins } from "@ktb/agenda";
 import { plugins as aiProviderPlugins } from "@ktb/ai-provider";
 import { plugins as apiPlugins } from "@ktb/api";
 import { plugins as authPlugins } from "@ktb/auth-plugin";
@@ -35,6 +36,7 @@ export const routePluginEntries: ReadonlyArray<{
 	readonly pkg: string;
 	readonly plugins: readonly Plugin[];
 }> = [
+	{ pkg: "@ktb/agenda", plugins: agendaPlugins },
 	{ pkg: "@ktb/ai-provider", plugins: aiProviderPlugins },
 	{ pkg: "@ktb/api", plugins: apiPlugins },
 	{ pkg: "@ktb/auth-plugin", plugins: authPlugins },

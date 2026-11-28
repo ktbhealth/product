@@ -56,6 +56,8 @@ import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
+import { Calendars } from "@ktb/calendar";
+import { googleCalendarsDriver } from "@ktb/calendar-google";
 import {
 	EvalArtifacts,
 	EvalRunner,
@@ -398,6 +400,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const drivers: readonly Driver<unknown>[] = [
 		recallDriver,
 		stubBotDriver,
+		googleCalendarsDriver,
 		stubCaptchaDriver,
 		turnstileCaptchaDriver,
 		nullCaptchaDriver,
@@ -455,6 +458,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// its secret is bound; null skips verification entirely.
 	const BotLive = layerFor<Bot>(Bot.key, env);
 	const CaptchaLive = layerFor<Captcha>(Captcha.key, env);
+	// External calendar provider registry (P-008): Google is the first
+	// adapter. The provider registry is always available; OAuth operations
+	// appear only when the deployment supplies the Google client env.
+	const CalendarsLive = layerFor<Calendars>(Calendars.key, env);
 
 	// Outbound email. SMTP_URL + EMAIL_FROM select the SMTP driver — an
 	// explicit opt-in that wins over EMAIL_STUB (which stays the dev
@@ -718,6 +725,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const core = Layer.mergeAll(
 		BotLive,
 		CaptchaLive,
+		CalendarsLive,
 		EmailLive,
 		DbLive,
 		AuthServiceLive,
@@ -1127,6 +1135,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		plugins,
 		BindingLive,
 		CaptchaLive,
+		CalendarsLive,
 		EmailLive,
 		AppLive,
 		runtime,

@@ -834,6 +834,42 @@ export const I18N_MANIFEST = {
 			],
 			template: "{minutes} min",
 		},
+		"calendar.importGoogle": {
+			params: [],
+		},
+		"calendar.connectGoogle": {
+			params: [],
+		},
+		"calendar.importing": {
+			params: [],
+		},
+		"calendar.connected": {
+			params: [],
+		},
+		"calendar.result": {
+			params: [
+				{
+					name: "imported",
+				},
+				{
+					name: "existing",
+				},
+				{
+					name: "review",
+				},
+				{
+					name: "conflicts",
+				},
+			],
+			template:
+				"{imported} imported · {existing} already existed · {review} need review · {conflicts} conflicts",
+		},
+		"calendar.unavailable": {
+			params: [],
+		},
+		"calendar.failed": {
+			params: [],
+		},
 	},
 	audience: {
 		faq1_a: {

@@ -104,6 +104,21 @@ export interface AppointmentWriteResult {
 	readonly reason?: "conflict";
 }
 
+export interface CalendarConnectionState {
+	readonly provider: string;
+	readonly calendarId: string;
+	readonly status: string;
+	readonly lastSyncAt: Date | string | null;
+}
+
+export interface CalendarImportOutcome {
+	readonly imported: number;
+	readonly existing: number;
+	readonly skipped: number;
+	readonly review: readonly unknown[];
+	readonly conflicts: readonly unknown[];
+}
+
 /** The view-facing write surface — bound to the plugin's server fns
  * (./apis.ts) in the mounted page, a stub in tests. `list` (T-259)
  * fetches calendar ranges outside the loader window; without it the
@@ -123,6 +138,14 @@ export interface AgendaApi {
 		to: Date,
 	) => Promise<
 		{ readonly ok: true; readonly appointments: readonly AgendaListItem[] } | { readonly ok: false }
+	>;
+	readonly calendarConnection?: () => Promise<
+		| { readonly ok: true; readonly connection: CalendarConnectionState | null }
+		| { readonly ok: false }
+	>;
+	readonly importGoogleCalendar?: () => Promise<
+		| { readonly ok: true; readonly result: CalendarImportOutcome }
+		| { readonly ok: false; readonly reason?: "not-connected" | "unavailable" | "provider-error" }
 	>;
 }
 
@@ -186,6 +209,76 @@ export function AgendaPage({
 	const [fetched, setFetched] = useState<Readonly<Record<string, readonly AgendaListItem[]>>>({});
 	const [reload, setReload] = useState(0);
 	const [now] = useState(() => Date.now());
+	const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+	const [calendarBusy, setCalendarBusy] = useState(false);
+	const [calendarMessage, setCalendarMessage] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (api.calendarConnection === undefined) return;
+		void api
+			.calendarConnection()
+			.catch(() => ({ ok: false }) as const)
+			.then((res) => setCalendarConnected(res.ok && res.connection !== null));
+	}, [api]);
+
+	// OAuth callbacks return here through a full navigation carrying a
+	// one-shot `calendarImport` outcome. Surface it, then strip the query
+	// so a refresh does not repeat stale feedback.
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const outcome = params.get("calendarImport");
+		if (outcome === null) return;
+		// eslint-disable-next-line react-hooks/set-state-in-effect -- the browser query string is the external system here
+		setCalendarMessage(
+			outcome === "connected"
+				? t.calendar.connected
+				: outcome === "calendar-unavailable"
+					? t.calendar.unavailable
+					: t.calendar.failed,
+		);
+		params.delete("calendarImport");
+		const query = params.toString();
+		window.history.replaceState(
+			null,
+			"",
+			`${window.location.pathname}${query === "" ? "" : `?${query}`}${window.location.hash}`,
+		);
+	}, [t]);
+
+	const importGoogleCalendar = async () => {
+		if (calendarConnected !== true) {
+			window.location.assign("/api/calendar/google/connect");
+			return;
+		}
+		if (api.importGoogleCalendar === undefined || calendarBusy) return;
+		setCalendarBusy(true);
+		setCalendarMessage(null);
+		try {
+			const res = await api.importGoogleCalendar();
+			if (!res.ok) {
+				if (res.reason === "not-connected") {
+					setCalendarConnected(false);
+					window.location.assign("/api/calendar/google/connect");
+					return;
+				}
+				setCalendarMessage(t.calendar.failed);
+				return;
+			}
+			setCalendarMessage(
+				t.calendar.result(
+					res.result.imported,
+					res.result.existing,
+					res.result.review.length,
+					res.result.conflicts.length,
+				),
+			);
+			refresh();
+		} catch {
+			setCalendarMessage(t.calendar.failed);
+		} finally {
+			setCalendarBusy(false);
+		}
+	};
 
 	const days = useMemo(() => visibleDays(view, anchor), [view, anchor]);
 	const [rangeFrom, rangeTo] = useMemo(
@@ -278,9 +371,26 @@ export function AgendaPage({
 				icon={<CalendarClockIcon />}
 				title={t.title}
 				actions={
-					<Button size="sm" onClick={() => setCreatingAt(new Date())}>
-						<PlusIcon /> {t.newAppointment}
-					</Button>
+					<span className="flex items-center gap-2">
+						{api.calendarConnection !== undefined ? (
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={calendarBusy || calendarConnected === null}
+								onClick={() => void importGoogleCalendar()}
+							>
+								<CalendarDaysIcon />
+								{calendarBusy
+									? t.calendar.importing
+									: calendarConnected === true
+										? t.calendar.importGoogle
+										: t.calendar.connectGoogle}
+							</Button>
+						) : null}
+						<Button size="sm" onClick={() => setCreatingAt(new Date())}>
+							<PlusIcon /> {t.newAppointment}
+						</Button>
+					</span>
 				}
 			/>
 			<div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -353,6 +463,9 @@ export function AgendaPage({
 				</div>
 			</div>
 			{failed ? <p className="mt-3 text-sm text-destructive">{t.form.required}</p> : null}
+			{calendarMessage ? (
+				<p className="mt-3 text-sm text-muted-foreground">{calendarMessage}</p>
+			) : null}
 			<div className="mt-6">
 				{view === "week" ? (
 					<WeekGrid

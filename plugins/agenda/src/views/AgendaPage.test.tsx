@@ -110,6 +110,7 @@ afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
 	routerMocks.pathname = "/portal/doctor/agenda";
+	window.history.replaceState(null, "", "/portal/doctor/agenda");
 });
 
 describe("AgendaPage", () => {
@@ -172,6 +173,59 @@ describe("AgendaPage", () => {
 		fireEvent.click(screen.getByText("Start consult"));
 		await waitFor(() => expect(a.start).toHaveBeenCalledWith(1));
 		await waitFor(() => expect(onStarted).toHaveBeenCalledWith(42));
+	});
+
+	it("shows the connect state when Google Calendar is not connected", async () => {
+		const a: AgendaApi = {
+			...api(),
+			calendarConnection: vi.fn<NonNullable<AgendaApi["calendarConnection"]>>(async () => ({
+				ok: true as const,
+				connection: null,
+			})),
+		};
+		render(<AgendaPage appointments={[]} patients={[]} api={a} />);
+		expect(await screen.findByText("Connect Google Calendar")).toBeTruthy();
+	});
+
+	it("surfaces the OAuth callback outcome once and strips the query parameter", async () => {
+		window.history.pushState(null, "", "/portal/doctor/agenda?calendarImport=connected");
+		render(<AgendaPage appointments={[]} patients={[]} api={api()} />);
+		expect(await screen.findByText("Google Calendar connected.")).toBeTruthy();
+		expect(window.location.search).toBe("");
+	});
+
+	it("imports Google events from the connected state and shows the summary", async () => {
+		const importGoogleCalendar = vi.fn<NonNullable<AgendaApi["importGoogleCalendar"]>>(
+			async () => ({
+				ok: true as const,
+				result: {
+					imported: 1,
+					existing: 2,
+					skipped: 1,
+					review: [{}],
+					conflicts: [],
+				},
+			}),
+		);
+		const onChanged = vi.fn<() => void>();
+		const a: AgendaApi = {
+			...api(),
+			calendarConnection: vi.fn<NonNullable<AgendaApi["calendarConnection"]>>(async () => ({
+				ok: true as const,
+				connection: {
+					provider: "google",
+					calendarId: "primary",
+					status: "active",
+					lastSyncAt: null,
+				},
+			})),
+			importGoogleCalendar,
+		};
+		render(<AgendaPage appointments={[]} patients={[]} api={a} onChanged={onChanged} />);
+		fireEvent.click(await screen.findByText("Import from Google"));
+		await waitFor(() => expect(importGoogleCalendar).toHaveBeenCalled());
+		expect(await screen.findByText(/1 imported · 2 already existed/)).toBeTruthy();
+		await waitFor(() => expect(onChanged).toHaveBeenCalled());
 	});
 
 	it("surfaces the error copy when an op is denied", async () => {

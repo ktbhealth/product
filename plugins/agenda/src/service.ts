@@ -51,6 +51,13 @@ export interface AppointmentInput {
 	readonly startsAt: Date;
 	readonly durationMin?: number;
 	readonly note?: string | null;
+	/** External-calendar identity when the row is imported/synced. */
+	readonly external?: {
+		readonly provider: string;
+		readonly calendarId: string;
+		readonly eventId: string;
+		readonly etag?: string;
+	};
 }
 
 /** Owner edit — every key optional; only the listed fields may move. */
@@ -143,6 +150,11 @@ export async function createAppointment(
 		readonly startsAt: Date;
 		readonly durationMin: number;
 		readonly note?: string | null;
+		readonly externalProvider?: string;
+		readonly externalCalendarId?: string;
+		readonly externalEventId?: string;
+		readonly externalEtag?: string | null;
+		readonly syncState?: string;
 	},
 ): Promise<AppointmentRow | null> {
 	const rows = await db
@@ -383,6 +395,15 @@ export const AppointmentsLive = Layer.effect(
 						startsAt: input.startsAt,
 						durationMin,
 						note: input.note ?? null,
+						...(input.external === undefined
+							? {}
+							: {
+									externalProvider: input.external.provider,
+									externalCalendarId: input.external.calendarId,
+									externalEventId: input.external.eventId,
+									externalEtag: input.external.etag ?? null,
+									syncState: "synced",
+								}),
 					}),
 				);
 				/* v8 ignore next -- the insert returns the row; null only on an FK-edge delete race */

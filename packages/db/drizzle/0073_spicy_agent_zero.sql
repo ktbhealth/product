@@ -1,0 +1,2 @@
+DROP INDEX `appointments_external_idx`;--> statement-breakpoint
+CREATE UNIQUE INDEX `appointments_external_idx` ON `appointments` (`owner_id`,`external_provider`,`external_calendar_id`,`external_event_id`);
