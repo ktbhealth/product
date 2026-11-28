@@ -72,6 +72,11 @@ const ENV_KEYS = [
 	"SMTP_URL",
 	"EMAIL_FROM",
 	"EMAIL_STUB",
+	// Google Calendar import OAuth (T-272) — the driver degrades to
+	// oauth-less when absent.
+	"GOOGLE_CLIENT_ID",
+	"GOOGLE_CLIENT_SECRET",
+	"GOOGLE_OAUTH_REDIRECT_URI",
 	// Eval pipeline drivers (eval-adapter-local): runner dir + ASR
 	// service gate evalRunnerLocalDriver/evalArtifactsLocalDriver;
 	// EVAL_ACP_URL gates the generative script path; SYSTEMONE is the
