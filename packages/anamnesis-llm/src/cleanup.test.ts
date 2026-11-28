@@ -109,12 +109,12 @@ describe("correctTranscript", () => {
 				apiKey: "ak",
 				model: "claude-haiku-4-5",
 			});
-			const { prompt } = mocks.generateText.mock.calls[0]![0] as {
-				prompt: { role: string; content: unknown }[];
-			};
-			expect(prompt.map((m) => m.role)).toEqual(["system", "user"]);
-			expect(prompt[0]!.content).toBe(CLEANUP_SYSTEM_PROMPT);
-			expect(JSON.stringify(prompt[1]!.content)).toContain("ola doutor");
+			// TaskEnvelope is text-in/text-out: the cleanup contract is
+			// inlined into a single user message ahead of the transcript.
+			const { prompt } = mocks.generateText.mock.calls[0]![0] as { prompt: unknown };
+			const sent = JSON.stringify(prompt);
+			expect(sent).toContain("transcription post-processor for Brazilian Portuguese");
+			expect(sent).toContain("ola doutor");
 		});
 
 		it("honours a configured model", async () => {
@@ -145,6 +145,21 @@ describe("correctTranscript", () => {
 			const warn = entries.find((e) => String(e.message).includes("transcript cleanup failed"));
 			expect(warn?.annotations.engine).toBe("anthropic");
 			expect(String(warn?.annotations.error)).toContain("provider down");
+		});
+
+		it("never fails: provider defects become null", async () => {
+			mocks.generateText.mockReturnValue(Effect.die(new Error("defect boom")));
+			const { entries, logger } = captureLogs();
+			await expect(
+				Effect.runPromise(
+					correctTranscript({ anthropicApiKey: "ak" }, "texto").pipe(
+						Effect.provide(Logger.layer([logger])),
+					),
+				),
+			).resolves.toBeNull();
+			const warn = entries.find((e) => String(e.message).includes("transcript cleanup failed"));
+			expect(warn?.annotations.engine).toBe("anthropic");
+			expect(String(warn?.annotations.error)).toContain("defect boom");
 		});
 	});
 
@@ -198,11 +213,15 @@ describe("correctTranscript", () => {
 				DEFAULT_WORKERS_AI_MODEL,
 				expect.objectContaining({
 					messages: [
-						{ role: "system", content: CLEANUP_SYSTEM_PROMPT },
-						{ role: "user", content: "texto" },
+						{
+							role: "user",
+							content: expect.stringContaining("texto"),
+						},
 					],
 				}),
 			);
+			const sent = JSON.stringify(ai.run.mock.calls[0]![1]);
+			expect(sent).toContain("transcription post-processor for Brazilian Portuguese");
 		});
 
 		it("honours a configured model", async () => {
