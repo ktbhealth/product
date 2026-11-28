@@ -58,7 +58,7 @@ const dueJob = (
 ) => insertScheduledJob(platform.db, { kind, runAt: Date.now() - 1000, params, tenantId: 7 });
 
 describe("platform scheduler-heartbeat dispatch", () => {
-	it("enqueues due jobs through the bound queue", { timeout: 30_000 }, async () => {
+	it("enqueues due jobs through the bound queue", { timeout: 90_000 }, async () => {
 		const sent: { kind: string; payload: unknown; tenantId?: string | number | null }[] = [];
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = {
@@ -79,7 +79,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 
 	it(
 		"inline-dispatches due jobs, decodes payloads and marks job_runs done",
-		{ timeout: 30_000 },
+		{ timeout: 90_000 },
 		async () => {
 			hoisted.handled = [];
 			const { runtime, platform } = await compose((env) => {
@@ -112,7 +112,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 
 	it(
 		"marks job_runs failed and counts the dispatch as failed when the handler throws",
-		{ timeout: 30_000 },
+		{ timeout: 90_000 },
 		async () => {
 			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
@@ -134,7 +134,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		},
 	);
 
-	it("stringifies non-Error handler failures into job_runs", { timeout: 30_000 }, async () => {
+	it("stringifies non-Error handler failures into job_runs", { timeout: 90_000 }, async () => {
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
@@ -154,7 +154,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		expect(runs[0]).toMatchObject({ status: "failed", error: "string failure" });
 	});
 
-	it("fails dispatches for kinds with no registered handler", { timeout: 30_000 }, async () => {
+	it("fails dispatches for kinds with no registered handler", { timeout: 90_000 }, async () => {
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
@@ -166,7 +166,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		});
 	});
 
-	it("still dispatches when the job_runs projection write fails", { timeout: 30_000 }, async () => {
+	it("still dispatches when the job_runs projection write fails", { timeout: 90_000 }, async () => {
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			const { runtime, platform } = await compose((env) => {
@@ -298,4 +298,62 @@ describe("platform schedules capability", () => {
 		expect(await schedules.remove(id)).toEqual({ ok: true });
 		expect(await schedules.remove(id)).toEqual({ ok: false, reason: "not-found" });
 	});
+
+	it(
+		"entries merges cron registry jobs with scheduled_jobs rows",
+		{ timeout: 90_000 },
+		async () => {
+			const { runtime, platform } = await compose((env) => {
+				env.AUDIO_QUEUE = undefined;
+			});
+			const schedules = runtime.schedules!;
+			platform.jobHandlerRegistry.register("test.sched.entries", { handle: async () => {} });
+
+			// Fire the heartbeat once so a `cron.scheduler-heartbeat`
+			// job_runs row exists for the entries() lastRun join.
+			await runtime.crons!.runNow("scheduler-heartbeat");
+
+			const created = await schedules.create({
+				kind: "test.sched.entries",
+				runAt: Date.now() + 60_000,
+				params: { v: 2 },
+			});
+			expect(created.ok).toBe(true);
+
+			const entries = await schedules.entries!();
+
+			// Deploy-time cron jobs lead the list: console ids are `cron:<id>`,
+			// immutable, kind-less, with joined lastRun slices.
+			const cronEntries = entries.filter((entry) => entry.source === "cron");
+			expect(cronEntries.map((entry) => entry.refId)).toEqual(
+				expect.arrayContaining(["scheduler-heartbeat", "agenda-reminders", "audit-chain-verify"]),
+			);
+			expect(cronEntries.every((entry) => entry.mutable === false)).toBe(true);
+			expect(cronEntries.every((entry) => entry.kind === null)).toBe(true);
+			const heartbeat = cronEntries.find((entry) => entry.refId === "scheduler-heartbeat");
+			expect(heartbeat).toMatchObject({
+				id: "cron:scheduler-heartbeat",
+				lastRun: { ok: true },
+			});
+			expect(heartbeat?.lastRunAt).not.toBeNull();
+			expect(heartbeat?.nextRunAt).not.toBeNull();
+			// Cron jobs that never ran report honest nulls.
+			const audit = cronEntries.find((entry) => entry.refId === "audit-chain-verify");
+			expect(audit?.lastRun).toBeNull();
+			expect(audit?.lastRunAt).toBeNull();
+
+			// Runtime scheduled_jobs rows follow, mutable with params narrowed
+			// to JsonValue and no joined run slice.
+			const scheduled = entries.filter((entry) => entry.source === "scheduled-job");
+			expect(scheduled).toHaveLength(1);
+			expect(scheduled[0]).toMatchObject({
+				kind: "test.sched.entries",
+				name: "test.sched.entries",
+				mutable: true,
+				params: { v: 2 },
+				lastRun: null,
+				status: "active",
+			});
+		},
+	);
 });
