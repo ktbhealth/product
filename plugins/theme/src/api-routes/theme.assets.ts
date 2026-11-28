@@ -133,8 +133,8 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 				const checked = checkUpload(
 					{
 						bytes: await file.arrayBuffer(),
-						fileName: file.name || "upload",
-						mime: file.type || "",
+						fileName: file.name,
+						mime: file.type,
 					},
 					kind === "font" ? FONT_UPLOAD_POLICY : IMAGE_UPLOAD_POLICY,
 				);

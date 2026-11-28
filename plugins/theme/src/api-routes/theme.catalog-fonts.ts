@@ -187,8 +187,8 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				const checked = checkUpload(
 					{
 						bytes: await file.arrayBuffer(),
-						fileName: file.name || "upload",
-						mime: file.type || "",
+						fileName: file.name,
+						mime: file.type,
 					},
 					FONT_UPLOAD_POLICY,
 				);
@@ -196,7 +196,7 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 					return Response.json({ error: checked.error }, { status: checked.status });
 				}
 				const bytes = checked.bytes;
-				const name = file.name || "upload";
+				const name = file.name;
 				const ext = checked.ext;
 
 				// No explicit weight → filename hint ("Inter-Bold",

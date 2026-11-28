@@ -1208,7 +1208,6 @@
         "@ktb/interop": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/kernel": "workspace:*",
-        "@ktb/media": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",

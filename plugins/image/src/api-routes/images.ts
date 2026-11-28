@@ -86,8 +86,8 @@ export const Route = createPluginApiRoute("image.routes")("/api/images")({
 				const checked = checkUpload(
 					{
 						bytes: await file.arrayBuffer(),
-						fileName: file.name || "upload",
-						mime: file.type || "",
+						fileName: file.name,
+						mime: file.type,
 					},
 					IMAGE_UPLOAD_POLICY,
 				);
