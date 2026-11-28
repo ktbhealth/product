@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import Database from "better-sqlite3";
+import { queueTransportContract } from "@ktb/queues-port/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeLocalQueue, type LocalQueueHandler, type LocalQueueMessage } from "./queue.ts";
@@ -396,4 +397,20 @@ describe("makeLocalQueue", () => {
 		expect(await queue.stats()).toEqual({ pending: 1, processing: 0, done: 0, failed: 1 });
 		queue.close();
 	});
+});
+
+// Shared QueueTransport port contract (@ktb/queues-port/testing).
+// Push-delivered like the workerd binding — the poller pushes batches
+// to the consumer handler, so there is no receive() pull surface.
+queueTransportContract({
+	name: "sqlite",
+	pull: false,
+	make: () =>
+		makeLocalQueue({
+			dbPath: ":memory:",
+			// Long poll interval keeps sent rows pending for the stats
+			// case — the contract never needs delivery.
+			pollMs: 60_000,
+			loadHandler: async () => async () => {},
+		}),
 });

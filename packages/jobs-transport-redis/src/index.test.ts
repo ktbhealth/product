@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { JobEnvelope } from "@ktb/jobs-port";
+import { queueTransportContract } from "@ktb/queues-port/testing";
 
 import { createRedisJobsTransport, type RedisLike } from "./index.ts";
 
@@ -394,4 +395,14 @@ describe("createRedisJobsTransport", () => {
 		});
 		await t.close();
 	});
+});
+
+// Shared QueueTransport port contract (@ktb/queues-port/testing) — the
+// same cases the memory and sqlite adapters run.
+queueTransportContract({
+	name: "redis-jobs",
+	make: async () => {
+		const { client } = fakeRedis();
+		return createRedisJobsTransport({ client, blockSeconds: 0 });
+	},
 });

@@ -20,7 +20,7 @@
  */
 
 import { makeJobHandlerRegistry, makeJobs } from "@ktb/jobs-port";
-import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
+import { DEFAULT_QUEUE, createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
 import { batchSizeFromEnv } from "./env.ts";
 import { openWorkerDb } from "./db.ts";
@@ -59,7 +59,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 	process.on(sig, () => ac.abort());
 }
 
-console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? "ktb:jobs");
+console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? DEFAULT_QUEUE);
 // Recover envelopes orphaned on the pending list by a previous
 // crash/kill — BLMOVE parks popped entries there until ack, so a dead
 // worker's in-flight jobs would otherwise never redeliver.

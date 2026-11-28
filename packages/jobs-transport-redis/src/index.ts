@@ -32,8 +32,8 @@
 
 import { createClient, type RedisClientType } from "redis";
 
-import type { JobEnvelope, JobMessageLike } from "@ktb/jobs-port";
-import type { QueueDepthStats } from "@ktb/queues-port";
+import type { JobMessageLike } from "@ktb/jobs-port";
+import type { QueueDepthStats, QueueTransport } from "@ktb/queues-port";
 
 /** Minimal client surface the transport needs — injectable for tests. */
 export interface RedisLike {
@@ -70,9 +70,20 @@ export interface RedisJobsTransportOptions {
 	readonly client?: RedisLike;
 }
 
-export interface RedisJobsTransport {
-	/** JobsEnqueuer-compatible send — LPUSH the serialized envelope. */
-	readonly send: (envelope: JobEnvelope) => Promise<void>;
+/**
+ * The Redis jobs transport — a `QueueTransport` (@ktb/queues-port)
+ * plus the consumer-side extras only this adapter has: `receive`
+ * pulls batches for the jobs-worker loop and `requeuePending` recovers
+ * crash-orphaned entries at boot.
+ */
+export interface RedisJobsTransport extends QueueTransport {
+	/** Transport-level list key (e.g. "ktb:jobs") — the QueueTransport
+	 * `name` the registry and dispatch derive from. */
+	readonly name: string;
+	/** LPUSH the serialized envelope — the QueueTransport `send`
+	 * widened to `unknown`: the wire payload is whatever the producer
+	 * serialized (job envelopes today). */
+	readonly send: (body: unknown) => Promise<void>;
 	/** Move up to `count` envelopes onto the pending list as
 	 * JobMessageLike batch (BLMOVE loop). */
 	readonly receive: (count?: number) => Promise<readonly JobMessageLike[]>;
@@ -91,7 +102,9 @@ export interface RedisJobsTransport {
 }
 
 const DEFAULT_URL = "redis://127.0.0.1:6379";
-const DEFAULT_QUEUE = "ktb:jobs";
+/** Default list key — exported so composition roots name the queue
+ * without duplicating the literal. */
+export const DEFAULT_QUEUE = "ktb:jobs";
 // QUIT is queued through node-redis's offline command queue and only
 // flushes once the socket reconnects — bound it so close() never hangs
 // on an unreachable Redis, then destroy the socket outright.
@@ -115,8 +128,8 @@ export const createRedisJobsTransport = async (
 			return c as unknown as RedisLike;
 		})());
 
-	const send = async (envelope: JobEnvelope): Promise<void> => {
-		await client.lPush(queue, JSON.stringify(envelope));
+	const send = async (body: unknown): Promise<void> => {
+		await client.lPush(queue, JSON.stringify(body));
 	};
 
 	const receive = async (count = 1): Promise<readonly JobMessageLike[]> => {
@@ -168,6 +181,7 @@ export const createRedisJobsTransport = async (
 	};
 
 	return {
+		name: queue,
 		send,
 		receive,
 		requeuePending,

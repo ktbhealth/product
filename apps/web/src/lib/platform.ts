@@ -13,8 +13,10 @@ import {
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { makeJobHandlerRegistry, makeJobs } from "@ktb/jobs-port";
+import { asQueueTransport, type QueueBindingLike } from "@ktb/queues-port";
 import { runSchedulerSweep } from "@ktb/scheduler-port";
 import { APP_CRON_JOBS } from "./cron-jobs.ts";
+import { AUDIO_QUEUE_NAME, THEME_ASSETS_QUEUE_NAME } from "./queue-names.ts";
 import { runScheduledAgendaReminders } from "./agenda-reminders.ts";
 import { runScheduledAuditVerification } from "./audit-chain.ts";
 import { currentLocale } from "./locale-context.ts";
@@ -191,19 +193,23 @@ const recordExporters: Record<ExportFormat, RecordExporter> = {
 	openehr: openEhrExporter,
 };
 
+// Queue transports (QueueTransport port, @ktb/queues-port): every bound
+// endpoint adapts structurally — `send` always, `stats` only when the
+// binding carries a probe (T-035 ops probes). The same adapted
+// transports feed the jobs enqueuers here and the /platform/queue
+// registry inside makeServerRuntime.
+const audioQueue =
+	env.AUDIO_QUEUE === undefined
+		? undefined
+		: asQueueTransport(env.AUDIO_QUEUE as QueueBindingLike, { name: AUDIO_QUEUE_NAME });
+
 // PL-007: the generic jobs port rides the same AUDIO_QUEUE transport —
 // enqueue writes the job_runs projection (via `db`) then sends the
 // kind-dispatched envelope. Undefined when the queue is unbound; the
 // consumer side lives in @ktb/consultations/audio-consumer (kind →
 // handler dispatch over jobHandlerRegistry below, wired by
 // lib/audio-jobs.ts).
-const jobsQueue = env.AUDIO_QUEUE as unknown as
-	| { send(body: unknown): Promise<unknown> }
-	| undefined;
-const jobs =
-	jobsQueue === undefined
-		? undefined
-		: makeJobs({ send: (envelope) => jobsQueue.send(envelope), db });
+const jobs = audioQueue === undefined ? undefined : makeJobs({ send: audioQueue.send, db });
 
 // Composition-built kind → handler registry for this process's queue
 // consumers (PL-007). Every kind the web consumer dispatches is
@@ -236,16 +242,17 @@ const orchestration = jobs === undefined ? undefined : makeOrchestrationHost({ r
 orchestration?.registerStepHandler(jobHandlerRegistry);
 
 // PL-006 phase 4: theme asset uploads ride a DEDICATED queue
-// (ktb-theme-assets) — image derivatives and font downloads never
-// contend with transcription. Same jobs-port shape: job_runs projection
-// + kind-dispatched envelope; the consumer lives in @ktb/theme/jobs.
-const themeJobsQueue = env.THEME_ASSETS_QUEUE as unknown as
-	| { send(body: unknown): Promise<unknown> }
-	| undefined;
-const themeJobs =
-	themeJobsQueue === undefined
+// (THEME_ASSETS_QUEUE_NAME) — image derivatives and font downloads
+// never contend with transcription. Same jobs-port shape: job_runs
+// projection + kind-dispatched envelope; the consumer lives in
+// @ktb/theme/jobs.
+const themeQueue =
+	env.THEME_ASSETS_QUEUE === undefined
 		? undefined
-		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
+		: asQueueTransport(env.THEME_ASSETS_QUEUE as QueueBindingLike, {
+				name: THEME_ASSETS_QUEUE_NAME,
+			});
+const themeJobs = themeQueue === undefined ? undefined : makeJobs({ send: themeQueue.send, db });
 
 // The generic console-capability block (queue/cron/schedule/pubsub
 // registries, job-kind declarations, scheduled-job dispatch, the
@@ -352,6 +359,7 @@ const serverRuntime = makeServerRuntime({
 	runAs,
 	jobs,
 	themeJobs,
+	queueTransports: { audio: audioQueue, themeAssets: themeQueue },
 	ai: aiBinding,
 	audioTranscribeModel,
 	recordExporters,

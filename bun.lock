@@ -98,6 +98,7 @@
         "@ktb/platform-header": "workspace:*",
         "@ktb/portal": "workspace:*",
         "@ktb/pubsub-transport-redis": "workspace:*",
+        "@ktb/queues-port": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
         "@ktb/scheduler-do": "workspace:*",
@@ -330,6 +331,7 @@
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/flows": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
+        "@ktb/jobs-transport-redis": "workspace:*",
         "@ktb/json-schema": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
@@ -515,6 +517,7 @@
     "packages/dev-node": {
       "name": "@ktb/dev-node",
       "dependencies": {
+        "@ktb/queues-port": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "better-sqlite3": "^13.0.3",
       },
@@ -682,6 +685,7 @@
       "name": "@ktb/jobs-port",
       "dependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/queues-port": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",

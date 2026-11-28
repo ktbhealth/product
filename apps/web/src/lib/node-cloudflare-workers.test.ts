@@ -90,6 +90,42 @@ describe("node-cloudflare-workers env", () => {
 		const env = await loadEnv();
 		expect(typeof env.REDIS_JOBS_QUEUE?.stats).toBe("function");
 		await expect(env.REDIS_JOBS_QUEUE.stats()).resolves.toBeNull();
+		// close() on a failed connect resolves undefined — the lazy
+		// transport never materialized, so there is nothing to release.
+		await expect(env.REDIS_JOBS_QUEUE.close()).resolves.toBeUndefined();
+	});
+
+	it("REDIS_JOBS_QUEUE forwards send/receive/close to the lazy transport", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		delete process.env.JOBS_QUEUE;
+		const calls: string[] = [];
+		vi.doMock("@ktb/jobs-transport-redis", () => ({
+			DEFAULT_QUEUE: "ktb:jobs",
+			createRedisJobsTransport: async () => ({
+				name: "ktb:jobs",
+				send: async (body: unknown) => {
+					calls.push(`send:${JSON.stringify(body)}`);
+				},
+				receive: async (count?: number) => {
+					calls.push(`receive:${count}`);
+					return [];
+				},
+				stats: async () => null,
+				close: async () => {
+					calls.push("close");
+				},
+			}),
+		}));
+
+		const env = await loadEnv();
+		// The QueueTransport name is read at module init off JOBS_QUEUE
+		// (unset here) falling back to the adapter default.
+		expect(env.REDIS_JOBS_QUEUE.name).toBe("ktb:jobs");
+		await env.REDIS_JOBS_QUEUE.send({ job: 1 });
+		await env.REDIS_JOBS_QUEUE.receive(2);
+		await env.REDIS_JOBS_QUEUE.close();
+		expect(calls).toEqual(['send:{"job":1}', "receive:2", "close"]);
 	});
 
 	it("exposes the REDIS_PUBSUB stand-in with lazy connect semantics", async () => {
@@ -288,6 +324,7 @@ describe("node-cloudflare-workers env", () => {
 		process.env.JOBS_QUEUE = "ktb:test-jobs";
 		let captured: { url?: string; queue?: string } | undefined;
 		vi.doMock("@ktb/jobs-transport-redis", () => ({
+			DEFAULT_QUEUE: "ktb:jobs",
 			createRedisJobsTransport: async (opts: { url?: string; queue?: string }) => {
 				captured = opts;
 				return { stats: async () => ({ pending: 1 }) };
@@ -306,6 +343,7 @@ describe("node-cloudflare-workers env", () => {
 		delete process.env.JOBS_QUEUE;
 		let captured: { url?: string; queue?: string } | undefined;
 		vi.doMock("@ktb/jobs-transport-redis", () => ({
+			DEFAULT_QUEUE: "ktb:jobs",
 			createRedisJobsTransport: async (opts: { url?: string; queue?: string }) => {
 				captured = opts;
 				return { stats: async () => null };
