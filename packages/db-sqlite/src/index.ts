@@ -173,6 +173,12 @@ export const wrapSqliteDatabase = (sqlite: Database.Database): SqliteDatabase =>
 			bind: (...values: unknown[]) => statement({ ...b, values }),
 			run: async () => runBound(b),
 			all: async <T = unknown>() => allBound<T>(b),
+			// Structural flag (not part of SqlStatement): lets foreign
+			// SqlDatabase.batch fallbacks route readers to all() — same
+			// convention as the @ktb/db test shim.
+			get reader() {
+				return b.stmt.reader;
+			},
 			first: async <T = unknown>(colName?: string) => {
 				if (!b.stmt.reader) {
 					b.stmt.run(...bindable(b.values));
@@ -216,8 +222,12 @@ export const wrapSqliteDatabase = (sqlite: Database.Database): SqliteDatabase =>
 				return tx(bounds);
 			}
 			// Foreign statements (another SqlDatabase impl): fall back to
-			// sequential execution — reader statements via all(), writers
-			// via run(), same convention as the test shim.
+			// sequential execution. `reader` is not part of the
+			// SqlStatement contract — only `false` is a definite writer
+			// signal. A flag-less reader sent through run() would
+			// silently return empty results, so prefer all() and fall
+			// back to run() only when all() rejects (impls whose all()
+			// cannot execute writers).
 			return Promise.all(
 				statements.map(async (s) => {
 					const p = s as {
@@ -225,7 +235,9 @@ export const wrapSqliteDatabase = (sqlite: Database.Database): SqliteDatabase =>
 						all: () => Promise<SqlResult<T>>;
 						run: () => Promise<SqlResult<T>>;
 					};
-					return p.reader ? await p.all() : await p.run();
+					if (p.reader === false) return p.run();
+					if (p.reader === true) return p.all();
+					return p.all().catch(() => p.run());
 				}),
 			);
 		},

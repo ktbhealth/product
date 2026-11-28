@@ -11,7 +11,9 @@ export const STUB_CAPTCHA_TOKEN = "ktb-captcha-stub";
  * Local-dev / e2e impl of the CaptchaVerifier port. Accepts a missing
  * token (no widget is rendered without a site key) or STUB_CAPTCHA_TOKEN;
  * rejects anything else. NEVER bind this in production: it defeats the
- * bot check by design.
+ * bot check by design. Enforcement lives at boot —
+ * `assertCaptchaConfigured` (@ktb/app-host) throws when CAPTCHA_STUB is
+ * set on a production build.
  */
 import * as Layer from "effect/Layer";
 import { Captcha } from "@ktb/captcha";

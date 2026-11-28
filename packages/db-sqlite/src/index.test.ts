@@ -115,7 +115,10 @@ describe("makeSqliteDatabase", () => {
 		await db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)");
 
 		// Statements minted by another SqlDatabase impl carry no bound
-		// params — batch() runs them via their own all()/run().
+		// params — batch() runs them via their own all()/run(). Impls
+		// that expose the structural `reader` flag route exactly;
+		// flag-less statements are tried as readers first (all()) so a
+		// SELECT never silently returns empty results.
 		const foreign = [
 			{
 				reader: true,
@@ -123,6 +126,7 @@ describe("makeSqliteDatabase", () => {
 				run: async () => ({ success: true, results: [], meta: {} }),
 			},
 			{
+				reader: false,
 				all: async () => ({ success: true, results: [], meta: {} }),
 				run: async () => ({
 					success: true,
@@ -130,11 +134,17 @@ describe("makeSqliteDatabase", () => {
 					meta: { changes: 1 },
 				}),
 			},
+			{
+				// No reader flag at all — ambiguous; all() wins.
+				all: async () => ({ success: true, results: [{ n: 2 }], meta: {} }),
+				run: async () => ({ success: true, results: [], meta: {} }),
+			},
 		] as never;
 		const results = await db.batch(foreign);
-		expect(results).toHaveLength(2);
+		expect(results).toHaveLength(3);
 		expect(results[0]?.results).toEqual([{ n: 1 }]);
 		expect(results[1]?.meta.changes).toBe(1);
+		expect(results[2]?.results).toEqual([{ n: 2 }]);
 	});
 
 	it("batch executes atomically inside a transaction", async () => {

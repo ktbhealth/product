@@ -63,6 +63,18 @@ describe("makeD1", () => {
 		expect(rows.results.map((r) => r.v)).toEqual(["a"]);
 	});
 
+	it("batch fallback reads rows from foreign statements without a reader flag", async () => {
+		const d1 = makeD1();
+		// D1-shaped foreign statement: no `reader` property; run() drops
+		// SELECT results, all() returns them.
+		const foreignReader = {
+			run: async () => ({ success: true, results: [], meta: {} }),
+			all: async () => ({ success: true, results: [{ v: "row" }], meta: {} }),
+		} as unknown as SqlStatement;
+		const [result] = await d1.batch([foreignReader]);
+		expect(result?.results).toEqual([{ v: "row" }]);
+	});
+
 	it("batch rolls back atomically when a statement fails", async () => {
 		const d1 = makeD1("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT NOT NULL)");
 		await expect(
