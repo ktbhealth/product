@@ -40,6 +40,8 @@ const OPTIONAL = [
 	"GOOGLE_CLIENT_ID",
 	"GOOGLE_CLIENT_SECRET",
 	"GOOGLE_OAUTH_REDIRECT_URI",
+	// Vault envelope KEK — calendar OAuth tokens cannot be sealed without it.
+	"VAULT_MASTER_KEY",
 	// Telemetry config — mirrors observabilityEnvKeys("KTB_") in
 	// @ktb/observability (config.ts); keep in sync. These are optional
 	// OTEL_*/KTB_* vars so `OTEL_EXPORTER_OTLP_ENDPOINT=… bun run

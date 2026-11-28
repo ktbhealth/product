@@ -8,6 +8,7 @@ import { Calendars, type ExternalEventDraft } from "@ktb/calendar";
 import {
 	exchangeGoogleOAuthCode,
 	GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE,
+	GOOGLE_CALENDARLIST_READONLY_SCOPE,
 	GoogleCalendarApiError,
 	googleAuthorizationUrl,
 	googleCalendarsDriver,
@@ -57,7 +58,10 @@ describe("oauth helpers", () => {
 		expect(url.searchParams.get("response_type")).toBe("code");
 		expect(url.searchParams.get("access_type")).toBe("offline");
 		expect(url.searchParams.get("prompt")).toBe("consent");
-		expect(url.searchParams.get("scope")).toBe(GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE);
+		expect(url.searchParams.get("scope")?.split(" ")).toEqual([
+			GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE,
+			GOOGLE_CALENDARLIST_READONLY_SCOPE,
+		]);
 		expect(url.searchParams.get("state")).toBe("state/1");
 		expect(url.searchParams.get("login_hint")).toBe("doc@example.com");
 	});
@@ -190,6 +194,7 @@ describe("google external calendar", () => {
 		expect(first.searchParams.get("timeMin")).toBe("2026-11-20T00:00:00.000Z");
 		expect(first.searchParams.get("timeMax")).toBe("2026-11-28T00:00:00.000Z");
 		expect(first.searchParams.get("singleEvents")).toBe("true");
+		expect(first.searchParams.get("showDeleted")).toBe("true");
 		expect(first.searchParams.get("orderBy")).toBe("startTime");
 		expect(first.pathname).toBe("/calendar/v3/calendars/primary/events");
 		expect(urls).toHaveLength(2);

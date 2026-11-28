@@ -9,11 +9,16 @@ import type { Driver } from "@ktb/driver-framework";
  * `appointments` table stays the source of truth for consult links and
  * statuses — adapters only mirror/sync.
  *
- * PHI contract (LGPD — see proposal-0008 cautions): nothing crossing
- * this port may carry clinical data or full patient names. Titles are
- * initials or a generic label plus the internal appointment id; the
- * doctor's own calendar already implies the rest. Adapters that leak
- * PHI are contract violations, not configuration choices.
+ * PHI contract (LGPD — see proposal-0008 cautions): the direction
+ * matters. Events KTB writes to a provider may never carry clinical
+ * data or full patient names — titles are initials or a generic label
+ * plus the internal appointment id; the doctor's own calendar already
+ * implies the rest. Provider events read inbound are user-authored data
+ * and may already contain names or other sensitive text. That inbound
+ * text may cross the port only transiently for the connected owner's
+ * import/sync flow: consumers must not persist it, log it, send it to
+ * analytics/LLMs, or expose it beyond that owner. Adapters that leak
+ * PHI outbound are contract violations, not configuration choices.
  */
 
 /** What the local system asks an adapter to materialize as an event. */

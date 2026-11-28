@@ -144,7 +144,10 @@ export interface AgendaApi {
 		| { readonly ok: true; readonly connection: CalendarConnectionState | null }
 		| { readonly ok: false }
 	>;
-	readonly importGoogleCalendar?: () => Promise<
+	readonly importGoogleCalendar?: (input: {
+		readonly from: Date;
+		readonly to: Date;
+	}) => Promise<
 		| { readonly ok: true; readonly result: CalendarImportOutcome }
 		| { readonly ok: false; readonly reason?: "not-connected" | "unavailable" | "provider-error" }
 	>;
@@ -268,7 +271,7 @@ export function AgendaPage({
 		setCalendarBusy(true);
 		setCalendarMessage(null);
 		try {
-			const res = await api.importGoogleCalendar();
+			const res = await api.importGoogleCalendar({ from: rangeFrom, to: rangeTo });
 			if (!res.ok) {
 				if (res.reason === "not-connected") {
 					setCalendarConnected(false);

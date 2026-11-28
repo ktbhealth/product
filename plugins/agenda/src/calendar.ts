@@ -133,6 +133,15 @@ const parseCredentials = (raw: string | null): CalendarCredentials | null => {
 	}
 };
 
+/** Structured datastore/authz errors stringify as `[object Object]`; keep
+ * the reason/detail pair useful without ever including secret material. */
+const errorDetail = (error: unknown): string =>
+	typeof error === "object" && error !== null && "reason" in error
+		? `${String((error as { reason: unknown }).reason)}: ${String((error as { detail?: unknown }).detail ?? "")}`
+		: error instanceof Error
+			? error.message
+			: String(error);
+
 const normalize = (value: string): string =>
 	value
 		.normalize("NFD")
@@ -219,6 +228,14 @@ export const CalendarIntegrationsLive = Layer.effect(
 					)
 				: Effect.succeed(secrets);
 
+		const markConnectionError = (id: number) =>
+			Effect.promise(() =>
+				db
+					.update(calendarConnections)
+					.set({ status: "error" })
+					.where(eq(calendarConnections.id, id)),
+			).pipe(Effect.asVoid);
+
 		return CalendarIntegrations.of({
 			connection: Effect.fn("CalendarIntegrations.connection")(function* (
 				ownerId,
@@ -251,18 +268,13 @@ export const CalendarIntegrationsLive = Layer.effect(
 						kind: "token",
 					})
 					.pipe(
-						Effect.mapError((error) => {
-							const structured =
-								typeof error === "object" && error !== null && "reason" in error
-									? `${String((error as { reason: unknown }).reason)}: ${String((error as { detail?: unknown }).detail ?? "")}`
-									: error instanceof Error
-										? error.message
-										: String(error);
-							return new CalendarIntegrationError({
-								reason: "unavailable",
-								detail: structured,
-							});
-						}),
+						Effect.mapError(
+							(error) =>
+								new CalendarIntegrationError({
+									reason: "unavailable",
+									detail: errorDetail(error),
+								}),
+						),
 					);
 				const tenant = yield* Tenant;
 				const row = yield* Effect.promise(() =>
@@ -311,6 +323,7 @@ export const CalendarIntegrationsLive = Layer.effect(
 				);
 				let credentials = parseCredentials(raw);
 				if (credentials === null) {
+					yield* markConnectionError(connectionRow.id);
 					return yield* Effect.fail(
 						new CalendarIntegrationError({ reason: "invalid-credentials" }),
 					);
@@ -319,15 +332,24 @@ export const CalendarIntegrationsLive = Layer.effect(
 					typeof credentials.expiresAt === "string" ? Date.parse(credentials.expiresAt) : null;
 				if (expiresAt !== null && expiresAt <= Date.now() + 60_000) {
 					if (provider.oauth === undefined) {
+						yield* markConnectionError(connectionRow.id);
 						return yield* Effect.fail(
 							new CalendarIntegrationError({ reason: "invalid-credentials" }),
 						);
 					}
-					credentials = yield* Effect.tryPromise({
-						try: () => provider.oauth!.refresh(credentials!),
-						catch: (error) =>
-							new CalendarIntegrationError({ reason: "provider-error", detail: String(error) }),
-					});
+					const refreshed = yield* Effect.result(
+						Effect.tryPromise(() => provider.oauth!.refresh(credentials!)),
+					);
+					if (Result.isFailure(refreshed)) {
+						yield* markConnectionError(connectionRow.id);
+						return yield* Effect.fail(
+							new CalendarIntegrationError({
+								reason: "provider-error",
+								detail: errorDetail(refreshed.failure),
+							}),
+						);
+					}
+					credentials = refreshed.success;
 					yield* vault
 						.put({
 							tenantId: null,
@@ -337,7 +359,15 @@ export const CalendarIntegrationsLive = Layer.effect(
 							provider: input.provider,
 							kind: "token",
 						})
-						.pipe(Effect.catch(() => Effect.void));
+						.pipe(
+							Effect.mapError(
+								(error) =>
+									new CalendarIntegrationError({
+										reason: "unavailable",
+										detail: errorDetail(error),
+									}),
+							),
+						);
 				}
 				const external = yield* Effect.tryPromise({
 					try: () => provider.connect(credentials!),

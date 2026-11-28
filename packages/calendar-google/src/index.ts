@@ -78,7 +78,9 @@ export const googleAuthorizationUrl = (
 		response_type: "code",
 		access_type: "offline",
 		prompt: "consent",
-		scope: (input.scopes ?? [GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE]).join(" "),
+		scope: (
+			input.scopes ?? [GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE, GOOGLE_CALENDARLIST_READONLY_SCOPE]
+		).join(" "),
 		state: input.state,
 	});
 	if (input.loginHint !== undefined) params.set("login_hint", input.loginHint);
@@ -304,7 +306,7 @@ export class GoogleExternalCalendar implements ExternalCalendar {
 		const events: ExternalCalendarEvent[] = [];
 		let pageToken: string | undefined;
 		do {
-			const params = new URLSearchParams({ maxResults: "2500" });
+			const params = new URLSearchParams({ maxResults: "2500", showDeleted: "true" });
 			if (query.from !== undefined) params.set("timeMin", query.from.toISOString());
 			if (query.to !== undefined) params.set("timeMax", query.to.toISOString());
 			if (query.expandRecurring === true) {

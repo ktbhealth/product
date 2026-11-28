@@ -6,12 +6,12 @@ import { Calendars, makeCalendarsRegistry, type ExternalCalendarEvent } from "@k
 import { ConsultationsLive } from "@ktb/consultations";
 import { Db, makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
-import { appointments } from "@ktb/db/schema";
+import { appointments, calendarConnections } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
 import { PatientsLive, PatientsQueriesLive } from "@ktb/patients";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { buildPermissions, Permissions } from "@ktb/rbac";
-import { Secrets, secretRefFor, type SecretMeta } from "@ktb/vault";
+import { SecretError, Secrets, secretRefFor, type SecretMeta } from "@ktb/vault";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -48,31 +48,37 @@ const event = (
 const memorySecrets = () => {
 	let seq = 0;
 	const values = new Map<string, string>();
+	const state = { failPut: false };
 	return {
 		values,
+		state,
 		service: Secrets.of({
 			list: () => Effect.succeed([]),
 			put: (input) =>
-				Effect.sync(() => {
-					const id = ++seq;
-					values.set(secretRefFor(id), input.value);
-					return {
-						id,
-						scope: `user:${input.userId ?? ""}`,
-						tenantId: null,
-						name: input.name,
-						provider: input.provider ?? null,
-						kind: input.kind ?? "generic",
-						hint: input.hint ?? null,
-						version: 1,
-						status: "active",
-						kekVersion: null,
-						createdBy: null,
-						createdAt: new Date(),
-						updatedAt: null,
-						rotatedAt: null,
-					} satisfies SecretMeta;
-				}),
+				state.failPut
+					? Effect.fail(
+							new SecretError({ reason: "cipher-unavailable", detail: "test put failure" }),
+						)
+					: Effect.sync(() => {
+							const id = ++seq;
+							values.set(secretRefFor(id), input.value);
+							return {
+								id,
+								scope: `user:${input.userId ?? ""}`,
+								tenantId: null,
+								name: input.name,
+								provider: input.provider ?? null,
+								kind: input.kind ?? "generic",
+								hint: input.hint ?? null,
+								version: 1,
+								status: "active",
+								kekVersion: null,
+								createdBy: null,
+								createdAt: new Date(),
+								updatedAt: null,
+								rotatedAt: null,
+							} satisfies SecretMeta;
+						}),
 			resolve: (ref) => Effect.succeed(values.get(ref) ?? null),
 			rotate: () => Effect.die(new Error("unused")),
 			remove: () => Effect.void,
@@ -85,6 +91,8 @@ describe("CalendarIntegrationsLive", () => {
 	let db: ReturnType<typeof makeDb>;
 	let externalEvents: ExternalCalendarEvent[];
 	let refreshCalls: string[];
+	let refreshFailure: unknown;
+	let secretsState: { failPut: boolean };
 
 	beforeAll(async () => {
 		db = makeDb(makeTestD1(FIXTURE_SQL));
@@ -92,6 +100,7 @@ describe("CalendarIntegrationsLive", () => {
 		const bus: EventBusShape = await busRuntime.runPromise(EventBus);
 		externalEvents = [];
 		refreshCalls = [];
+		refreshFailure = null;
 		const google = {
 			id: "google",
 			oauth: {
@@ -99,6 +108,7 @@ describe("CalendarIntegrationsLive", () => {
 				exchangeCode: async () => ({ accessToken: "unused" }),
 				refresh: async (credentials: { readonly refreshToken?: string }) => {
 					refreshCalls.push(credentials.refreshToken ?? "");
+					if (refreshFailure !== null) throw refreshFailure;
 					return {
 						accessToken: "access-refreshed",
 						refreshToken: credentials.refreshToken,
@@ -120,6 +130,7 @@ describe("CalendarIntegrationsLive", () => {
 			}),
 		};
 		const secrets = memorySecrets();
+		secretsState = secrets.state;
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -282,6 +293,90 @@ describe("CalendarIntegrationsLive", () => {
 		);
 		expect(result.imported).toBe(1);
 		expect(refreshCalls).toContain("refresh-me");
+	});
+
+	it("marks the connection errored when OAuth refresh fails", async () => {
+		const base = new Date(Date.now() + 120 * 60 * 60 * 1000);
+		const calendarId = "refresh-error";
+		await asDoctor(
+			call((p) =>
+				p.completeOAuth("u1", {
+					provider: "google",
+					calendarId,
+					credentials: {
+						accessToken: "expired",
+						refreshToken: "refresh-broken",
+						expiresAt: new Date(Date.now() - 60_000).toISOString(),
+					},
+				}),
+			),
+		);
+		refreshFailure = new Error("invalid_grant");
+		try {
+			const failure = await asDoctor(
+				call((p) =>
+					p.importEvents("u1", {
+						provider: "google",
+						calendarId,
+						from: new Date(base.getTime() - 60_000),
+						to: new Date(base.getTime() + 60 * 60_000),
+					}),
+				),
+			).then(
+				() => {
+					throw new Error("expected import to fail");
+				},
+				(error: unknown) => error,
+			);
+			expect(failure).toMatchObject({ reason: "provider-error" });
+			const rows = await db
+				.select()
+				.from(calendarConnections)
+				.where(eq(calendarConnections.externalCalendarId, calendarId));
+			expect(rows[0]?.status).toBe("error");
+		} finally {
+			refreshFailure = null;
+		}
+	});
+
+	it("fails the import when refreshed credentials cannot be persisted", async () => {
+		const base = new Date(Date.now() + 144 * 60 * 60 * 1000);
+		const calendarId = "refresh-persist-error";
+		await asDoctor(
+			call((p) =>
+				p.completeOAuth("u1", {
+					provider: "google",
+					calendarId,
+					credentials: {
+						accessToken: "expired",
+						refreshToken: "refresh-unpersisted",
+						expiresAt: new Date(Date.now() - 60_000).toISOString(),
+					},
+				}),
+			),
+		);
+		secretsState.failPut = true;
+		try {
+			const failure = await asDoctor(
+				call((p) =>
+					p.importEvents("u1", {
+						provider: "google",
+						calendarId,
+						from: new Date(base.getTime() - 60_000),
+						to: new Date(base.getTime() + 60 * 60_000),
+					}),
+				),
+			).then(
+				() => {
+					throw new Error("expected import to fail");
+				},
+				(error: unknown) => error,
+			);
+			expect(failure).toMatchObject({ reason: "unavailable" });
+			expect((failure as { detail?: string }).detail).toContain("cipher-unavailable");
+		} finally {
+			secretsState.failPut = false;
+		}
 	});
 
 	it("reports overlap as a per-event conflict instead of failing the import", async () => {

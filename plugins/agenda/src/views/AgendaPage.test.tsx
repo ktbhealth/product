@@ -231,7 +231,12 @@ describe("AgendaPage", () => {
 		};
 		render(<AgendaPage appointments={[]} patients={[]} api={a} onChanged={onChanged} />);
 		fireEvent.click(await screen.findByText("Import from Google"));
-		await waitFor(() => expect(importGoogleCalendar).toHaveBeenCalled());
+		await waitFor(() =>
+			expect(importGoogleCalendar).toHaveBeenCalledWith({
+				from: expect.any(Date),
+				to: expect.any(Date),
+			}),
+		);
 		expect(await screen.findByText(/1 imported · 2 already existed/)).toBeTruthy();
 		await waitFor(() => expect(onChanged).toHaveBeenCalled());
 	});
