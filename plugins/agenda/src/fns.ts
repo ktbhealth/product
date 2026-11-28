@@ -17,6 +17,7 @@ import {
 import {
 	CalendarIntegrations,
 	type CalendarConnectionCard,
+	type CalendarImportResolveResult,
 	type CalendarImportResult,
 } from "./calendar.ts";
 import { MAX_LIST_RANGE_DAYS } from "./window.ts";
@@ -260,6 +261,56 @@ export const importGoogleCalendarFn = createServerFn({ method: "POST" })
 									: "unavailable";
 						return Effect.succeed({ ok: false, reason } as const);
 					}),
+				),
+			);
+		}),
+	);
+
+/** Wire input for resolving one review item — startsAt/endsAt tolerate
+ * ISO strings and epoch ms like the other date-carrying fns. */
+const normalizeResolveInput = (input: unknown): unknown => {
+	if (input === null || typeof input !== "object") return input;
+	const o = { ...(input as Record<string, unknown>) };
+	for (const key of ["startsAt", "endsAt"] as const) {
+		if (typeof o[key] === "string" || typeof o[key] === "number") o[key] = new Date(o[key]);
+	}
+	return o;
+};
+
+const ResolveImportItemInput = Schema.Struct({
+	externalEventId: Schema.String,
+	startsAt: Schema.Date,
+	endsAt: Schema.Date,
+	patientId: Schema.Number,
+});
+
+export type ResolveCalendarImportItemFnResult =
+	| { readonly ok: true; readonly result: CalendarImportResolveResult }
+	| { readonly ok: false };
+
+/** Schedule one review item with the patient the doctor picked — the
+ * external event identity rides along so a later import dedupes it. */
+export const resolveCalendarImportItemFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) =>
+		Schema.decodeUnknownSync(ResolveImportItemInput)(normalizeResolveInput(input ?? {})),
+	)
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const integrations = yield* CalendarIntegrations;
+					const result = yield* integrations.resolveImportItem(user.id, {
+						provider: "google",
+						calendarId: "primary",
+						externalEventId: data.externalEventId,
+						startsAt: data.startsAt,
+						endsAt: data.endsAt,
+						patientId: data.patientId,
+					});
+					return { ok: true, result } as const;
+				}).pipe(
+					forbiddenTo({ ok: false } as const),
+					Effect.catchTag("CalendarIntegrationError", () => Effect.succeed({ ok: false } as const)),
 				),
 			);
 		}),

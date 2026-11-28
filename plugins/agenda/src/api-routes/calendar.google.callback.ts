@@ -61,7 +61,10 @@ export const Route = createPluginApiRoute("agenda.routes")("/api/calendar/google
 						});
 						return true;
 					}),
-				).catch(() => false);
+				).catch((err) => {
+					console.error("[calendar-callback] oauth completion failed:", err);
+					return false;
+				});
 				return agendaRedirect(connected ? "calendarImport=connected" : "calendarImport=failed");
 			},
 		},

@@ -202,7 +202,15 @@ describe("AgendaPage", () => {
 					imported: 1,
 					existing: 2,
 					skipped: 1,
-					review: [{}],
+					review: [
+						{
+							externalEventId: "evt-1",
+							title: "Maria Silva",
+							startsAt: new Date("2025-01-06T14:00:00"),
+							endsAt: new Date("2025-01-06T14:30:00"),
+							reason: "patient-needed" as const,
+						},
+					],
 					conflicts: [],
 				},
 			}),

@@ -54,6 +54,7 @@ import type { AppointmentStatus } from "../schema.ts";
 import { agendaApi } from "../apis.ts";
 import { AGENDA_WINDOW } from "../window.ts";
 import { MonthGrid, monthGridDays, WeekGrid } from "./-calendar.tsx";
+import { CalendarReviewDialog, type CalendarReviewItem } from "./CalendarReviewDialog.tsx";
 import {
 	addDays,
 	addMonths,
@@ -115,7 +116,7 @@ export interface CalendarImportOutcome {
 	readonly imported: number;
 	readonly existing: number;
 	readonly skipped: number;
-	readonly review: readonly unknown[];
+	readonly review: readonly CalendarReviewItem[];
 	readonly conflicts: readonly unknown[];
 }
 
@@ -146,6 +147,18 @@ export interface AgendaApi {
 	readonly importGoogleCalendar?: () => Promise<
 		| { readonly ok: true; readonly result: CalendarImportOutcome }
 		| { readonly ok: false; readonly reason?: "not-connected" | "unavailable" | "provider-error" }
+	>;
+	readonly resolveCalendarImportItem?: (input: {
+		readonly externalEventId: string;
+		readonly startsAt: Date;
+		readonly endsAt: Date;
+		readonly patientId: number;
+	}) => Promise<
+		| {
+				readonly ok: true;
+				readonly result: { readonly status: "created" | "existing" | "conflict" };
+		  }
+		| { readonly ok: false }
 	>;
 }
 
@@ -211,6 +224,7 @@ export function AgendaPage({
 	const [now] = useState(() => Date.now());
 	const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
 	const [calendarBusy, setCalendarBusy] = useState(false);
+	const [reviewItems, setReviewItems] = useState<readonly CalendarReviewItem[]>([]);
 	const [calendarMessage, setCalendarMessage] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -272,6 +286,7 @@ export function AgendaPage({
 					res.result.conflicts.length,
 				),
 			);
+			if (res.result.review.length > 0) setReviewItems(res.result.review);
 			refresh();
 		} catch {
 			setCalendarMessage(t.calendar.failed);
@@ -581,6 +596,29 @@ export function AgendaPage({
 					onClose={() => setEditing(null)}
 				/>
 			) : null}
+			<CalendarReviewDialog
+				items={reviewItems}
+				patients={patients}
+				t={t}
+				resolve={async (item, patientId) => {
+					if (api.resolveCalendarImportItem === undefined) return { ok: false };
+					const res = await api.resolveCalendarImportItem({
+						externalEventId: item.externalEventId,
+						startsAt: asDate(item.startsAt),
+						endsAt: asDate(item.endsAt),
+						patientId,
+					});
+					if (!res.ok) return { ok: false };
+					return { ok: true, status: res.result.status };
+				}}
+				onDone={(externalEventId, scheduled) => {
+					setReviewItems((current) =>
+						current.filter((entry) => entry.externalEventId !== externalEventId),
+					);
+					if (scheduled) refresh();
+				}}
+				onClose={() => setReviewItems([])}
+			/>
 		</div>
 	);
 }

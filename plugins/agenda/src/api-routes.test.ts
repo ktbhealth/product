@@ -49,6 +49,7 @@ const integrationsStub = CalendarIntegrations.of({
 			};
 		}),
 	importEvents: () => Effect.die(new Error("unused")),
+	resolveImportItem: () => Effect.die(new Error("unused")),
 });
 
 const calendarsStub = Calendars.of({

@@ -43,6 +43,11 @@ export interface CalendarImportConflictItem {
 	readonly conflictingId?: number;
 }
 
+/** Outcome of scheduling one review item with a chosen patient. */
+export type CalendarImportResolveResult =
+	| { readonly status: "created" | "existing" }
+	| { readonly status: "conflict"; readonly conflictingId?: number };
+
 export interface CalendarImportResult {
 	readonly imported: number;
 	readonly existing: number;
@@ -180,6 +185,17 @@ export class CalendarIntegrations extends Context.Service<
 				readonly to: Date;
 			},
 		) => Effect.Effect<CalendarImportResult, Forbidden | CalendarIntegrationError>;
+		readonly resolveImportItem: (
+			ownerId: string,
+			input: {
+				readonly provider: string;
+				readonly calendarId?: string;
+				readonly externalEventId: string;
+				readonly startsAt: Date;
+				readonly endsAt: Date;
+				readonly patientId: number;
+			},
+		) => Effect.Effect<CalendarImportResolveResult, Forbidden | CalendarIntegrationError>;
 	}
 >()("@ktb/agenda/CalendarIntegrations") {}
 
@@ -235,13 +251,18 @@ export const CalendarIntegrationsLive = Layer.effect(
 						kind: "token",
 					})
 					.pipe(
-						Effect.mapError(
-							(error) =>
-								new CalendarIntegrationError({
-									reason: "unavailable",
-									detail: error instanceof Error ? error.message : String(error),
-								}),
-						),
+						Effect.mapError((error) => {
+							const structured =
+								typeof error === "object" && error !== null && "reason" in error
+									? `${String((error as { reason: unknown }).reason)}: ${String((error as { detail?: unknown }).detail ?? "")}`
+									: error instanceof Error
+										? error.message
+										: String(error);
+							return new CalendarIntegrationError({
+								reason: "unavailable",
+								detail: structured,
+							});
+						}),
 					);
 				const tenant = yield* Tenant;
 				const row = yield* Effect.promise(() =>
@@ -431,6 +452,39 @@ export const CalendarIntegrationsLive = Layer.effect(
 				);
 				return { imported, existing, skipped, review, conflicts };
 			}),
+			resolveImportItem: Effect.fn("CalendarIntegrations.resolveImportItem")(
+				function* (ownerId, input) {
+					yield* requirePrincipalUser(ownerId, "calendar.import");
+					const minutes = Math.max(
+						1,
+						Math.round((input.endsAt.getTime() - input.startsAt.getTime()) / 60_000),
+					);
+					const created = yield* appointmentsSvc
+						.create(ownerId, {
+							patientId: input.patientId,
+							startsAt: input.startsAt,
+							durationMin: minutes,
+							external: {
+								provider: input.provider,
+								calendarId: input.calendarId ?? "primary",
+								eventId: input.externalEventId,
+							},
+						})
+						.pipe(Effect.result);
+					if (Result.isSuccess(created)) {
+						return { status: created.success === null ? "existing" : "created" } as const;
+					}
+					if (created.failure._tag === "AppointmentConflict") {
+						return {
+							status: "conflict",
+							...(created.failure.conflictingId === undefined
+								? {}
+								: { conflictingId: created.failure.conflictingId }),
+						} as const;
+					}
+					return yield* Effect.fail(created.failure);
+				},
+			),
 		});
 	}),
 );
