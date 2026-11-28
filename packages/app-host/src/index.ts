@@ -67,7 +67,7 @@ import { builtinKinds } from "@ktb/orchestrator";
 import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
 import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
 import { Jobs, makeJobs } from "@ktb/jobs-port";
-import { drainOutbox, insertOutboxRecord, makeOutbox, Outbox } from "@ktb/outbox";
+import { insertOutboxRecord, kickOutboxDrain, makeOutbox, Outbox } from "@ktb/outbox";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
 import {
@@ -584,7 +584,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 								...(await verificationEmail({ name, url })),
 							};
 							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
-							void drainOutbox(db).catch(() => {});
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("verification email failed", error);
 						}
@@ -598,7 +598,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 								...(await passwordResetEmail({ name, url })),
 							};
 							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
-							void drainOutbox(db).catch(() => {});
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("password reset email failed", error);
 						}

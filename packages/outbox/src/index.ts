@@ -397,6 +397,18 @@ export const drainOutbox = async (
 };
 
 /**
+ * Fire-and-forget drain kick for edge call sites that enqueue outside
+ * the Outbox service (e.g. the auth hooks writing transactional mail).
+ * Delivery failures are logged, never thrown — the cron sweep is the
+ * durable backstop.
+ */
+export const kickOutboxDrain = (db: DbClient): void => {
+	void drainOutbox(db).catch((error: unknown) => {
+		console.error("outbox drain kick failed", error);
+	});
+};
+
+/**
  * Outbox port: enqueue a `{kind, payload}` record for async delivery.
  * Implementations are composed at the edge (app-host binds the Db).
  */

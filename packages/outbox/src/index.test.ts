@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { makeTestDb } from "@ktb/db-testing";
 import { outbox } from "@ktb/db/schema";
@@ -9,6 +9,7 @@ import {
 	drainOutbox,
 	getOutboxRecord,
 	insertOutboxRecord,
+	kickOutboxDrain,
 	listOutboxRecords,
 	makeOutbox,
 	outboxDeliverers,
@@ -380,6 +381,52 @@ describe("makeOutbox / Outbox service", () => {
 			await new Promise((r) => setTimeout(r, 0));
 			await expect(outbox.drain()).rejects.toThrow("select down");
 		} finally {
+			close();
+		}
+	});
+
+	it("kickOutboxDrain delivers pending rows fire-and-forget", async () => {
+		const { db, close } = makeTestDb();
+		const key = `test-kickdirect-${crypto.randomUUID()}`;
+		registerOutboxDeliverer(key, async () => {});
+		try {
+			await insertOutboxRecord(db, { kind: key, payload: null });
+			kickOutboxDrain(db);
+			for (let i = 0; i < 50; i += 1) {
+				const rows = await listOutboxRecords(db, { kind: key });
+				if (rows[0]?.status === "done") return;
+				await new Promise((r) => setTimeout(r, 10));
+			}
+			throw new Error("kickOutboxDrain did not deliver");
+		} finally {
+			delete outboxDeliverers[key];
+			close();
+		}
+	});
+
+	it("kickOutboxDrain logs a rejected drain instead of throwing", async () => {
+		const { db, close } = makeTestDb();
+		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const faulty = new Proxy(db, {
+				get(target, prop) {
+					if (prop === "select") {
+						return () => {
+							throw new Error("select down");
+						};
+					}
+					const value = Reflect.get(target, prop);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			expect(() => kickOutboxDrain(faulty)).not.toThrow();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(spy).toHaveBeenCalledWith(
+				"outbox drain kick failed",
+				expect.objectContaining({ message: "select down" }),
+			);
+		} finally {
+			spy.mockRestore();
 			close();
 		}
 	});
