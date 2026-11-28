@@ -22,6 +22,7 @@ import {
 	plugins,
 	portalDeviceOf,
 	portalDevicesOf,
+	requireCipheredWhenZk,
 	revokeClinicDevice,
 	setTenantZk,
 	tenantIsZk,
@@ -234,6 +235,41 @@ describe("vault repo", () => {
 		// A lookup that throws (no groups table) fails closed too.
 		const broken = makeDb(makeD1(`CREATE TABLE "user" (id TEXT PRIMARY KEY);`));
 		expect(await tenantZkOrClosed(broken, TENANT_ID)).toBe(true);
+	});
+});
+
+describe("requireCipheredWhenZk", () => {
+	let db: DbClient;
+
+	beforeAll(async () => {
+		db = makeDb(makeTestD1(DDL));
+		await seedGroup(db, 8, true); // ZK tenant
+		await seedGroup(db, 9); // non-ZK tenant
+	});
+
+	const gate = (tenantId: number | null, values: readonly (string | null | undefined)[]) =>
+		Effect.runPromise(requireCipheredWhenZk(db, tenantId, values, "patient.create"));
+
+	const denial = (tenantId: number | null, values: readonly (string | null | undefined)[]) =>
+		Effect.runPromise(Effect.flip(requireCipheredWhenZk(db, tenantId, values, "patient.create")));
+
+	it("passes plaintext outside ZK (personal scope and non-ZK tenant)", async () => {
+		await expect(gate(null, ["plain"])).resolves.toBeUndefined();
+		await expect(gate(9, ["plain", null, ""])).resolves.toBeUndefined();
+	});
+
+	it("denies an envelope write outside ZK — unreadable without a clinic keyring", async () => {
+		for (const tenantId of [null, 9] as const) {
+			const err = await denial(tenantId, ["plain", "v1.a.b"]);
+			expect(err).toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+		}
+	});
+
+	it("under ZK admits envelopes plus absent/empty values and denies any plaintext", async () => {
+		await expect(gate(8, ["v1.a.b", null, undefined, ""])).resolves.toBeUndefined();
+		await expect(gate(8, [])).resolves.toBeUndefined();
+		const err = await denial(8, ["v1.a.b", "plain"]);
+		expect(err).toMatchObject({ _tag: "Forbidden", path: "patient.create" });
 	});
 });
 

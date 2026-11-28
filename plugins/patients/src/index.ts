@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, asc, desc, eq, isNotNull, or, type SQL } from "drizzle-orm";
+import { asc, desc, eq, type SQL } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 import { UsersIcon } from "lucide-react";
 
@@ -54,8 +54,8 @@ import {
 	type PermissionsShape,
 } from "@ktb/rbac";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
-import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
-import { tenantIsZk, vaultServicesPlugin } from "@ktb/vault";
+import { tenantIdAccessible, tenantRowScope, Tenant, tenantScopeId } from "@ktb/tenant";
+import { requireCipheredWhenZk, vaultServicesPlugin } from "@ktb/vault";
 import {
 	isPatientDocumentType,
 	PATIENT_DOCUMENT_KEYS,
@@ -161,9 +161,7 @@ export interface AdminPatientRow extends Patient {
  * "own personal rows only".
  */
 export const patientScope = (ownerId: string) =>
-	Effect.map(tenantScopeCondition(patients), (fence) =>
-		and(fence, or(eq(patients.ownerId, ownerId), isNotNull(patients.tenantId))),
-	);
+	tenantRowScope(patients, patients.ownerId, ownerId);
 
 export async function listPatients(db: DbClient, ownerId: string, where?: SQL) {
 	const scope = where ?? eq(patients.ownerId, ownerId);
@@ -340,12 +338,6 @@ const orPlatformAdmin = (
 		),
 	);
 
-/** True when `tenantId` is in the caller's accessible tenant set
- * (`Tenant`/`TenantAccess` — empty in personal scope). Ids compare
- * numerically so string|number directory ids both match. */
-const tenantRowVisible = (tenantId: number) =>
-	Effect.map(accessibleTenantIds, (ids) => ids.some((id) => Number(id) === tenantId));
-
 /**
  * Row-level authz (P-053-B). Tenant-owned rows (`tenant_id` set) are
  * governed by tenant membership: any member of the row's tenant may
@@ -368,7 +360,7 @@ const authorizePatientRow = (
 ) =>
 	Effect.gen(function* () {
 		if (row.tenantId !== null) {
-			if (yield* tenantRowVisible(row.tenantId)) return;
+			if (yield* tenantIdAccessible(row.tenantId)) return;
 			yield* platformAdmin
 				.requireAdmin()
 				.pipe(Effect.catchTag("Forbidden", () => Effect.fail(new Forbidden({ path: action }))));
@@ -381,41 +373,29 @@ const authorizePatientRow = (
 		yield* orPlatformAdmin(platformAdmin, check);
 	});
 
-const ENVELOPE = /^v1\./;
-
 /**
- * ZK write gate (PL-007 F3, T-144): under a ZK tenant every non-null
- * PII field must already be a `v1.` AEAD envelope — the server never
- * stores plaintext PII there, so a plaintext write is denied like an
- * authz violation. `name`/`birthDate` stay required (mirroring
- * `validatePatient`), `active` is declared plaintext BY DESIGN. Reads
- * need no gate: rows come back exactly as stored (envelopes for ZK,
- * plaintext otherwise) and clients decrypt.
+ * ZK write gate (PL-007 F3, T-144) — delegates to the shared
+ * `@ktb/vault` check over the record's text fields: under a ZK tenant
+ * every populated PII field must already be a `v1.` AEAD envelope (the
+ * server never stores plaintext PII there); outside ZK an envelope
+ * write is unreadable forever and denied the same way. `name`/
+ * `birthDate` stay required upstream (`validatePatient`), `active` is
+ * declared plaintext BY DESIGN. Reads need no gate: rows come back
+ * exactly as stored (envelopes for ZK, plaintext otherwise) and
+ * clients decrypt.
  */
-const zkCipheredFields = (fields: PatientFields) =>
-	fields.name !== null &&
-	fields.birthDate !== null &&
-	TEXT_FIELDS.every((key) => fields[key] === null || ENVELOPE.test(fields[key]!));
-
-/** Any populated PII field already looks like ciphertext. */
-const hasCipheredField = (fields: PatientFields) =>
-	TEXT_FIELDS.some((key) => fields[key] !== null && ENVELOPE.test(fields[key]!));
-
-const requireCipheredWhenZk = Effect.fn("Patients.requireCipheredWhenZk")(function* (
+const requireCipheredFields = (
 	db: DbClient,
 	tenantId: number | null,
 	fields: PatientFields,
 	action: "patient.create" | "patient.update",
-) {
-	const zk = tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)));
-	// Fails closed both ways: under ZK every populated PII field must be
-	// an envelope; outside ZK (non-ZK tenant or personal scope — no
-	// clinic keyring exists there) an envelope write is unreadable
-	// forever, so it is denied the same way.
-	if (zk ? !zkCipheredFields(fields) : hasCipheredField(fields)) {
-		yield* Effect.fail(new Forbidden({ path: action }));
-	}
-});
+) =>
+	requireCipheredWhenZk(
+		db,
+		tenantId,
+		TEXT_FIELDS.map((key) => fields[key]),
+		action,
+	);
 
 /**
  * Patients domain port — Effect service, swappable in tests.
@@ -509,7 +489,7 @@ export const PatientsLive = Layer.effect(
 				// true` rule only asserted a bound principal, which
 				// requirePrincipalUser already guarantees.
 				const tenant = yield* Tenant;
-				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
+				yield* requireCipheredFields(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
 				yield* Effect.logInfo("patient create", { ownerId });
 				// grantedBy = the acting principal (actorId when a delegate
@@ -557,7 +537,7 @@ export const PatientsLive = Layer.effect(
 				const row = yield* Effect.promise(() => getPatient(db, id));
 				if (row === null) return null;
 				yield* authorizePatientRow(platformAdmin, permissions, row, "patient.update");
-				yield* requireCipheredWhenZk(db, row.tenantId, fields, "patient.update");
+				yield* requireCipheredFields(db, row.tenantId, fields, "patient.update");
 				yield* Effect.annotateCurrentSpan({ ownerId, patientId: id });
 				yield* Effect.logInfo("patient update", { ownerId, patientId: id });
 				const updated = yield* Effect.promise(() => updatePatient(db, id, fields));
@@ -588,7 +568,7 @@ export const PatientsLive = Layer.effect(
 			) {
 				yield* platformAdmin.requireAdmin();
 				const tenant = yield* Tenant;
-				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
+				yield* requireCipheredFields(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
 				yield* Effect.logInfo("patient admin create", { ownerId });
 				// The tuple subject stays the TARGET owner (ownerId); the

@@ -16,7 +16,8 @@ import { PatientsQueries } from "@ktb/patients/api";
 import { PortalAccess } from "@ktb/patient-access";
 import { ConsultationAudioUpdated, ConsultationCreated } from "./api.ts";
 import { EventBus, Query } from "@effect-server-utils/cqrs";
-import { runAsTenantId, Tenant, tenantScopeId } from "@ktb/tenant";
+import { runAsTenantId, Tenant, tenantIdAccessible, tenantScopeId } from "@ktb/tenant";
+import { requireCipheredWhenZk } from "@ktb/vault";
 
 import {
 	ANAMNESIS_ENTITY_TYPE,
@@ -75,12 +76,7 @@ import {
 	type ConsultationSummary,
 	type SaveConsultationInput,
 } from "./shared.ts";
-import {
-	authorizeConsultationRow,
-	consultationScope,
-	requireCipheredWhenZk,
-	tenantRowVisible,
-} from "./tenant-visibility.ts";
+import { authorizeConsultationRow, consultationScope } from "./tenant-visibility.ts";
 
 /**
  * Consultations domain port — Effect service, swappable in tests.
@@ -279,7 +275,7 @@ export const ConsultationsLive = Layer.effect(
 				// any member of the patient's tenant may link it; the
 				// ownerId check applies to personal patients only.
 				if (owner.tenantId !== null) {
-					if (!(yield* tenantRowVisible(owner.tenantId))) {
+					if (!(yield* tenantIdAccessible(owner.tenantId))) {
 						return yield* Effect.fail(new Forbidden({ path }));
 					}
 					return;

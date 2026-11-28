@@ -1,4 +1,14 @@
-import { and, getTableName, inArray, isNull, or, type Column, type SQL } from "drizzle-orm";
+import {
+	and,
+	eq,
+	getTableName,
+	inArray,
+	isNotNull,
+	isNull,
+	or,
+	type Column,
+	type SQL,
+} from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as Effect from "effect/Effect";
 
@@ -46,6 +56,39 @@ export const tenantScopeCondition = <T extends TenantScopedTable>(table: T) =>
 		const column = table.tenantId;
 		return ids.length === 0 ? isNull(column) : or(inArray(column, ids as never), isNull(column));
 	});
+
+/**
+ * True when `tenantId` is inside the caller's accessible tenant set
+ * ({@link accessibleTenantIds} — empty in personal scope). Ids compare
+ * numerically so string|number directory ids both match. Use for
+ * row-level authz on an already-fetched row: "is this row's tenant
+ * one I may act in?"
+ */
+export const tenantIdAccessible = (tenantId: number) =>
+	Effect.map(accessibleTenantIds, (ids) => ids.some((id) => Number(id) === tenantId));
+
+/**
+ * The owner-or-tenant row visibility fence shared by every plugin's
+ * "personal rows I own + tenant rows I belong to" scope: the
+ * {@link tenantScopeCondition} fence ANDed with
+ * (`ownerColumn` = `ownerId` OR `tenant_id` IS NOT NULL). Personal
+ * (`tenant_id` NULL) rows are visible only to their owner; tenant-owned
+ * rows to every member of an accessible tenant (membership is already
+ * proved by the fence, so the owner check is waived for them). In
+ * personal scope the accessible set is empty and this degrades to
+ * "own personal rows only". `ownerColumn` is the table's owner/user
+ * attribution column (`owner_id`, `user_id`, …) — ownership of
+ * personal rows stays an authz concern, tenant scope only fences
+ * tenant-owned rows.
+ */
+export const tenantRowScope = <T extends TenantScopedTable>(
+	table: T,
+	ownerColumn: Column,
+	ownerId: string,
+) =>
+	Effect.map(tenantScopeCondition(table), (fence) =>
+		and(fence, or(eq(ownerColumn, ownerId), isNotNull(table.tenantId))),
+	);
 
 /** Rows a scoped repo returns — drizzle's select model for `T`. */
 export type ScopedRows<T extends TenantScopedTable> = T["$inferSelect"][];

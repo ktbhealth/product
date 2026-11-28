@@ -12,6 +12,8 @@ import { Tenant, withTenantAccess } from "./index.ts";
 import {
 	accessibleTenantIds,
 	scopedRepo,
+	tenantIdAccessible,
+	tenantRowScope,
 	tenantScopeCondition,
 	type ScopedRepo,
 } from "./scoped-repo.ts";
@@ -23,8 +25,16 @@ const notes = tenantTable("test_notes", {
 	body: text().notNull(),
 });
 
+const owned = tenantTable("test_owned", {
+	id: integer().primaryKey({ autoIncrement: true }),
+	tenantId: tenantIdColumn(),
+	ownerId: text("owner_id"),
+	body: text().notNull(),
+});
+
 const DDL = `
 CREATE TABLE test_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, body TEXT NOT NULL);
+CREATE TABLE test_owned (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, owner_id TEXT, body TEXT NOT NULL);
 `;
 
 const tenantA: Tenant = { id: 1, kind: "clinic", slug: "a", role: "member" };
@@ -120,6 +130,81 @@ describe("tenantScopeCondition", () => {
 		expect(sql).toContain(" in ");
 		expect(sql).toContain("is null");
 		expect(params).toEqual([1, 2]);
+	});
+});
+
+describe("tenantIdAccessible", () => {
+	it("admits the active tenant's id", async () => {
+		await expect(
+			Effect.runPromise(tenantIdAccessible(1).pipe(Effect.provideService(Tenant, tenantA))),
+		).resolves.toBe(true);
+	});
+
+	it("rejects a foreign tenant id", async () => {
+		await expect(
+			Effect.runPromise(tenantIdAccessible(2).pipe(Effect.provideService(Tenant, tenantA))),
+		).resolves.toBe(false);
+	});
+
+	it("is false in personal scope", async () => {
+		await expect(Effect.runPromise(tenantIdAccessible(1))).resolves.toBe(false);
+	});
+
+	it("honors an explicit TenantAccess set, comparing numerically", async () => {
+		await expect(
+			Effect.runPromise(withTenantAccess(["4", "5"], tenantIdAccessible(4))),
+		).resolves.toBe(true);
+		await expect(
+			Effect.runPromise(withTenantAccess(["4", "5"], tenantIdAccessible(6))),
+		).resolves.toBe(false);
+	});
+});
+
+describe("tenantRowScope", () => {
+	const OWNED_DDL = `
+CREATE TABLE test_owned (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, owner_id TEXT, body TEXT NOT NULL);
+`;
+
+	const seedOwned = async (sql: SqlDatabase) => {
+		const ins = (tenantId: number | null, ownerId: string | null, body: string) =>
+			sql
+				.prepare("INSERT INTO test_owned (tenant_id, owner_id, body) VALUES (?, ?, ?)")
+				.bind(tenantId, ownerId, body)
+				.run();
+		await ins(1, "u1", "a1");
+		await ins(1, "u2", "a2");
+		await ins(2, "u1", "b1");
+		await ins(null, "u1", "p1");
+		await ins(null, "u2", "p2");
+	};
+
+	const visibleBodies = (sql: SqlDatabase, tenant: Tenant | null, ownerId: string) =>
+		Effect.runPromise(
+			Effect.gen(function* () {
+				const db = makeDb(sql);
+				const scope = yield* tenantRowScope(owned, owned.ownerId, ownerId);
+				const rows = yield* Effect.promise(() =>
+					db.select({ body: owned.body }).from(owned).where(scope),
+				);
+				return rows.map((r) => r.body).sort();
+			}).pipe(Effect.provideService(Tenant, tenant)),
+		);
+
+	it("admits own personal rows plus every row of accessible tenants", async () => {
+		const sql = makeTestD1(OWNED_DDL);
+		await seedOwned(sql);
+		// Tenant A + owner u1: both tenant-1 rows (membership waives the
+		// owner check) + u1's personal row — never tenant-2 or u2's
+		// personal row.
+		await expect(visibleBodies(sql, tenantA, "u1")).resolves.toEqual(["a1", "a2", "p1"]);
+		await expect(visibleBodies(sql, tenantB, "u1")).resolves.toEqual(["b1", "p1"]);
+	});
+
+	it("degrades to own personal rows in personal scope", async () => {
+		const sql = makeTestD1(OWNED_DDL);
+		await seedOwned(sql);
+		await expect(visibleBodies(sql, null, "u1")).resolves.toEqual(["p1"]);
+		await expect(visibleBodies(sql, null, "u2")).resolves.toEqual(["p2"]);
 	});
 });
 
