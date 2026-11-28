@@ -582,8 +582,9 @@ export const defaultAudioJobDeps = async (
 
 /**
  * Queue batch handler for the shared jobs transport — invoked from the
- * worker's `queue` export (server.ts dispatches non-theme batches
- * here) and from the dev:node local queue. `transcription.audio` is
+ * worker's `queue` export (server.ts partitions batches by envelope
+ * kind: theme.* kinds go to the theme consumer, everything else here)
+ * and from the dev:node local queue. `transcription.audio` is
  * served by this module's registration; `handlers` carries the
  * composition root's kind → handler registry for every other kind
  * (PL-007). Malformed messages are acked (poison), valid jobs that

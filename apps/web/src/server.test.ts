@@ -25,7 +25,7 @@ vi.mock("#/lib/platform.ts", () => ({
 	runScheduledCron: mocks.runScheduledCron,
 }));
 
-import { AUDIO_QUEUE_NAME, THEME_ASSETS_QUEUE_NAME } from "#/lib/queue-names.ts";
+import { AUDIO_QUEUE_NAME } from "#/lib/queue-names.ts";
 
 import entry, { createServerEntry } from "./server.ts";
 
@@ -61,7 +61,7 @@ describe("worker entry", () => {
 	});
 
 	it("hands queue batches to the audio job handler and flushes telemetry", async () => {
-		const messages = [{ id: "m1" }, { id: "m2" }];
+		const messages = [{ id: "m1", body: { id: "j1", kind: "transcription.audio" } }, { id: "m2" }];
 		mocks.handleAudioQueueBatch.mockResolvedValue("handled");
 		const waitUntil = vi.fn();
 		await entry.queue({ messages } as never, {}, { waitUntil } as never);
@@ -71,21 +71,41 @@ describe("worker entry", () => {
 		expect(mocks.flushTelemetry).toHaveBeenCalled();
 	});
 
-	it("dispatches theme-assets queue batches to the theme job handler", async () => {
+	it("dispatches theme job kinds to the theme handler regardless of queue name", async () => {
 		mocks.handleAudioQueueBatch.mockClear();
 		mocks.handleThemeQueueBatch.mockClear();
-		const messages = [{ id: "t1" }];
+		// Prod queue names are Alchemy-generated — never the wrangler
+		// literal — so dispatch must key on the envelope kind.
+		const messages = [
+			{ id: "t1", body: { id: "j1", kind: "theme.asset", payload: {} } },
+			{ id: "t2", body: { id: "j2", kind: "theme.font", payload: {} } },
+		];
 		mocks.handleThemeQueueBatch.mockResolvedValue("handled");
 		const waitUntil = vi.fn();
-		await entry.queue({ queue: THEME_ASSETS_QUEUE_NAME, messages } as never, {}, {
+		await entry.queue({ queue: "ktb-web-theme-assets-queue-prod-a1b2c3", messages } as never, {}, {
 			waitUntil,
 		} as never);
 		expect(mocks.handleThemeQueueBatch).toHaveBeenCalledWith(messages);
 		expect(mocks.handleAudioQueueBatch).not.toHaveBeenCalled();
 	});
 
-	it("routes the audio queue name to the audio job handler", async () => {
-		const messages = [{ id: "a1" }];
+	it("partitions a mixed batch by envelope kind", async () => {
+		mocks.handleAudioQueueBatch.mockClear();
+		mocks.handleThemeQueueBatch.mockClear();
+		const theme = { id: "t1", body: { id: "j1", kind: "theme.asset" } };
+		const audio = { id: "a1", body: { id: "j2", kind: "transcription.audio" } };
+		const poison = { id: "p1", body: { not: "an envelope" } };
+		mocks.handleThemeQueueBatch.mockResolvedValue("handled");
+		mocks.handleAudioQueueBatch.mockResolvedValue("handled");
+		await entry.queue({ queue: "anything", messages: [theme, audio, poison] } as never, {}, {
+			waitUntil: vi.fn(),
+		} as never);
+		expect(mocks.handleThemeQueueBatch).toHaveBeenCalledWith([theme]);
+		expect(mocks.handleAudioQueueBatch).toHaveBeenCalledWith([audio, poison]);
+	});
+
+	it("routes non-theme kinds to the audio job handler", async () => {
+		const messages = [{ id: "a1", body: { id: "j1", kind: "cron.reminder" } }];
 		mocks.handleAudioQueueBatch.mockClear();
 		mocks.handleThemeQueueBatch.mockClear();
 		mocks.handleAudioQueueBatch.mockResolvedValue("handled");

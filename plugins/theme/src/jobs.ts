@@ -559,9 +559,9 @@ export const defaultThemeJobDeps = async (): Promise<ThemeJobDeps> => {
 	};
 };
 
-/** Queue batch handler for the dedicated ktb-theme-assets consumer —
- * invoked from the worker's `queue` export (server.ts dispatches on
- * batch.queue) and from the dev:node local queue. Malformed messages
+/** Queue batch handler for the theme-asset consumer — invoked from the
+ * worker's `queue` export (server.ts partitions batches by envelope
+ * kind, not queue name) and from the dev:node local queue. Malformed messages
  * are acked (poison), valid jobs that throw unexpectedly are retried,
  * and every delivery updates the `job_runs` projection when a DbClient
  * is bound. */
