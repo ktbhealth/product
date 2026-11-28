@@ -550,6 +550,52 @@ describe("AcpBridge", () => {
 		expect(res.status).toBe(503);
 	});
 
+	it("refuses a duplicate in-flight request id with 409", async () => {
+		const state = makeState();
+		const b = new AcpBridge(state, {});
+		await b.fetch(upgradeReq());
+		const server = state.accepted[0]!;
+		const first = b.fetch(rpcReq({ jsonrpc: "2.0", id: "dup", method: "m" }));
+		await tick();
+		// Same id while the first is still pending — a collision would
+		// overwrite the pending slot and cross-wire replies.
+		const dup = await b.fetch(rpcReq({ jsonrpc: "2.0", id: "dup", method: "m" }));
+		expect(dup.status).toBe(409);
+		expect(await dup.json()).toEqual({ error: "duplicate request id" });
+		// Only the original was forwarded — the dup never reached the wire.
+		expect(server.sent).toHaveLength(1);
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: "dup", result: "ok" }));
+		expect((await first).status).toBe(200);
+		// Once the first settles the id is free again.
+		const retry = b.fetch(rpcReq({ jsonrpc: "2.0", id: "dup", method: "m" }));
+		await tick();
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: "dup", result: "again" }));
+		expect((await retry).status).toBe(200);
+	});
+
+	it("caps buffered notifications at 2000, keeping the newest", async () => {
+		const state = makeState();
+		const b = new AcpBridge(state, {});
+		await b.fetch(upgradeReq());
+		const server = state.accepted[0]!;
+		for (let i = 0; i < 2001; i++) {
+			b.webSocketMessage(
+				server,
+				JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { i } }),
+			);
+		}
+		const pending = b.fetch(rpcReq({ jsonrpc: "2.0", id: 1, method: "m" }));
+		await tick();
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+		const body = (await (await pending).json()) as {
+			notifications: { params: { i: number } }[];
+		};
+		expect(body.notifications).toHaveLength(2000);
+		// The oldest chunk was dropped; the newest 2000 survived in order.
+		expect(body.notifications[0]!.params.i).toBe(1);
+		expect(body.notifications.at(-1)!.params.i).toBe(2000);
+	});
+
 	it("ignores bare non-RPC JSON frames", async () => {
 		const state = makeState();
 		const b = new AcpBridge(state, {});

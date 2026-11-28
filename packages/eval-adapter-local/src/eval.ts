@@ -34,11 +34,14 @@ const decode = Schema.decodeUnknownSync(Answers);
 
 const fail = (message: string) => new PortError({ port: "eval", message });
 
-export const makeJevEval = (opts: JevEvalOptions): Layer.Layer<EvalPort> =>
-	Layer.succeed(
+export const makeJevEval = (opts: JevEvalOptions): Layer.Layer<EvalPort> => {
+	// Tolerate a trailing slash on baseUrl — `${baseUrl}/v1/systemone`
+	// would otherwise produce `//v1/systemone` (same fix as asr.ts).
+	const baseUrl = opts.baseUrl.replace(/\/+$/, "");
+	return Layer.succeed(
 		EvalPort,
 		EvalPort.of({
-			egress: opts.egress ?? !isLoopbackUrl(opts.baseUrl),
+			egress: opts.egress ?? !isLoopbackUrl(baseUrl),
 			judge: (input) => {
 				const fetchImpl = opts.fetchImpl ?? fetch;
 				const timeoutMs = opts.timeoutMs ?? 30_000;
@@ -50,7 +53,7 @@ export const makeJevEval = (opts: JevEvalOptions): Layer.Layer<EvalPort> =>
 
 				const request = Effect.tryPromise({
 					try: async () => {
-						const res = await fetchImpl(`${opts.baseUrl}/v1/systemone`, {
+						const res = await fetchImpl(`${baseUrl}/v1/systemone`, {
 							method: "POST",
 							headers: { "Content-Type": "application/json" },
 							// Abort the socket at the same deadline as the
@@ -93,7 +96,7 @@ export const makeJevEval = (opts: JevEvalOptions): Layer.Layer<EvalPort> =>
 							// Endpoint hash — the service exposes no model/
 							// version field, so the URL fingerprint is the
 							// honest drift signal (P-076).
-							engineVersion: fnvHex(opts.baseUrl),
+							engineVersion: fnvHex(baseUrl),
 							inputHash: `q${qhash}`,
 							startedAt: started,
 							latencyMs: Date.now() - started,
@@ -103,3 +106,4 @@ export const makeJevEval = (opts: JevEvalOptions): Layer.Layer<EvalPort> =>
 			},
 		}),
 	);
+};

@@ -76,5 +76,13 @@ export function subscribeWhisper(fn: (m: EngineMessage) => void): () => void {
 }
 
 export function sendAudio(id: string, pcm: Float32Array): void {
+	if (worker === null) {
+		// The worker crashed (onerror cleared the reference and reset
+		// state to idle) — respawn and reload instead of silently
+		// dropping the chunk. The fresh worker queues audio until the
+		// model is ready, so the caller's inflight accounting still
+		// gets its text/error reply and stop() can emit "end".
+		loadWhisper();
+	}
 	worker?.postMessage({ type: "audio", id, pcm, language: "portuguese" }, [pcm.buffer]);
 }

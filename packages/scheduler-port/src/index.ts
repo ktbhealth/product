@@ -611,6 +611,21 @@ export const runScheduledJobNow = async (
 		return { job, error: null };
 	} catch (error) {
 		return { job, error: error instanceof Error ? error.message : String(error) };
+	} finally {
+		// Same rule as the sweep: the lease only covers the
+		// claim→dispatch window — holding it for the full leaseMs
+		// would throttle sub-lease recurring schedules (a `* * * * *`
+		// job would fire once per lease instead of once per minute).
+		// Fenced on the claimedUntil this call wrote; a release
+		// failure only delays the row until lease expiry.
+		await releaseScheduledJobClaim(db, job.id, job.claimedUntil as number).catch(
+			(error: unknown) => {
+				console.warn("scheduled job claim release failed", {
+					id: job.id,
+					error: String(error),
+				});
+			},
+		);
 	}
 };
 

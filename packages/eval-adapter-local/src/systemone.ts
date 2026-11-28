@@ -186,6 +186,11 @@ const toEvalAnswer = (q: EvalQuestion, a: WireAnswer | undefined): EvalAnswer =>
 			if (a.choice === undefined) {
 				throw new Error(`choice answer "${q.id}" lacks "choice"`);
 			}
+			// The pick must be one of the offered options — a verdict
+			// outside the rubric is malformed, not a creative answer.
+			if (q.options !== undefined && q.options.length > 0 && !q.options.includes(a.choice)) {
+				throw new Error(`choice answer "${q.id}" picked "${a.choice}" — not in options`);
+			}
 			checkProbs(a.probabilities, `choice answer "${q.id}"`);
 			const p = a.probabilities?.[a.choice];
 			if (p === undefined) {
@@ -201,6 +206,13 @@ const toEvalAnswer = (q: EvalQuestion, a: WireAnswer | undefined): EvalAnswer =>
 		case "score": {
 			if (a.score === undefined) {
 				throw new Error(`score answer "${q.id}" lacks "score"`);
+			}
+			// `score` is the probability-weighted level — fractional is
+			// legitimate, but outside the rubric [0, maxScore] it is a
+			// malformed verdict.
+			const maxScore = q.maxScore ?? DEFAULT_MAX_SCORE;
+			if (!Number.isFinite(a.score) || a.score < 0 || a.score > maxScore) {
+				throw new Error(`score answer "${q.id}" value ${a.score} outside rubric [0, ${maxScore}]`);
 			}
 			checkProbs(a.probabilities, `score answer "${q.id}"`);
 			if (a.confidence !== undefined) prob(a.confidence, `score answer "${q.id}".confidence`);
@@ -220,11 +232,14 @@ const toEvalAnswer = (q: EvalQuestion, a: WireAnswer | undefined): EvalAnswer =>
 
 // ---------- port ----------
 
-export const makeSystemOneEval = (opts: SystemOneEvalOptions): Layer.Layer<EvalPort> =>
-	Layer.succeed(
+export const makeSystemOneEval = (opts: SystemOneEvalOptions): Layer.Layer<EvalPort> => {
+	// Tolerate a trailing slash on baseUrl — `${baseUrl}/v1/systemone`
+	// would otherwise produce `//v1/systemone` (same fix as asr.ts).
+	const baseUrl = opts.baseUrl.replace(/\/+$/, "");
+	return Layer.succeed(
 		EvalPort,
 		EvalPort.of({
-			egress: opts.egress ?? !isLoopbackUrl(opts.baseUrl),
+			egress: opts.egress ?? !isLoopbackUrl(baseUrl),
 			judge: (input) => {
 				const fetchImpl = opts.fetchImpl ?? fetch;
 				const timeoutMs = opts.timeoutMs ?? 30_000;
@@ -235,7 +250,7 @@ export const makeSystemOneEval = (opts: SystemOneEvalOptions): Layer.Layer<EvalP
 
 				const request = Effect.tryPromise({
 					try: async () => {
-						const res = await fetchImpl(`${opts.baseUrl}/v1/systemone`, {
+						const res = await fetchImpl(`${baseUrl}/v1/systemone`, {
 							method: "POST",
 							headers: { "Content-Type": "application/json" },
 							// Abort the socket at the same deadline as the
@@ -289,7 +304,7 @@ export const makeSystemOneEval = (opts: SystemOneEvalOptions): Layer.Layer<EvalP
 							// self-hosted servers have no version
 							// endpoint, so URL fingerprint + model is the
 							// drift signal (P-076).
-							engineVersion: fnvHex(opts.baseUrl),
+							engineVersion: fnvHex(baseUrl),
 							inputHash: `q${qhash}`,
 							startedAt: started,
 							latencyMs: Date.now() - started,
@@ -299,3 +314,4 @@ export const makeSystemOneEval = (opts: SystemOneEvalOptions): Layer.Layer<EvalP
 			},
 		}),
 	);
+};

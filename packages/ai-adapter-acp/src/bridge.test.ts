@@ -86,13 +86,22 @@ describe("makeBridgeRpc", () => {
 		expect(seen[0]!.method).toBe("session/update");
 	});
 
-	it("correlates request ids sequentially", async () => {
+	it("correlates request ids sequentially per instance, namespaced across instances", async () => {
 		const { ns, wires } = fakeNs(() => ok());
 		const rpc = makeBridgeRpc({ ns, name: "e" });
+		const rpc2 = makeBridgeRpc({ ns, name: "e" });
 		await Effect.runPromise(rpc.request("a"));
 		await Effect.runPromise(rpc.request("b"));
-		expect(wires[0]!.id).toBe("req-1");
-		expect(wires[1]!.id).toBe("req-2");
+		await Effect.runPromise(rpc2.request("a"));
+		// Same-instance ids increment; the per-instance nonce keeps
+		// concurrent rpc sessions on the shared DO socket from
+		// colliding on the same JSON-RPC id.
+		expect(wires[0]!.id).toMatch(/^req-[0-9a-f-]+-1$/);
+		expect(wires[1]!.id).toMatch(/^req-[0-9a-f-]+-2$/);
+		expect(wires[0]!.id).not.toBe(wires[2]!.id);
+		expect(String(wires[2]!.id).split("-").slice(0, -1).join("-")).not.toBe(
+			String(wires[0]!.id).split("-").slice(0, -1).join("-"),
+		);
 	});
 
 	it("sends notifications fire-and-forget", async () => {

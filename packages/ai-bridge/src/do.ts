@@ -40,6 +40,10 @@ import { makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
 import { aiEndpoint } from "@ktb/db/schema";
 
 const RPC_TIMEOUT_MS = 60_000;
+/** Cap on agent→client notifications buffered between RPC responses —
+ * they only flush piggy-backed on a request, so an unbounded buffer
+ * would grow DO memory (and is lost on hibernation anyway). */
+const MAX_NOTIFICATIONS = 2_000;
 
 /** The WebSocket slice the DO uses (workerd's WebSocket satisfies it). */
 export interface BridgeSocket {
@@ -198,6 +202,13 @@ export class AcpBridge {
 			return json({ ok: true }, 202);
 		}
 		const id = String(wire.id);
+		// JSON-RPC ids must be unique among in-flight requests — a
+		// duplicate would overwrite the pending slot and cross-wire
+		// replies. Clients namespace ids per session; a collision means
+		// a buggy/malicious caller, so refuse BEFORE forwarding.
+		if (this.pending.has(id)) {
+			return json({ error: "duplicate request id" }, 409);
+		}
 		const outcome = await new Promise<PendingOutcome>((resolve) => {
 			const timer = setTimeout(() => {
 				// Stryker disable next-line CallExpression: skipping the delete leaves an inert entry — resolve is idempotent and the timer already fired.
@@ -275,8 +286,13 @@ export class AcpBridge {
 		}
 		if (msg.method !== undefined) {
 			// Agent→client notification — buffered until the next RPC
-			// response flushes it to the worker side.
+			// response flushes it to the worker side. Keep the NEWEST
+			// when the cap is hit: late session state matters more than
+			// the oldest chunks.
 			this.notifies.push(msg);
+			if (this.notifies.length > MAX_NOTIFICATIONS) {
+				this.notifies.splice(0, this.notifies.length - MAX_NOTIFICATIONS);
+			}
 			return;
 		}
 		if (msg.id !== undefined) {
