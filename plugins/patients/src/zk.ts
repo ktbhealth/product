@@ -1,9 +1,8 @@
-import { decryptRow, encryptRow } from "@ktb/crypto/cipher";
-import { AEAD_ENVELOPE_VERSION } from "@ktb/crypto/aead";
 import type { KeyringService } from "@ktb/crypto/keyring";
+import { isEnvelope, makeEntityZk } from "@ktb/crypto/zk";
+import type { DekEnvelopesApi, DeviceInfo, EntityZkApi, GrantInput } from "@ktb/crypto/zk";
 
 import { patientCipher } from "./cipher.ts";
-import type { Patient } from "./index.ts";
 import { TEXT_FIELDS, type PatientDraft, type TextField } from "./record.ts";
 
 /**
@@ -13,40 +12,21 @@ import { TEXT_FIELDS, type PatientDraft, type TextField } from "./record.ts";
  * authorized device pubkey. The server stores and validates shape only —
  * wrapping, encryption and decryption all happen in the browser.
  *
- * `PatientZkApi` is the view-facing server surface (wired in ./apis.ts
- * to the vault fns) — kept small so views/tests can fake it.
+ * The shared machinery lives in `@ktb/crypto/zk` (`makeEntityZk`) —
+ * this module binds the patient cipher spec and keeps the patient-named
+ * surface views/tests import. `PatientZkApi` is the view-facing server
+ * surface (wired in ./apis.ts to the vault fns) — kept small so
+ * views/tests can fake it.
  */
 export const PATIENT_ENTITY_TYPE = patientCipher.entity;
 
-export interface DeviceInfo {
-	readonly wrapPublicKey: string;
-	readonly status: string;
-}
+export type { DekEnvelopesApi, DeviceInfo, GrantInput };
+export { isEnvelope };
 
-export interface GrantInput {
-	readonly readerKind: "device" | "patient";
-	readonly readerPubkey: string;
-	readonly readerId?: string | null;
-	readonly wrappedDek: string;
-}
-
-export interface PatientZkApi {
-	/** Approved + pending member devices of the bound tenant. */
-	readonly devices: () => Promise<readonly DeviceInfo[]>;
-	/** Caller's wrapped DEKs for a batch of records, keyed by id —
-	 * records without a grant are absent. */
-	readonly dekEnvelopes: (input: {
-		readonly entityType: string;
-		readonly entityIds: readonly (number | string)[];
-		readonly wrapPublicKey: string;
-	}) => Promise<Record<string, string>>;
-	/** Store wrapped DEK envelopes for a record. */
-	readonly grant: (input: {
-		readonly entityType: string;
-		readonly entityId: number | string;
-		readonly grants: readonly GrantInput[];
-	}) => Promise<{ readonly ok: boolean }>;
-}
+/** Same contract as the shared `EntityZkApi` — devices, batched
+ * own-envelope lookup and grant writes, all bound-tenant scoped inside
+ * the vault fns. */
+export type PatientZkApi = EntityZkApi;
 
 /** `{keyring, api}` bundle threaded through views under ZK. */
 export interface PatientZk {
@@ -54,16 +34,14 @@ export interface PatientZk {
 	readonly api: PatientZkApi;
 }
 
-/**
- * The minimal surface the decrypt paths need — they never list devices
- * or write grants, so readers that can only FETCH their own envelopes
- * (the patient portal, T-148) reuse them through this narrower shape.
- */
-export type DekEnvelopesApi = Pick<PatientZkApi, "dekEnvelopes">;
-
-/** `v1.` AEAD envelope marker — how callers detect ciphertext values. */
-export const isEnvelope = (value: unknown): value is string =>
-	typeof value === "string" && value.startsWith(`${AEAD_ENVELOPE_VERSION}.`);
+const patientZk = makeEntityZk({
+	entityType: PATIENT_ENTITY_TYPE,
+	cipher: patientCipher,
+	fields: TEXT_FIELDS,
+	// Patient drafts treat "" and non-strings as absent (null), never
+	// ciphertext — the wire shape stays stable across edits.
+	normalizeField: (value) => (typeof value === "string" && value !== "" ? value : null),
+});
 
 /** A row is ciphertext when its `name` column carries an envelope. */
 export const isCipheredPatient = (p: { readonly name?: string | null }): boolean =>
@@ -75,48 +53,24 @@ export const isCipheredPatient = (p: { readonly name?: string | null }): boolean
  * undecryptable envelopes — come back unchanged so views can render a
  * locked state instead of dropping records.
  */
-export async function decryptPatients<R extends { readonly id: number }>(
+export const decryptPatients = <R extends { readonly id: number }>(
 	keyring: KeyringService,
 	api: DekEnvelopesApi,
 	rows: readonly R[],
-): Promise<R[]> {
-	const ciphered = rows.filter((r) => isCipheredPatient(r as { readonly name?: string | null }));
-	if (ciphered.length === 0) return [...rows];
-	const { wrapPublicKey } = await keyring.deviceKeys();
-	const envelopes = await api.dekEnvelopes({
-		entityType: PATIENT_ENTITY_TYPE,
-		entityIds: ciphered.map((r) => r.id),
-		wrapPublicKey,
+): Promise<R[]> =>
+	patientZk.decryptRows(keyring, api, rows, {
+		isCiphered: (row) => isCipheredPatient(row as { readonly name?: string | null }),
 	});
-	const out: R[] = [];
-	for (const row of rows) {
-		const envelope = envelopes[String(row.id)];
-		if (!isCipheredPatient(row as { readonly name?: string | null }) || envelope === undefined) {
-			out.push(row);
-			continue;
-		}
-		try {
-			const dek = await keyring.unwrapKey(envelope);
-			out.push({ ...row, ...(await decryptRow(patientCipher, dek, row)) });
-		} catch {
-			out.push(row);
-		}
-	}
-	return out;
-}
 
 /** Decrypt one row — detail/edit pages. null when locked or unreadable. */
-export async function decryptPatient<R extends { readonly id: number }>(
+export const decryptPatient = <R extends { readonly id: number }>(
 	keyring: KeyringService,
 	api: DekEnvelopesApi,
 	row: R,
-): Promise<R | null> {
-	if (!isCipheredPatient(row as { readonly name?: string | null })) return row;
-	const [decrypted] = await decryptPatients(keyring, api, [row]);
-	return decrypted !== undefined && !isCipheredPatient(decrypted as { name?: string | null })
-		? decrypted
-		: null;
-}
+): Promise<R | null> =>
+	patientZk.decryptRow(keyring, api, row, {
+		isCiphered: (r) => isCipheredPatient(r as { readonly name?: string | null }),
+	});
 
 /**
  * Encrypt a validated plaintext draft into the wire shape: every
@@ -127,14 +81,9 @@ export async function encryptPatientDraft(
 	dek: CryptoKey,
 	draft: PatientDraft,
 ): Promise<PatientDraft & { readonly ciphered: true }> {
-	const row: Record<string, unknown> = {};
-	for (const key of TEXT_FIELDS) {
-		const value = draft[key];
-		row[key] = typeof value === "string" && value !== "" ? value : null;
-	}
-	const encrypted = await encryptRow(patientCipher, dek, row);
+	const encrypted = await patientZk.encryptFields(dek, draft);
 	const out = {} as Record<TextField, string | null>;
-	for (const key of TEXT_FIELDS) out[key] = (encrypted[key] as string | null) ?? null;
+	for (const key of TEXT_FIELDS) out[key] = encrypted[key] ?? null;
 	return { ...out, active: draft.active, ciphered: true };
 }
 
@@ -144,38 +93,15 @@ export async function encryptPatientDraft(
  * admins re-wrap — T-150) — the creating device's own envelope comes
  * from `mintDek`, the rest from `wrapKeyFor`.
  */
-export async function newPatientDek(
+export const newPatientDek = (
 	keyring: KeyringService,
 	api: PatientZkApi,
-): Promise<{ readonly dek: CryptoKey; readonly grants: GrantInput[] }> {
-	const { wrapPublicKey } = await keyring.deviceKeys();
-	const devices = await api.devices();
-	const approved = devices.filter((d) => d.status === "approved");
-	const readers = new Set<string>([wrapPublicKey, ...approved.map((d) => d.wrapPublicKey)]);
-	const { dek, envelope } = await keyring.mintDek(wrapPublicKey);
-	const grants: GrantInput[] = [];
-	for (const pubkey of readers) {
-		grants.push({
-			readerKind: "device",
-			readerPubkey: pubkey,
-			wrappedDek: pubkey === wrapPublicKey ? envelope : await keyring.wrapKeyFor(dek, pubkey),
-		});
-	}
-	return { dek, grants };
-}
+): Promise<{ readonly dek: CryptoKey; readonly grants: GrantInput[] }> =>
+	patientZk.newDek(keyring, api);
 
 /** The caller's DEK for an existing patient — null when not a reader. */
-export async function patientDek(
+export const patientDek = (
 	keyring: KeyringService,
 	api: PatientZkApi,
 	patientId: number,
-): Promise<CryptoKey | null> {
-	const { wrapPublicKey } = await keyring.deviceKeys();
-	const envelopes = await api.dekEnvelopes({
-		entityType: PATIENT_ENTITY_TYPE,
-		entityIds: [patientId],
-		wrapPublicKey,
-	});
-	const envelope = envelopes[String(patientId)];
-	return envelope === undefined ? null : keyring.unwrapKey(envelope);
-}
+): Promise<CryptoKey | null> => patientZk.dekFor(keyring, api, patientId);
