@@ -335,6 +335,7 @@
         "@ktb/jobs-transport-redis": "workspace:*",
         "@ktb/json-schema": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
@@ -715,6 +716,7 @@
       "devDependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/json-schema": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "@tanstack/virtual-file-routes": "1.162.0",
@@ -728,6 +730,18 @@
       "name": "@ktb/media",
       "dependencies": {
         "effect": "4.1.2",
+      },
+    },
+    "packages/notifications-port": {
+      "name": "@ktb/notifications-port",
+      "dependencies": {
+        "@effect-server-utils/cqrs": "0.1.0-beta.10",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "vitest": "5.1.0",
       },
     },
     "packages/observability": {
@@ -938,6 +952,7 @@
         "@ktb/groups": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -1222,6 +1237,7 @@
         "@ktb/interop": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
@@ -1921,13 +1937,11 @@
       "name": "@ktb/notifications",
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
-        "@ktb/agenda": "workspace:*",
         "@ktb/authz": "workspace:*",
-        "@ktb/consultations": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
-        "@ktb/patients": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/platform-header": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -1940,8 +1954,11 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/agenda": "workspace:*",
         "@ktb/auth": "workspace:*",
+        "@ktb/consultations": "workspace:*",
         "@ktb/db-testing": "workspace:*",
+        "@ktb/patients": "workspace:*",
         "@tanstack/react-start": "1.169.5",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -2071,6 +2088,7 @@
         "@ktb/groups": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
@@ -3284,6 +3302,8 @@
     "@ktb/not-found-page": ["@ktb/not-found-page@workspace:plugins/not-found-page"],
 
     "@ktb/notifications": ["@ktb/notifications@workspace:plugins/notifications"],
+
+    "@ktb/notifications-port": ["@ktb/notifications-port@workspace:packages/notifications-port"],
 
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
 
