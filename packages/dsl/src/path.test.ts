@@ -21,10 +21,14 @@ describe("getPath", () => {
 	});
 
 	it("indexes arrays only by canonical integer segments", () => {
-		// "01"/"" coerce to valid indices; own array props like "length"
-		// or "NaN" must not resolve through the numeric-index path.
+		// "01" is canonical decimal (index 1); "", "1e2", "0x10", " 1"
+		// parse via Number() but are NOT canonical indices. Own array
+		// props like "length" or "NaN" must not resolve either.
 		expect(getPath(data, "step.items.01")).toBe("b");
-		expect(getPath(data, "step.items.")).toBe("a");
+		expect(getPath(data, "step.items.")).toBeUndefined();
+		expect(getPath(data, "step.items.1e2")).toBeUndefined();
+		expect(getPath(data, "step.items.0x1")).toBeUndefined();
+		expect(getPath(data, "step.items. 1")).toBeUndefined();
 		expect(getPath(data, "step.items.length")).toBeUndefined();
 		const quirky = ["a"] as unknown as Record<string, unknown>;
 		quirky.NaN = "nan";

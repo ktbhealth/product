@@ -2060,6 +2060,26 @@ describe("generate — pattern length boundaries", () => {
 		).toThrow(SeedError);
 	});
 
+	it("reaches minLength beyond the default pattern output limit", () => {
+		// maxLength defaults the generator's output ceiling to 1024 —
+		// minLength must raise it or every candidate is too short.
+		const v = generate({ type: "string", pattern: "[a-z]+", minLength: 1500 } as JsonSchema, {
+			seed: 1,
+		}) as string;
+		expect(v.length).toBeGreaterThanOrEqual(1500);
+	});
+
+	it("reaches minLength beyond the pattern limit with maxLength set", () => {
+		// maxLength bounds the repetition ceiling — the periodic-string
+		// fallback must still land a candidate inside [min, max].
+		const v = generate(
+			{ type: "string", pattern: "[a-z]+", minLength: 1500, maxLength: 2000 } as JsonSchema,
+			{ seed: 1 },
+		) as string;
+		expect(v.length).toBeGreaterThanOrEqual(1500);
+		expect(v.length).toBeLessThanOrEqual(2000);
+	});
+
 	it("stops after PATTERN_ATTEMPTS failed candidates", () => {
 		// Each attempt consumes 6 rng draws. Attempts 1-25 pick the
 		// a{70} alternation branch — {70} is capped at 64 reps, so the

@@ -211,7 +211,14 @@ const matchPattern = (
 		const seg = pattern.segments[i];
 		const actual = parts[i];
 		if (seg.startsWith(":")) {
-			params[seg.slice(1)] = decodeURIComponent(actual);
+			try {
+				params[seg.slice(1)] = decodeURIComponent(actual);
+			} catch {
+				// Malformed percent-encoding ("%", "%zz", truncated UTF-8
+				// escapes) — the segment can't be decoded, so the pattern
+				// doesn't match (fail closed, like every other miss).
+				return null;
+			}
 		} else if (seg !== actual) {
 			return null;
 		}

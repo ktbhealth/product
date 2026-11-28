@@ -50,6 +50,21 @@ describe("flattenCatalog", () => {
 			{ path: "nested.also", value: null },
 		]);
 	});
+
+	it("keeps non-plain objects as leaves instead of dropping them", () => {
+		// Date/Map/class instances have no enumerable message entries —
+		// recursing into them would emit nothing and silently lose the key.
+		const flat = flattenCatalog({
+			when: new Date(0),
+			lookup: new Map([["a", 1]]),
+			nested: { x: 1 },
+		});
+		expect(flat).toEqual([
+			{ path: "when", value: expect.any(Date) },
+			{ path: "lookup", value: expect.any(Map) },
+			{ path: "nested.x", value: 1 },
+		]);
+	});
 });
 
 describe("sliceMessages", () => {

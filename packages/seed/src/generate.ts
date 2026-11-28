@@ -56,7 +56,7 @@ import { validate } from "@ktb/json-schema";
 import type { JsonSchema, JsonSchemaObject } from "@ktb/json-schema";
 
 import { SeedError } from "./errors.ts";
-import { generateFromPattern, patternHasUnsafeRepetition } from "./pattern.ts";
+import { generateFromPattern, MAX_PATTERN_OUTPUT, patternHasUnsafeRepetition } from "./pattern.ts";
 import { poolsFor, type LocalePools } from "./pools.ts";
 import { chance, int, makeRng, pick } from "./rng.ts";
 
@@ -627,7 +627,12 @@ const genString = (s: JsonSchemaObject, ctx: Ctx): string => {
 		} catch {
 			throw new SeedError(`invalid pattern /${s.pattern}/`, ctx.path);
 		}
-		const limit = max ?? 1024;
+		// The pattern generator's output ceiling is its own (it clamps
+		// `limit` internally). maxLength caps it as before; with no
+		// maxLength, a minLength above the default ceiling raises it to
+		// the generator's hard cap so long-enough candidates can exist.
+		const limit =
+			max ?? (min > MAX_PATTERN_OUTPUT ? MAX_PATTERN_OUTPUT * 4 : MAX_PATTERN_OUTPUT);
 		let lastErr: unknown;
 		for (let i = 0; i < PATTERN_ATTEMPTS; i++) {
 			let cand: string;
@@ -636,6 +641,29 @@ const genString = (s: JsonSchemaObject, ctx: Ctx): string => {
 			} catch (e) {
 				lastErr = e;
 				continue;
+			}
+			// Quantifier expansion is bounded (UNBOUNDED_MAX / MAX_REPEAT),
+			// so a pattern like `[a-z]+` can satisfy the RegExp yet never
+			// reach a large minLength on its own. `re` carries no added
+			// anchors, so prefixes of the candidate repeated into a
+			// periodic string are worth verifying — anchored or
+			// exact-length patterns simply fail the checks below.
+			if (cand.length >= min) {
+				// already long enough
+			} else {
+				// An empty candidate (pattern like `a*`) gets a neutral
+				// filler unit — unanchored patterns still verify.
+				const unit = cand === "" ? "x" : cand;
+				const repeated = unit.repeat(Math.ceil(min / unit.length));
+				const ceiling = Math.min(repeated.length, max ?? repeated.length);
+				cand = repeated;
+				for (let len = min; len <= ceiling; len++) {
+					const prefix = repeated.slice(0, len);
+					if (re.test(prefix)) {
+						cand = prefix;
+						break;
+					}
+				}
 			}
 			// Stryker disable next-line ConditionalExpression: generateFromPattern's limit is maxLength (capped at 4096), so every returned candidate already satisfies cand.length <= max — the right side of || is always true here.
 			if (cand.length >= min && (max === undefined || cand.length <= max) && re.test(cand)) {

@@ -237,4 +237,31 @@ describe("evaluateCondition", () => {
 		}
 		expect(evaluateCondition(cond, answers)).toBe(true);
 	});
+
+	it("fails closed on malformed (unvalidated) condition shapes", () => {
+		// Hand-built/DB-sourced defs that skipped assertCondition must
+		// evaluate false — never throw a TypeError defect.
+		const malformed: readonly unknown[] = [
+			5,
+			null,
+			"x",
+			[],
+			{ all: "yes" },
+			{ all: {} },
+			{ any: "x" },
+			{ any: {} },
+			{ not: 5 },
+			{ not: null },
+			{ not: "x" },
+			{ path: 5 },
+			{ path: "" },
+			{ path: "a", op: "bogus" },
+			{ all: [null] },
+			{ any: [5] },
+			{ all: [{ path: "done", op: "truthy" }, "junk"] },
+		];
+		for (const cond of malformed) {
+			expect(evaluateCondition(cond as unknown as Condition, answers)).toBe(false);
+		}
+	});
 });

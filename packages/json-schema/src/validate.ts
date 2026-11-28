@@ -208,9 +208,21 @@ const normalizeErrors = (errors: readonly OutputUnit[]): Issue[] => {
 		const matches = Number(ONE_OF_MATCHES.exec(error.error)![1]);
 		if (matches <= 1) continue;
 		const prefix = `${error.keywordLocation}/`;
+		// `false` leaf errors carry no schemaLocation, only the instance
+		// location — accept them as branch noise only when they sit
+		// UNDER the oneOf's instance subtree, so an unrelated `false`
+		// violation elsewhere in the document is not swallowed.
+		const oneOfLoc = error.instanceLocation;
+		const underOneOf = (inst: string): boolean =>
+			oneOfLoc === "" || inst === oneOfLoc || inst.startsWith(`${oneOfLoc}/`);
 		for (let j = index + 1; j < errors.length; j += 1) {
 			const other = errors[j];
-			if (!other.keywordLocation.startsWith(prefix) && other.keyword !== "false") break;
+			if (
+				!other.keywordLocation.startsWith(prefix) &&
+				!(other.keyword === "false" && underOneOf(other.instanceLocation))
+			) {
+				break;
+			}
 			dropped.add(j);
 		}
 	}

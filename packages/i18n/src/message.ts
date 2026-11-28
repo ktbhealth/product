@@ -346,12 +346,19 @@ const renderTokens = (
 			if (body !== undefined && depth < MAX_NESTING_DEPTH) {
 				const inner = tokenize(body);
 				if (Array.isArray(inner)) {
-					let innerPound: string | undefined;
-					if (t.plural && typeof value === "number") {
-						try {
-							innerPound = new Intl.NumberFormat(locale).format(value);
-						} catch /* Stryker disable next-line BlockStatement: innerPound is declared undefined and only assigned on success, so emptying the catch leaves it undefined either way (probe-verified identical). */ {
-							innerPound = undefined;
+					// `#` binds to the nearest enclosing plural's number.
+					// A select inherits the incoming pound; a plural
+					// shadows it with its own formatted arg (undefined
+					// when the arg isn't numeric — no pound at all).
+					let innerPound: string | undefined = pound;
+					if (t.plural) {
+						innerPound = undefined;
+						if (typeof value === "number") {
+							try {
+								innerPound = new Intl.NumberFormat(locale).format(value);
+							} catch /* Stryker disable next-line BlockStatement: innerPound is declared undefined and only assigned on success, so emptying the catch leaves it undefined either way (probe-verified identical). */ {
+								innerPound = undefined;
+							}
 						}
 					}
 					out += renderTokens(inner, params, locale, innerPound, depth + 1);
@@ -462,6 +469,32 @@ export const validateAgainstSignature = (
 			});
 		}
 	}
+	// plural/select contract parity: the declared kind and, when both
+	// sides list case keys, the key sets must agree — a `select`
+	// masquerading as `plural` (or vice versa) changes `#`/category
+	// semantics even when the param names match.
+	for (const e of expected) {
+		const a = sig.find((p) => p.name === e.name);
+		if (a === undefined) continue;
+		if ((e.plural === true) !== (a.plural === true)) {
+			issues.push({
+				code: "param_mismatch",
+				detail: `param '{${e.name}}' is ${e.plural === true ? "plural" : "select"} in the signature but ${a.plural === true ? "plural" : "select"} in the template`,
+			});
+		}
+		if (e.cases !== undefined && a.cases !== undefined) {
+			const expectedCases = new Set(e.cases);
+			const actualCases = new Set(a.cases);
+			const missing = e.cases.filter((c) => !actualCases.has(c));
+			const extra = a.cases.filter((c) => !expectedCases.has(c));
+			if (missing.length > 0 || extra.length > 0) {
+				issues.push({
+					code: "param_mismatch",
+					detail: `param '{${e.name}}' case keys differ (missing: ${missing.join(",") || "none"}; unexpected: ${extra.join(",") || "none"})`,
+				});
+			}
+		}
+	}
 	return issues;
 };
 
@@ -504,11 +537,12 @@ const pseudoTokens = (tokens: readonly Token[], depth = 0): string =>
 				inner += t.cases
 					.map((c) => {
 						const bodyTokens = tokenize(c.body);
-						// Past the depth cap emit the body verbatim —
-						// accenting raw text would corrupt nested `{param}`
-						// names and break the template.
+						// Past the depth cap — or when the body can't even
+						// tokenize — emit it verbatim: accenting raw text
+						// would corrupt nested `{param}` names and break
+						// the template.
 						const body = !Array.isArray(bodyTokens)
-							? accentVowels(c.body)
+							? c.body
 							: depth < MAX_NESTING_DEPTH
 								? pseudoTokens(bodyTokens, depth + 1)
 								: c.body;

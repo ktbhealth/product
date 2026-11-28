@@ -462,6 +462,14 @@ describe("renderMessage", () => {
 		}
 	});
 
+	it("renders # inside a select nested under a plural", () => {
+		// ICU: `#` binds to the nearest enclosing plural's number — a
+		// select case inherits it rather than dropping the substitution.
+		const tpl = "{n, plural, other{{g, select, a{# item} other{# items}}}}";
+		expect(renderMessage(tpl, { n: 3, g: "x" }, "en")).toBe("3 items");
+		expect(renderMessage(tpl, { n: 1, g: "a" }, "en")).toBe("1 item");
+	});
+
 	it("keeps select on the exact-key path even for number values", () => {
 		// safeString(1) is "1" — no case key can be "1", so the other
 		// case wins and `#` stays literal (select has no pound).
@@ -604,6 +612,40 @@ describe("validateAgainstSignature", () => {
 		const issues = validateAgainstSignature("Hi {name", []);
 		expect(issues).toEqual([{ code: "bad_syntax", detail: expect.stringContaining("unclosed") }]);
 	});
+
+	it("flags plural/select kind and case-key drift", () => {
+		const kindIssues = validateAgainstSignature("{n, select, a{x} other{y}}", [
+			{ name: "n", plural: true, cases: ["one", "other"] },
+		]);
+		expect(
+			kindIssues.some((i) => i.code === "param_mismatch" && i.detail.includes("select")),
+		).toBe(true);
+		const caseIssues = validateAgainstSignature("{n, plural, one{x} other{y}}", [
+			{ name: "n", plural: true, cases: ["one", "few", "other"] },
+		]);
+		expect(caseIssues.some((i) => i.detail.includes("few"))).toBe(true);
+	});
+
+	it("flags case keys present in the template but absent from the signature", () => {
+		const issues = validateAgainstSignature("{n, plural, one{x} other{y} few{z}}", [
+			{ name: "n", plural: true, cases: ["one", "other"] },
+		]);
+		expect(issues.some((i) => i.code === "param_mismatch" && i.detail.includes("few"))).toBe(
+			true,
+		);
+	});
+
+	it("skips case-key comparison when either side declares no cases", () => {
+		// Template param carries no case list — nothing to compare.
+		const plain = validateAgainstSignature("Hi {name}", [
+			{ name: "name", cases: ["one", "other"] },
+		]);
+		expect(plain.every((i) => !i.detail.includes("case keys"))).toBe(true);
+		// Signature declares no cases — the plural kind drift still fires.
+		const sig = validateAgainstSignature("{n, plural, one{x} other{y}}", [{ name: "n" }]);
+		expect(sig.some((i) => i.code === "param_mismatch")).toBe(true);
+		expect(sig.every((i) => !i.detail.includes("case keys"))).toBe(true);
+	});
 });
 
 describe("pseudoLocalize", () => {
@@ -648,6 +690,13 @@ describe("pseudoLocalize", () => {
 		// braces still survive for downstream parsers to reject.
 		const bad = pseudoLocalize("{n, plural, one {{!!!}} other {y}}");
 		expect(bad).toContain("{!!!}");
+	});
+
+	it("keeps param names verbatim inside unparseable case bodies", () => {
+		// The body can't tokenize, so it is emitted raw — accenting it
+		// would corrupt `{count}` into `{cóúnt}` and break the template.
+		const out = pseudoLocalize("{n, plural, other{{bad syntax!! {count}}}}");
+		expect(out).toContain("{count}");
 	});
 
 	it("keeps brace spans verbatim when the whole template fails to parse", () => {

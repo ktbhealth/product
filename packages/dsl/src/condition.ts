@@ -137,6 +137,9 @@ const evalLeaf = (
 	cond: { readonly path: string; readonly op?: ConditionOp; readonly value?: unknown },
 	scope: unknown,
 ): boolean => {
+	// Malformed leaves (non-string/empty path) fail closed — getPath
+	// would throw on a non-string path.
+	if (typeof cond.path !== "string" || cond.path.length === 0) return false;
 	const actual = getPath(scope, cond.path);
 	const op = cond.op ?? "eq";
 	switch (op) {
@@ -155,6 +158,9 @@ const evalLeaf = (
 		case "lt":
 		case "lte":
 			return compareOrdered(op, actual, cond.value);
+		default:
+			// Unknown op on an unvalidated def — fail closed.
+			return false;
 	}
 };
 
@@ -165,8 +171,25 @@ const evalLeaf = (
  * skipped assertCondition, e.g. hand-built test fixtures). */
 export const evaluateCondition = (cond: Condition, scope: unknown, depth = 0): boolean => {
 	if (depth > MAX_CONDITION_DEPTH) return false;
-	if ("all" in cond) return cond.all.every((c) => evaluateCondition(c, scope, depth + 1));
-	if ("any" in cond) return cond.any.some((c) => evaluateCondition(c, scope, depth + 1));
-	if ("not" in cond) return !evaluateCondition(cond.not, scope, depth + 1);
+	// Fail closed on non-object payloads — `"all" in cond` would throw a
+	// TypeError on primitives/null (defect, not a typed failure).
+	if (!isRecord(cond)) return false;
+	if ("all" in cond) {
+		return (
+			Array.isArray(cond.all) &&
+			cond.all.every((c) => evaluateCondition(c, scope, depth + 1))
+		);
+	}
+	if ("any" in cond) {
+		return (
+			Array.isArray(cond.any) &&
+			cond.any.some((c) => evaluateCondition(c, scope, depth + 1))
+		);
+	}
+	if ("not" in cond) {
+		// A non-record `not` operand is malformed — evaluate false rather
+		// than recursing into a primitive (which `in` checks can't touch).
+		return isRecord(cond.not) && !evaluateCondition(cond.not as Condition, scope, depth + 1);
+	}
 	return evalLeaf(cond, scope);
 };

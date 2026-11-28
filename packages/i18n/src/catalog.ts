@@ -28,13 +28,22 @@ export const flattenCatalog = (
 	const out: Array<{ path: string; value: unknown }> = [];
 	for (const [key, value] of Object.entries(catalog)) {
 		const path = prefix === "" ? key : `${prefix}.${key}`;
-		if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-			out.push(...flattenCatalog(value as Record<string, unknown>, path));
+		// Recurse into PLAIN objects only — exotic objects (Date, Map,
+		// class instances) have no enumerable message entries and would
+		// silently vanish; they belong in the leaf branch like arrays.
+		if (isPlainObject(value)) {
+			out.push(...flattenCatalog(value, path));
 		} else {
 			out.push({ path, value });
 		}
 	}
 	return out;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+	const proto: unknown = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
 };
 
 /** Matches an MF1 param token (`{name}`, `{n, plural, …}`) — used to
