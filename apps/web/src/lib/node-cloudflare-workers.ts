@@ -77,6 +77,9 @@ const ENV_KEYS = [
 	"GOOGLE_CLIENT_ID",
 	"GOOGLE_CLIENT_SECRET",
 	"GOOGLE_OAUTH_REDIRECT_URI",
+	// Vault envelope KEK — without it Secrets fails closed and the
+	// calendar connect callback can't store OAuth tokens.
+	"VAULT_MASTER_KEY",
 	// Eval pipeline drivers (eval-adapter-local): runner dir + ASR
 	// service gate evalRunnerLocalDriver/evalArtifactsLocalDriver;
 	// EVAL_ACP_URL gates the generative script path; SYSTEMONE is the
