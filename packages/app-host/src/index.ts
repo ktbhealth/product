@@ -98,6 +98,7 @@ import { Captcha, nullCaptchaDriver } from "@ktb/captcha";
 import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
 import { EntityCipher } from "@ktb/crypto/cipher";
+import { SecretKeyring } from "@ktb/crypto/secret-keyring";
 import { passthroughCipherDriver } from "@ktb/crypto-stub";
 import { buildPermissions } from "@ktb/rbac";
 import { vaultKeyringEnvDriver } from "@ktb/vault-keyring";
@@ -578,6 +579,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
+	// Vault KEK keyring (P-098 C1): bound only when VAULT_MASTER_KEY is
+	// set — absent, Secrets ops fail closed via serviceOption.
+	const SecretKeyringLive = optionalLayerFor<SecretKeyring>(SecretKeyring.key, env);
 	// LLM script generation for persona cohorts — bound only when an
 	// ACP endpoint is configured; the service degrades to templates.
 	const LlmLive = optionalLayerFor<LlmPort>(LlmPort.key, env);
@@ -737,6 +741,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		EvalArtifactsLive,
 		JobsLive,
 		EntityCipherLive,
+		SecretKeyringLive,
 		LlmLive,
 		LlmFactoryLive,
 		DecisionsFactoryLive,
