@@ -124,6 +124,28 @@ describe("renderAnamnesisPdf", () => {
 		expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
 	});
 
+	it("handles a paragraph ending in whitespace after a full-width break", async () => {
+		const anamnesis = await new HeuristicExtractor().extract(SAMPLE_TRANSCRIPT);
+		// 276 x's hard-break into three full 92-char pieces (483.0pt of
+		// the 483.28pt column); the trailing space overflows the pending
+		// line, leaving the wrap buffer empty at end of paragraph — the
+		// wrap must not emit a phantom trailing blank line.
+		const section = {
+			content: `${"x".repeat(276)} \nsegunda linha`,
+			confidence: "alta" as const,
+			evidence: [] as string[],
+		};
+		const pdf = await renderAnamnesisPdf({
+			consultationId: 12,
+			createdAt: new Date("2026-11-06T14:30:00"),
+			patientName: null,
+			doctorName: null,
+			consentAt: null,
+			anamnesis: { ...anamnesis, conduta: section },
+		});
+		expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+	});
+
 	it("adds the patient record line under the patient name", async () => {
 		const anamnesis = await new HeuristicExtractor().extract(SAMPLE_TRANSCRIPT);
 		const base = {

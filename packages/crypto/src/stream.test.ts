@@ -90,6 +90,61 @@ describe("chunked AES-GCM blob (KTB1)", () => {
 		expect(single).toHaveLength(1);
 	});
 
+	it("declares and honors a custom chunk size larger than the default", async () => {
+		const key = await generateDek();
+		// Regression: encryptToBlob used to write DEFAULT_CHUNK_SIZE into
+		// the header regardless of `size`, so blobs chunked above 4MiB
+		// were undecryptable ("chunk exceeds declared chunk size").
+		const size = 5 * 1024 * 1024;
+		// getRandomValues is capped at 64KiB per call — fill with a
+		// deterministic pattern instead (round-trip doesn't need entropy).
+		const data = new Uint8Array(size + 123);
+		for (let i = 0; i < data.length; i++) data[i] = i & 0xff;
+		const blob = await encryptToBlob(key, data, size);
+		expect(new DataView(blob.buffer, blob.byteOffset).getUint32(4, true)).toBe(size);
+		expect(await decryptBlob(key, blob)).toEqual(data);
+	});
+
+	it("re-chunks oversized iterable input to the declared chunk size", async () => {
+		const key = await generateDek();
+		const data = crypto.getRandomValues(new Uint8Array(20));
+		async function* one() {
+			yield data; // single 20-byte chunk, declared size is 8
+		}
+		const blob = concat(await collect(encryptStream(key, one(), 8)));
+		expect(new DataView(blob.buffer, blob.byteOffset).getUint32(4, true)).toBe(8);
+		expect(await decryptBlob(key, blob)).toEqual(data);
+	});
+
+	it("coalesces undersized iterable input into full chunks", async () => {
+		const key = await generateDek();
+		const data = crypto.getRandomValues(new Uint8Array(20));
+		async function* small() {
+			for (let i = 0; i < data.length; i += 3) yield data.subarray(i, i + 3);
+		}
+		const blob = concat(await collect(encryptStream(key, small(), 8)));
+		expect(await decryptBlob(key, blob)).toEqual(data);
+	});
+
+	it("skips empty chunks in the input stream", async () => {
+		const key = await generateDek();
+		const data = crypto.getRandomValues(new Uint8Array(20));
+		async function* withEmpties() {
+			yield new Uint8Array(0);
+			yield data.subarray(0, 7);
+			yield new Uint8Array(0);
+			yield data.subarray(7);
+		}
+		const blob = concat(await collect(encryptStream(key, withEmpties(), 8)));
+		expect(await decryptBlob(key, blob)).toEqual(data);
+	});
+
+	it("rejects a non-positive chunk size", async () => {
+		const key = await generateDek();
+		async function* empty() {}
+		await expect(collect(encryptStream(key, empty(), 0))).rejects.toThrow(CryptoFormatError);
+	});
+
 	it("fails with a wrong key", async () => {
 		const a = await generateDek();
 		const b = await generateDek();

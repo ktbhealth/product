@@ -39,10 +39,26 @@ const wrap = (text: string, font: PdfFont, size: number, width: number): string[
 			const candidate = line === "" ? word : `${line} ${word}`;
 			if (font.widthOfTextAtSize(candidate, size) <= width) {
 				line = candidate;
-			} else {
-				if (line !== "") lines.push(line);
-				line = word;
+				continue;
 			}
+			if (line !== "") lines.push(line);
+			if (font.widthOfTextAtSize(word, size) <= width) {
+				line = word;
+				continue;
+			}
+			// A single "word" wider than the column (long URL, unbroken
+			// token) would overflow the right margin — drawText does not
+			// clip — so hard-break it into width-fitting pieces.
+			let chunk = "";
+			for (const ch of word) {
+				if (chunk !== "" && font.widthOfTextAtSize(chunk + ch, size) > width) {
+					lines.push(chunk);
+					chunk = ch;
+				} else {
+					chunk += ch;
+				}
+			}
+			line = chunk;
 		}
 		if (line !== "") lines.push(line);
 	}

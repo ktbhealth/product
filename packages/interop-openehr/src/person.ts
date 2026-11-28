@@ -251,10 +251,15 @@ export function relatedPersons(p: PatientRecord, uuid: () => string): RelatedPer
 			relationship: "Mother",
 			relationshipType: "mother",
 		});
-	if (p.emergencyContactName)
+	// Emit the emergency contact when ANY identifying field is present —
+	// the FHIR adapter exports a contact on name OR phone, so dropping
+	// phone-only/relationship-only contacts here would lose data the
+	// other adapter of the same port preserves. openEHR PERSON wants a
+	// name; fall back to the phone, then a generic label.
+	if (p.emergencyContactName || p.emergencyContactPhone || p.emergencyContactRelationship)
 		out.push({
 			uid: uuid(),
-			name: p.emergencyContactName,
+			name: p.emergencyContactName ?? p.emergencyContactPhone ?? "Emergency contact",
 			phone: p.emergencyContactPhone,
 			relationship: "Emergency contact",
 			relationshipType: p.emergencyContactRelationship ?? "emergency contact",

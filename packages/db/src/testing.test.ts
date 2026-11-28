@@ -63,6 +63,37 @@ describe("makeD1", () => {
 		expect(rows.results.map((r) => r.v)).toEqual(["a"]);
 	});
 
+	it("batch fallback reads rows from foreign statements without a reader flag", async () => {
+		const d1 = makeD1();
+		// D1-shaped foreign statement: no `reader` property; run() drops
+		// SELECT results, all() returns them.
+		const foreignReader = {
+			run: async () => ({ success: true, results: [], meta: {} }),
+			all: async () => ({ success: true, results: [{ v: "row" }], meta: {} }),
+		} as unknown as SqlStatement;
+		const [result] = await d1.batch([foreignReader]);
+		expect(result?.results).toEqual([{ v: "row" }]);
+	});
+
+	it("batch fallback runs flag-less statements whose all() rejects", async () => {
+		const d1 = makeD1("CREATE TABLE t (v TEXT)");
+		// Foreign writer with no `reader` flag whose all() cannot execute
+		// it — the fallback retries through run().
+		const foreignWriter = {
+			run: async () => {
+				await d1.prepare("INSERT INTO t (v) VALUES (?)").bind("w").run();
+				return { success: true, results: [], meta: {} };
+			},
+			all: async () => {
+				throw new Error("all() cannot run writers");
+			},
+		} as unknown as SqlStatement;
+		const [result] = await d1.batch([foreignWriter]);
+		expect(result?.success).toBe(true);
+		const rows = await d1.prepare("SELECT v FROM t").all<{ v: string }>();
+		expect(rows.results.map((r) => r.v)).toEqual(["w"]);
+	});
+
 	it("batch rolls back atomically when a statement fails", async () => {
 		const d1 = makeD1("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT NOT NULL)");
 		await expect(

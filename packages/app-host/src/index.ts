@@ -296,13 +296,27 @@ const accessSpanAttributes = (
  * Captcha to null and credential endpoints (/api/auth/*) would skip
  * verification entirely — fail-open. CAPTCHA_STUB is dev-only (never
  * bound by the Alchemy stack); TURNSTILE_SECRET_KEY comes from the cuora
- * vault. Dev/test keep the null driver.
+ * vault. Dev/test keep the null driver. A CAPTCHA_STUB flag that does
+ * reach a prod env fails the boot — the stub verifier accepts
+ * token-less requests by design, so binding it would silently disable
+ * the bot check.
  */
 export const assertCaptchaConfigured = (
 	env: Pick<AppEnv, "CAPTCHA_STUB" | "TURNSTILE_SECRET_KEY">,
 	production: boolean,
 ): void => {
-	if (production && !env.CAPTCHA_STUB && !env.TURNSTILE_SECRET_KEY) {
+	if (!production) return;
+	// CAPTCHA_STUB accepts every token-less request by design and its
+	// driver is ordered before Turnstile — if the flag leaks into a prod
+	// env the bot check is silently bypassed even when
+	// TURNSTILE_SECRET_KEY is also bound. Fail the boot instead.
+	if (env.CAPTCHA_STUB) {
+		throw new Error(
+			"captcha stub bound for production: CAPTCHA_STUB is dev-only and " +
+				"defeats the bot check — unbind it (TURNSTILE_SECRET_KEY is the prod driver)",
+		);
+	}
+	if (!env.TURNSTILE_SECRET_KEY) {
 		throw new Error(
 			"captcha not configured for production: bind TURNSTILE_SECRET_KEY " +
 				"(CAPTCHA_STUB is dev-only and must never reach a prod deploy)",

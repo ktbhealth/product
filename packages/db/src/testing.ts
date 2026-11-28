@@ -67,7 +67,11 @@ export function makeD1(sql?: string): SqlDatabase {
 				return tx(bound);
 			}
 			// Foreign statements (another SqlDatabase impl): sequential
-			// fallback — reader statements via all(), writers via run().
+			// fallback. `reader` is not part of the SqlStatement contract —
+			// only `false` is a definite writer signal. A flag-less reader
+			// sent through run() would silently return empty results, so
+			// prefer all() and fall back to run() only when all() rejects
+			// (impls whose all() cannot execute writers).
 			return Promise.all(
 				stmts.map(async (s) => {
 					const p = s as {
@@ -75,7 +79,9 @@ export function makeD1(sql?: string): SqlDatabase {
 						all: () => Promise<SqlResult<T>>;
 						run: () => Promise<SqlResult<T>>;
 					};
-					return p.reader ? await p.all() : await p.run();
+					if (p.reader === false) return p.run();
+					if (p.reader === true) return p.all();
+					return p.all().catch(() => p.run());
 				}),
 			);
 		},

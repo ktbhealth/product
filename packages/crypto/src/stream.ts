@@ -33,18 +33,54 @@ const readU32 = (view: DataView, offset: number): number => view.getUint32(offse
 export async function* encryptStream(
 	key: CryptoKey,
 	chunks: AsyncIterable<Uint8Array>,
+	chunkSize: number = DEFAULT_CHUNK_SIZE,
 ): AsyncGenerator<Uint8Array> {
+	if (!Number.isInteger(chunkSize) || chunkSize <= 0)
+		throw new CryptoFormatError(`invalid chunk size: ${chunkSize}`);
 	yield MAGIC;
-	yield u32(DEFAULT_CHUNK_SIZE);
-	for await (const chunk of chunks) {
+	yield u32(chunkSize);
+	// Incoming iterable chunks are re-chunked to exactly `chunkSize`
+	// plaintext bytes each — the header declares chunkSize and decrypt
+	// rejects ctLen > chunkSize + TAG_BYTES, so the writer must never
+	// emit a plaintext chunk larger than declared (an oversized input
+	// chunk is split; undersized ones are coalesced).
+	let buffered: Uint8Array[] = [];
+	let bufferedLen = 0;
+	const take = (n: number): Uint8Array => {
+		const out = new Uint8Array(n);
+		let o = 0;
+		while (o < n) {
+			const head = buffered[0]!;
+			const need = n - o;
+			if (head.length <= need) {
+				out.set(head, o);
+				o += head.length;
+				buffered.shift();
+			} else {
+				out.set(head.subarray(0, need), o);
+				buffered[0] = head.subarray(need);
+				o = n;
+			}
+		}
+		bufferedLen -= n;
+		return out;
+	};
+	const encryptChunk = async (plain: Uint8Array): Promise<Uint8Array[]> => {
 		const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
 		const ct = new Uint8Array(
-			await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, chunk as BufferSource),
+			await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain as BufferSource),
 		);
-		yield u32(ct.length);
-		yield iv;
-		yield ct;
+		return [u32(ct.length), iv, ct];
+	};
+	for await (const chunk of chunks) {
+		if (chunk.length === 0) continue;
+		buffered.push(chunk);
+		bufferedLen += chunk.length;
+		while (bufferedLen >= chunkSize) {
+			for (const part of await encryptChunk(take(chunkSize))) yield part;
+		}
 	}
+	if (bufferedLen > 0) for (const part of await encryptChunk(take(bufferedLen))) yield part;
 	yield u32(0);
 }
 
@@ -57,12 +93,16 @@ export async function* chunkBytes(
 	for (let i = 0; i < data.length; i += size) yield data.subarray(i, i + size);
 }
 
-/** Join an encrypted stream into a single blob (e.g. one R2 object). */
+/** Join an encrypted stream into a single blob (e.g. one R2 object).
+ * `size` is the plaintext chunk size — it is written into the KTB1
+ * header, so decrypt's `ctLen <= chunkSize + TAG_BYTES` bound stays
+ * honest for any value, not just the 4MiB default. */
 export const encryptToBlob = async (
 	key: CryptoKey,
 	data: Uint8Array,
 	size?: number,
-): Promise<Uint8Array> => concat(await collect(encryptStream(key, chunkBytes(data, size))));
+): Promise<Uint8Array> =>
+	concat(await collect(encryptStream(key, chunkBytes(data, size), size ?? DEFAULT_CHUNK_SIZE)));
 
 /** Decrypt a single framed blob back to bytes. */
 export const decryptBlob = async (key: CryptoKey, blob: Uint8Array): Promise<Uint8Array> => {

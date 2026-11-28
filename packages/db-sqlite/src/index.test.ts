@@ -115,7 +115,10 @@ describe("makeSqliteDatabase", () => {
 		await db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)");
 
 		// Statements minted by another SqlDatabase impl carry no bound
-		// params — batch() runs them via their own all()/run().
+		// params — batch() runs them via their own all()/run(). Impls
+		// that expose the structural `reader` flag route exactly;
+		// flag-less statements are tried as readers first (all()) so a
+		// SELECT never silently returns empty results.
 		const foreign = [
 			{
 				reader: true,
@@ -123,7 +126,25 @@ describe("makeSqliteDatabase", () => {
 				run: async () => ({ success: true, results: [], meta: {} }),
 			},
 			{
+				reader: false,
 				all: async () => ({ success: true, results: [], meta: {} }),
+				run: async () => ({
+					success: true,
+					results: [],
+					meta: { changes: 1 },
+				}),
+			},
+			{
+				// No reader flag at all — ambiguous; all() wins.
+				all: async () => ({ success: true, results: [{ n: 2 }], meta: {} }),
+				run: async () => ({ success: true, results: [], meta: {} }),
+			},
+			{
+				// Flag-less writer whose all() cannot execute it — the
+				// fallback retries through run().
+				all: async () => {
+					throw new Error("all() cannot run writers");
+				},
 				run: async () => ({
 					success: true,
 					results: [],
@@ -132,9 +153,19 @@ describe("makeSqliteDatabase", () => {
 			},
 		] as never;
 		const results = await db.batch(foreign);
-		expect(results).toHaveLength(2);
+		expect(results).toHaveLength(4);
 		expect(results[0]?.results).toEqual([{ n: 1 }]);
 		expect(results[1]?.meta.changes).toBe(1);
+		expect(results[2]?.results).toEqual([{ n: 2 }]);
+		expect(results[3]?.meta.changes).toBe(1);
+	});
+
+	it("exposes the structural reader flag on prepared statements", async () => {
+		db = makeSqliteDatabase(":memory:");
+		await db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)");
+		const readerOf = (q: string) => (db!.prepare(q) as unknown as { reader: boolean }).reader;
+		expect(readerOf("SELECT 1")).toBe(true);
+		expect(readerOf("INSERT INTO t DEFAULT VALUES")).toBe(false);
 	});
 
 	it("batch executes atomically inside a transaction", async () => {

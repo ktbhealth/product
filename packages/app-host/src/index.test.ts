@@ -284,9 +284,18 @@ describe("createApp", () => {
 			expect(() => assertCaptchaConfigured({}, true)).toThrow(/captcha not configured/);
 		});
 
-		it("allows production with Turnstile or the dev stub", () => {
+		it("allows production with Turnstile configured", () => {
 			expect(() => assertCaptchaConfigured({ TURNSTILE_SECRET_KEY: "k" }, true)).not.toThrow();
-			expect(() => assertCaptchaConfigured({ CAPTCHA_STUB: "1" }, true)).not.toThrow();
+		});
+
+		it("rejects production when the dev stub flag leaks in", () => {
+			expect(() => assertCaptchaConfigured({ CAPTCHA_STUB: "1" }, true)).toThrow(
+				/captcha stub bound for production/,
+			);
+			// Even alongside Turnstile: the stub driver wins driver ordering.
+			expect(() =>
+				assertCaptchaConfigured({ CAPTCHA_STUB: "1", TURNSTILE_SECRET_KEY: "k" }, true),
+			).toThrow(/captcha stub bound for production/);
 		});
 
 		it("allows dev/test without any captcha env", () => {

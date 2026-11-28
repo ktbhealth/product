@@ -212,6 +212,23 @@ describe("demographic PERSON", () => {
 		);
 	});
 
+	it("emits emergency contacts identified by phone or relationship alone", () => {
+		const partiesOf = (patient: Parameters<typeof makePatientRecord>[0]) =>
+			versioned(
+				extractOf(makeExport({ patient: makePatientRecord(patient) })),
+				"X_VERSIONED_PARTY",
+			).map(data);
+		// Phone-only contact: the PERSON name falls back to the phone.
+		const phoneParties = partiesOf({ emergencyContactPhone: "81 3333-4444" });
+		expect(phoneParties.at(-1)!.name.value).toBe("81 3333-4444");
+		expect(phoneParties.at(-1)!.contacts[0].addresses[0].name.value).toBe("Telephone");
+		// Relationship-only contact: generic name, recorded relationship type.
+		const relParties = partiesOf({ emergencyContactRelationship: "filho" });
+		expect(relParties.at(-1)!.name.value).toBe("Emergency contact");
+		const rel = relParties[0]!.relationships.at(-1)!;
+		expect(element(rel.details, "at0040")!.value.value).toBe("filho");
+	});
+
 	it("maps gender edge cases and skips unknown codes", () => {
 		const genderOf = (gender: string) =>
 			element(
