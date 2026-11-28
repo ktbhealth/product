@@ -26,8 +26,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SUMMARY_PATH = join(ROOT, "coverage", "coverage-summary.json");
 const CONFIG_PATH = join(ROOT, "vitest.config.ts");
 const OUT_DIR = join(ROOT, "coverage-report");

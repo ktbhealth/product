@@ -191,6 +191,19 @@ describe("ci-hook worker", () => {
 		);
 	});
 
+	it("still 200s when the ntfy notify fetch throws", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new Error("ntfy unreachable");
+			}),
+		);
+		const env = makeEnv({ NTFY_URL: "https://ntfy.example", NTFY_TOPIC: "ci" });
+		const res = await post(workflowRun(), "workflow_run", undefined, env);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true });
+	});
+
 	it("falls back for missing payload fields", async () => {
 		const fetchMock = vi.fn(async () => new Response("ok"));
 		vi.stubGlobal("fetch", fetchMock);
@@ -340,6 +353,31 @@ describe("token broker (POST /token)", () => {
 			"Bearer mint-secret",
 		);
 		expect(res.status).toBe(200);
+	});
+
+	it("400s a present-but-malformed repositories field, tolerates non-object JSON", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ token: "t", expires_at: "e" }));
+		vi.stubGlobal("fetch", fetchMock);
+		const env = tokenEnv({
+			GITHUB_APP_PRIVATE_KEY: appKeyPem,
+			TOKEN_ALLOWED_REPOS: "docs",
+		});
+
+		for (const body of [
+			JSON.stringify({ repositories: "docs" }),
+			JSON.stringify({ repositories: ["docs", 42] }),
+		]) {
+			const res = await postToken(env, body, "Bearer mint-secret");
+			expect(res.status).toBe(400);
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+
+		// Literal `null` / scalar bodies carry no repositories field —
+		// installation default scope, same as an empty body.
+		for (const body of ["null", "5", '"docs"']) {
+			const res = await postToken(env, body, "Bearer mint-secret");
+			expect(res.status).toBe(200);
+		}
 	});
 
 	it("502s with the trimmed detail when GitHub rejects the mint", async () => {

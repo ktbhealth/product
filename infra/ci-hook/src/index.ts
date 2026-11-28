@@ -67,11 +67,18 @@ async function notifyNtfy(
 	};
 	if (env.NTFY_AUTH) headers.Authorization = env.NTFY_AUTH;
 	else if (env.NTFY_AUTH_TOKEN) headers.Authorization = `Bearer ${env.NTFY_AUTH_TOKEN}`;
-	await fetch(`${env.NTFY_URL}/${env.NTFY_TOPIC}`, {
-		method: "POST",
-		headers,
-		body,
-	});
+	try {
+		await fetch(`${env.NTFY_URL}/${env.NTFY_TOPIC}`, {
+			method: "POST",
+			headers,
+			body,
+		});
+	} catch (err) {
+		// ntfy is best-effort: a transient outage must not turn a
+		// correctly-signed webhook into a failed delivery (GitHub would
+		// record a 4xx/5xx and retry, eventually disabling the hook).
+		console.error("ntfy notify failed:", err);
+	}
 }
 
 // --- POST /token: mint GitHub App installation tokens -----------------
@@ -126,6 +133,9 @@ async function appJwt(env: Env): Promise<string> {
 	return `${unsigned}.${base64url(sig)}`;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
 function secretsEqual(a: string, b: string): boolean {
 	if (a.length !== b.length) return false;
 	let diff = 0;
@@ -145,8 +155,20 @@ async function handleTokenMint(request: Request, env: Env): Promise<Response> {
 
 	let repositories: string[] | undefined;
 	try {
-		const body = (await request.json()) as { repositories?: string[] };
-		repositories = body.repositories;
+		const body: unknown = await request.json();
+		if (isRecord(body) && body.repositories !== undefined && body.repositories !== null) {
+			const repos: unknown = body.repositories;
+			if (!Array.isArray(repos) || repos.some((r) => typeof r !== "string")) {
+				return Response.json(
+					{ error: "repositories must be an array of strings" },
+					{ status: 400 },
+				);
+			}
+			repositories = repos;
+		}
+		// Non-object JSON (null, scalar) carries no repositories field —
+		// falls through to the installation default scope, same as an
+		// empty body.
 	} catch {
 		// empty body is fine — installation default scope
 	}

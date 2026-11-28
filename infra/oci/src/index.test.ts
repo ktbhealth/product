@@ -95,6 +95,15 @@ describe("specToDeploySpec", () => {
 		expect(() => specToDeploySpec({ ...baseSpec, memoryInGbs: 25 })).toThrow(/at most 24 GB/);
 	});
 
+	it("rejects non-positive or non-finite A1.Flex ocpus/memoryInGbs", () => {
+		for (const ocpus of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(() => specToDeploySpec({ ...baseSpec, ocpus })).toThrow(/positive number/);
+		}
+		for (const memoryInGbs of [0, -6, Number.NaN]) {
+			expect(() => specToDeploySpec({ ...baseSpec, memoryInGbs })).toThrow(/positive number/);
+		}
+	});
+
 	it("does not apply A1 limits to E2.1.Micro", () => {
 		const spec = specToDeploySpec({
 			...baseSpec,
