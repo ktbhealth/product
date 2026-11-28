@@ -38,9 +38,10 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WORKER_DIR = join(ROOT, "apps", "web", "dist", "server");
 const OUT_DIR = join(ROOT, "bundle-size");
 

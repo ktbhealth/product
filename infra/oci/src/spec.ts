@@ -65,6 +65,11 @@ export function specToDeploySpec(spec: HostSpec): DeploySpec {
 		if (shape === "VM.Standard.A1.Flex") {
 			const ocpus = spec.ocpus ?? 1;
 			const memory = spec.memoryInGbs ?? 6;
+			invariant(Number.isFinite(ocpus) && ocpus > 0, "A1.Flex ocpus must be a positive number");
+			invariant(
+				Number.isFinite(memory) && memory > 0,
+				"A1.Flex memoryInGbs must be a positive number",
+			);
 			invariant(ocpus <= A1_MAX_OCPUS, `A1.Flex allows at most ${A1_MAX_OCPUS} OCPUs`);
 			invariant(memory <= A1_MAX_MEMORY_GBS, `A1.Flex allows at most ${A1_MAX_MEMORY_GBS} GB`);
 		}
