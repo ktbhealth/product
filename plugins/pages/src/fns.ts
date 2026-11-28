@@ -7,7 +7,7 @@ import { asAdmin, orHandled } from "@ktb/admin-store";
 import { pluginHandler, run, sessionHandler } from "@ktb/server-fns";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
-import { Pages, type PageRow, type PageInput } from "./service.ts";
+import { Pages, type PageRow, type PageInput, type PageUpdate } from "./service.ts";
 
 // Pages server functions (T-083): admin CRUD is PlatformAdmin-
 // gated (the /platform layout already 404s non-admins; the service
@@ -56,7 +56,14 @@ const PageFields = {
 	sortOrder: Schema.optionalKey(Schema.Number),
 };
 const PageCreateInput = Schema.Struct(PageFields);
-const PageUpdateInput = Schema.Struct({ ...PageFields, id: Schema.Number });
+// Update is a true partial update: every field is optional — absent
+// fields keep their stored value (explicit null still clears id refs).
+const PageUpdateInput = Schema.Struct({
+	...PageFields,
+	path: Schema.optionalKey(Schema.String),
+	title: Schema.optionalKey(Schema.String),
+	id: Schema.Number,
+});
 const PageIdInput = Schema.Struct({ id: Schema.Number });
 
 const decodeCreate = Schema.decodeUnknownSync(PageCreateInput);
@@ -104,7 +111,7 @@ export const updatePageFn = createServerFn({ method: "POST" })
 					Effect.gen(function* () {
 						const pages = yield* Pages;
 						const { id, ...input } = data;
-						return toWire(yield* pages.adminUpdate(id, input as PageInput));
+						return toWire(yield* pages.adminUpdate(id, input as PageUpdate));
 					}),
 				).catch(orHandled(HANDLED_TAGS, null));
 			}),

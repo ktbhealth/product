@@ -15,7 +15,7 @@ import {
 } from "@ktb/rich-text/delete-hooks";
 import { Schemas } from "@ktb/schemas/service";
 
-import { page, type PageRow } from "./schema.ts";
+import { page, type PageRow, type PageRowInsert } from "./schema.ts";
 
 export type { PageRow } from "./schema.ts";
 
@@ -77,6 +77,20 @@ export type PageError =
 export interface PageInput {
 	readonly path: string;
 	readonly title: string;
+	readonly richTextId?: number | null;
+	readonly searchSchemaId?: number | null;
+	readonly layoutId?: number | null;
+	readonly published?: boolean;
+	readonly showInNav?: boolean;
+	readonly sortOrder?: number;
+}
+
+/** Admin-facing update payload: every field optional — absent fields
+ * keep their stored value (true partial update), explicit `null` clears
+ * the id references, `false`/`0` are real writes. */
+export interface PageUpdate {
+	readonly path?: string;
+	readonly title?: string;
 	readonly richTextId?: number | null;
 	readonly searchSchemaId?: number | null;
 	readonly layoutId?: number | null;
@@ -181,8 +195,11 @@ export class Pages extends Context.Service<
 		) => Effect.Effect<PageRow, PageError>;
 		/** Insert a page; `DuplicatePagePath` when the path is taken. */
 		readonly adminCreate: (input: PageInput) => Effect.Effect<PageRow | null, PageError>;
-		/** Update a page by id; `PageNotFound` when missing. */
-		readonly adminUpdate: (id: number, input: PageInput) => Effect.Effect<PageRow, PageError>;
+		/** Update a page by id — partial semantics: only fields present in
+		 * `input` are written, so a caller sending a subset (e.g. a rename)
+		 * cannot silently unpublish the page or unbind its content.
+		 * `PageNotFound` when missing. */
+		readonly adminUpdate: (id: number, input: PageUpdate) => Effect.Effect<PageRow, PageError>;
 		/** Delete a page by id; `PageNotFound` when missing. */
 		readonly adminRemove: (id: number) => Effect.Effect<void, PageError>;
 		/** The published page at `path`, or null — public read used by
@@ -325,37 +342,39 @@ export const PagesLive = Layer.effect(
 				);
 				return rows[0] ?? null;
 			}),
-			adminUpdate: Effect.fn("Pages.adminUpdate")(function* (id: number, input: PageInput) {
+			adminUpdate: Effect.fn("Pages.adminUpdate")(function* (id: number, input: PageUpdate) {
 				yield* requireAdmin;
-				const path = normalizePagePath(input.path);
-				if (path === null) return yield* new InvalidPagePath({ path: input.path });
-				const clash = yield* Effect.promise(() =>
-					db
-						.select({ id: page.id })
-						.from(page)
-						.where(and(byPath(path), ne(page.id, id)))
-						.limit(1),
-				);
-				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
-				const richTextId = yield* normalizeRichTextId(input.richTextId);
-				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
-				const layoutId = yield* normalizeLayoutId(input.layoutId);
+				// Partial update: only columns present in `input` are set —
+				// `undefined` means "keep", `null` on an id ref means "clear".
+				const set: Partial<PageRowInsert> = { updatedAt: new Date() };
+				if (input.path !== undefined) {
+					const path = normalizePagePath(input.path);
+					if (path === null) return yield* new InvalidPagePath({ path: input.path });
+					const clash = yield* Effect.promise(() =>
+						db
+							.select({ id: page.id })
+							.from(page)
+							.where(and(byPath(path), ne(page.id, id)))
+							.limit(1),
+					);
+					if (clash.length > 0) return yield* new DuplicatePagePath({ path });
+					set.path = path;
+				}
+				if (input.title !== undefined) set.title = input.title;
+				if (input.richTextId !== undefined) {
+					set.richTextId = yield* normalizeOptionalId(input.richTextId, "richTextId");
+				}
+				if (input.searchSchemaId !== undefined) {
+					set.searchSchemaId = yield* normalizeOptionalId(input.searchSchemaId, "searchSchemaId");
+				}
+				if (input.layoutId !== undefined) {
+					set.layoutId = yield* normalizeOptionalId(input.layoutId, "layoutId");
+				}
+				if (input.published !== undefined) set.published = input.published;
+				if (input.showInNav !== undefined) set.showInNav = input.showInNav;
+				if (input.sortOrder !== undefined) set.sortOrder = input.sortOrder;
 				const rows = yield* Effect.promise(() =>
-					db
-						.update(page)
-						.set({
-							path,
-							title: input.title,
-							richTextId,
-							searchSchemaId,
-							layoutId,
-							published: input.published ?? false,
-							showInNav: input.showInNav ?? false,
-							sortOrder: input.sortOrder ?? 0,
-							updatedAt: new Date(),
-						})
-						.where(byId(id))
-						.returning(),
+					db.update(page).set(set).where(byId(id)).returning(),
 				);
 				const row = rows[0];
 				if (row === undefined) return yield* new PageNotFound({ id });

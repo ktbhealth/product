@@ -250,6 +250,46 @@ describe("PagesLive", () => {
 		expect(updated.sortOrder).toBe(5);
 	});
 
+	it("adminUpdate is a partial update — omitted fields keep stored values", async () => {
+		const created = await admin((p) =>
+			p.adminCreate(
+				input({
+					path: "/partial",
+					title: "Partial",
+					richTextId: 7,
+					searchSchemaId: 11,
+					layoutId: 13,
+					published: true,
+					showInNav: true,
+					sortOrder: 5,
+				}),
+			),
+		);
+		// A rename-only update must not unpublish, unnav or unbind.
+		const renamed = await admin((p) => p.adminUpdate(created!.id, { path: "/partial-renamed" }));
+		expect(renamed.path).toBe("/partial-renamed");
+		expect(renamed.title).toBe("Partial");
+		expect(renamed.published).toBe(true);
+		expect(renamed.showInNav).toBe(true);
+		expect(renamed.sortOrder).toBe(5);
+		expect(renamed.richTextId).toBe(7);
+		expect(renamed.searchSchemaId).toBe(11);
+		expect(renamed.layoutId).toBe(13);
+		// Explicit null clears id refs; explicit false/0 are real writes.
+		const cleared = await admin((p) =>
+			p.adminUpdate(created!.id, {
+				richTextId: null,
+				published: false,
+				sortOrder: 0,
+			}),
+		);
+		expect(cleared.richTextId).toBeNull();
+		expect(cleared.published).toBe(false);
+		expect(cleared.sortOrder).toBe(0);
+		expect(cleared.layoutId).toBe(13);
+		expect(cleared.searchSchemaId).toBe(11);
+	});
+
 	it("adminUpdate rejects invalid paths, clashes and missing rows", async () => {
 		const target = await admin((p) => p.adminCreate(input({ path: "/upd-target" })));
 		await expect(
