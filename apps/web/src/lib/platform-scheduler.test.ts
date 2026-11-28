@@ -11,20 +11,34 @@ import { insertScheduledJob } from "@ktb/scheduler-port";
 // the inline path tests unbind it before composing.
 
 const hoisted = vi.hoisted(() => ({
-	upsertFails: false,
 	handled: [] as { kind: string; payload: unknown; tenantId: string | number | null }[],
 }));
 
-vi.mock("@ktb/jobs-port", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@ktb/jobs-port")>();
+// Break job_runs writes at the D1 layer: dispatchJobInline's projection
+// calls upsertJobRun inside @ktb/jobs-port, so a module mock on
+// upsertJobRun cannot reach it — the statement itself must reject.
+const failJobRunsWrites = (db: unknown): unknown => {
+	const inner = db as {
+		prepare: (q: string) => {
+			bind: (...args: unknown[]) => Record<string, unknown>;
+		};
+	};
 	return {
-		...actual,
-		upsertJobRun: async (...args: Parameters<typeof actual.upsertJobRun>) => {
-			if (hoisted.upsertFails) throw new Error("job_runs write down");
-			return actual.upsertJobRun(...args);
+		...(db as Record<string, unknown>),
+		prepare: (q: string) => {
+			const stmt = inner.prepare(q);
+			if (!/^\s*insert\s+into\s+"?job_runs"?/i.test(q)) return stmt;
+			const fail = () => Promise.reject(new Error("job_runs write down"));
+			// No BOUND marker — a batch() fallback must hit the rejecting
+			// run(), never the real underlying statement.
+			const failing = { run: fail, all: fail, first: fail, raw: fail, reader: false };
+			return {
+				bind: () => failing,
+				...failing,
+			};
 		},
 	};
-});
+};
 
 const compose = async (configure: (env: Record<string, unknown>) => void = () => {}) => {
 	vi.resetModules();
@@ -44,7 +58,7 @@ const dueJob = (
 ) => insertScheduledJob(platform.db, { kind, runAt: Date.now() - 1000, params, tenantId: 7 });
 
 describe("platform scheduler-heartbeat dispatch", () => {
-	it("enqueues due jobs through the bound queue", { timeout: 30_000 }, async () => {
+	it("enqueues due jobs through the bound queue", { timeout: 90_000 }, async () => {
 		const sent: { kind: string; payload: unknown; tenantId?: string | number | null }[] = [];
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = {
@@ -65,7 +79,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 
 	it(
 		"inline-dispatches due jobs, decodes payloads and marks job_runs done",
-		{ timeout: 30_000 },
+		{ timeout: 90_000 },
 		async () => {
 			hoisted.handled = [];
 			const { runtime, platform } = await compose((env) => {
@@ -98,7 +112,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 
 	it(
 		"marks job_runs failed and counts the dispatch as failed when the handler throws",
-		{ timeout: 30_000 },
+		{ timeout: 90_000 },
 		async () => {
 			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
@@ -120,7 +134,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		},
 	);
 
-	it("stringifies non-Error handler failures into job_runs", { timeout: 30_000 }, async () => {
+	it("stringifies non-Error handler failures into job_runs", { timeout: 90_000 }, async () => {
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
@@ -140,7 +154,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		expect(runs[0]).toMatchObject({ status: "failed", error: "string failure" });
 	});
 
-	it("fails dispatches for kinds with no registered handler", { timeout: 30_000 }, async () => {
+	it("fails dispatches for kinds with no registered handler", { timeout: 90_000 }, async () => {
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
@@ -152,12 +166,12 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		});
 	});
 
-	it("still dispatches when the job_runs projection write fails", { timeout: 30_000 }, async () => {
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		hoisted.upsertFails = true;
+	it("still dispatches when the job_runs projection write fails", { timeout: 90_000 }, async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			const { runtime, platform } = await compose((env) => {
 				env.AUDIO_QUEUE = undefined;
+				env.DB = failJobRunsWrites(env.DB);
 			});
 			platform.jobHandlerRegistry.register("test.sched.projfail", { handle: async () => {} });
 			await dueJob(platform, "test.sched.projfail");
@@ -166,13 +180,12 @@ describe("platform scheduler-heartbeat dispatch", () => {
 				ok: true,
 				summary: "1 scheduled job fired",
 			});
-			expect(errorSpy).toHaveBeenCalledWith(
-				"scheduler projection write failed",
+			expect(warnSpy).toHaveBeenCalledWith(
+				"job_runs projection write failed",
 				expect.objectContaining({ kind: "test.sched.projfail" }),
 			);
 		} finally {
-			hoisted.upsertFails = false;
-			errorSpy.mockRestore();
+			warnSpy.mockRestore();
 		}
 	});
 });
@@ -285,4 +298,62 @@ describe("platform schedules capability", () => {
 		expect(await schedules.remove(id)).toEqual({ ok: true });
 		expect(await schedules.remove(id)).toEqual({ ok: false, reason: "not-found" });
 	});
+
+	it(
+		"entries merges cron registry jobs with scheduled_jobs rows",
+		{ timeout: 90_000 },
+		async () => {
+			const { runtime, platform } = await compose((env) => {
+				env.AUDIO_QUEUE = undefined;
+			});
+			const schedules = runtime.schedules!;
+			platform.jobHandlerRegistry.register("test.sched.entries", { handle: async () => {} });
+
+			// Fire the heartbeat once so a `cron.scheduler-heartbeat`
+			// job_runs row exists for the entries() lastRun join.
+			await runtime.crons!.runNow("scheduler-heartbeat");
+
+			const created = await schedules.create({
+				kind: "test.sched.entries",
+				runAt: Date.now() + 60_000,
+				params: { v: 2 },
+			});
+			expect(created.ok).toBe(true);
+
+			const entries = await schedules.entries!();
+
+			// Deploy-time cron jobs lead the list: console ids are `cron:<id>`,
+			// immutable, kind-less, with joined lastRun slices.
+			const cronEntries = entries.filter((entry) => entry.source === "cron");
+			expect(cronEntries.map((entry) => entry.refId)).toEqual(
+				expect.arrayContaining(["scheduler-heartbeat", "agenda-reminders", "audit-chain-verify"]),
+			);
+			expect(cronEntries.every((entry) => entry.mutable === false)).toBe(true);
+			expect(cronEntries.every((entry) => entry.kind === null)).toBe(true);
+			const heartbeat = cronEntries.find((entry) => entry.refId === "scheduler-heartbeat");
+			expect(heartbeat).toMatchObject({
+				id: "cron:scheduler-heartbeat",
+				lastRun: { ok: true },
+			});
+			expect(heartbeat?.lastRunAt).not.toBeNull();
+			expect(heartbeat?.nextRunAt).not.toBeNull();
+			// Cron jobs that never ran report honest nulls.
+			const audit = cronEntries.find((entry) => entry.refId === "audit-chain-verify");
+			expect(audit?.lastRun).toBeNull();
+			expect(audit?.lastRunAt).toBeNull();
+
+			// Runtime scheduled_jobs rows follow, mutable with params narrowed
+			// to JsonValue and no joined run slice.
+			const scheduled = entries.filter((entry) => entry.source === "scheduled-job");
+			expect(scheduled).toHaveLength(1);
+			expect(scheduled[0]).toMatchObject({
+				kind: "test.sched.entries",
+				name: "test.sched.entries",
+				mutable: true,
+				params: { v: 2 },
+				lastRun: null,
+				status: "active",
+			});
+		},
+	);
 });

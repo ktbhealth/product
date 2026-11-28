@@ -284,6 +284,153 @@ export const deleteScheduledJob = async (db: DbClient, id: string): Promise<bool
 	return rows.length > 0;
 };
 
+// ---------------------------------------------------------------------------
+// Unified "schedules" console read model.
+// ---------------------------------------------------------------------------
+
+/**
+ * The two scheduling sources the console merges into one list:
+ * - `"cron"` — deploy-time cron registry jobs (cron-port descriptors
+ *   fired by the worker's `scheduled` handler; structural input so this
+ *   package stays free of a cron-port dependency).
+ * - `"scheduled-job"` — runtime `scheduled_jobs` rows (this table),
+ *   fired by the heartbeat sweep / SchedulerDo alarm.
+ */
+export type ScheduleEntrySource = "cron" | "scheduled-job";
+
+/** Minimal cron-registry job shape the merge needs — @ktb/cron-port's
+ * CronJobInfo satisfies it structurally. */
+export interface CronScheduleSource {
+	readonly id: string;
+	readonly schedules: readonly string[];
+	readonly description?: string;
+}
+
+/** Latest recorded fire for a cron-registry job — the console-facing
+ * slice of its `cron.<id>` job_runs projection row. */
+export interface ScheduleRunSlice {
+	readonly ok: boolean;
+	readonly running: boolean;
+	readonly error?: string | null;
+	readonly at: number;
+}
+
+/**
+ * One schedule as the /platform/cron console sees it — both sources
+ * normalized to the same shape. `id` is console-unique (`cron:<id>`
+ * for registry jobs, the row id for scheduled_jobs); `refId` is the id
+ * mutations address (cron job id / scheduled_jobs.id). `mutable` is
+ * false for deploy-time cron jobs — they can fire on demand but cannot
+ * be paused or deleted from the console.
+ */
+export interface ScheduleEntry {
+	readonly id: string;
+	readonly refId: string;
+	readonly source: ScheduleEntrySource;
+	/** Display name — the cron job id or the scheduled row's kind. */
+	readonly name: string;
+	readonly description: string | null;
+	/** Dispatchable job kind — scheduled rows only; cron registry jobs
+	 * are named routines, not jobHandlers kinds. */
+	readonly kind: string | null;
+	readonly params: unknown;
+	readonly cronExprs: readonly string[];
+	readonly runAt: number | null;
+	readonly nextRunAt: number | null;
+	readonly lastRunAt: number | null;
+	/** Joined job_runs slice — cron registry jobs only (keyed by job
+	 * id in `cronLastRuns`); scheduled rows report `lastRunAt` only. */
+	readonly lastRun: ScheduleRunSlice | null;
+	readonly status: ScheduledJobStatus;
+	readonly mutable: boolean;
+	readonly tenantId: TenantId | null;
+	readonly createdBy: string | null;
+	readonly createdAt: number | null;
+	readonly updatedAt: number | null;
+}
+
+export interface ScheduleEntriesInput {
+	/** Deploy-time cron registry jobs (cron-port). */
+	readonly cronJobs?: readonly CronScheduleSource[];
+	/** Runtime scheduled_jobs rows — typically `listScheduledJobs`. */
+	readonly scheduledJobs?: readonly ScheduledJob[];
+	/** Latest `cron.<id>` run per cron job id — absent entries render
+	 * as "never ran". */
+	readonly cronLastRuns?: ReadonlyMap<string, ScheduleRunSlice>;
+	/** Clock for cron next-run computation — injectable for tests. */
+	readonly now?: number;
+}
+
+/**
+ * Merge both scheduling sources into the console's unified list:
+ * cron registry jobs first (registration order), then scheduled_jobs
+ * rows (caller order — `listScheduledJobs` returns nextRunAt-asc).
+ * Cron next-run is the earliest future occurrence across its
+ * expressions; unparseable expressions contribute nothing (deploy-time
+ * exprs are provisioned, so a bad one is a deploy bug, not user
+ * input).
+ */
+export const listScheduleEntries = (input: ScheduleEntriesInput): ScheduleEntry[] => {
+	const now = input.now ?? Date.now();
+	const entries: ScheduleEntry[] = [];
+	for (const job of input.cronJobs ?? []) {
+		let nextRunAt: number | null = null;
+		for (const expr of job.schedules) {
+			let next: number | null = null;
+			try {
+				next = nextRunAfter(expr, now);
+			} catch {
+				next = null;
+			}
+			if (next !== null && (nextRunAt === null || next < nextRunAt)) nextRunAt = next;
+		}
+		const lastRun = input.cronLastRuns?.get(job.id) ?? null;
+		entries.push({
+			id: `cron:${job.id}`,
+			refId: job.id,
+			source: "cron",
+			name: job.id,
+			description: job.description ?? null,
+			kind: null,
+			params: null,
+			cronExprs: job.schedules,
+			runAt: null,
+			nextRunAt,
+			lastRunAt: lastRun?.at ?? null,
+			lastRun,
+			status: "active",
+			mutable: false,
+			tenantId: null,
+			createdBy: null,
+			createdAt: null,
+			updatedAt: null,
+		});
+	}
+	for (const job of input.scheduledJobs ?? []) {
+		entries.push({
+			id: job.id,
+			refId: job.id,
+			source: "scheduled-job",
+			name: job.kind,
+			description: null,
+			kind: job.kind,
+			params: job.params,
+			cronExprs: job.cronExpr === null ? [] : [job.cronExpr],
+			runAt: job.runAt,
+			nextRunAt: job.nextRunAt,
+			lastRunAt: job.lastRunAt,
+			lastRun: null,
+			status: job.status,
+			mutable: true,
+			tenantId: job.tenantId,
+			createdBy: job.createdBy,
+			createdAt: job.createdAt,
+			updatedAt: job.updatedAt,
+		});
+	}
+	return entries;
+};
+
 export interface ClaimDueOptions {
 	/** Sweep instant (epoch ms) — injectable for tests. */
 	readonly now?: number;

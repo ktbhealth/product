@@ -107,12 +107,33 @@ describe("cron panel page loader", () => {
 		createdAt: 1700000000000,
 		updatedAt: 1700000001000,
 	};
+	const ENTRY = {
+		id: "cron:agenda-reminders",
+		refId: "agenda-reminders",
+		source: "cron" as const,
+		name: "agenda-reminders",
+		description: "Dispatch reminders",
+		kind: null,
+		params: null,
+		cronExprs: ["*/5 * * * *"],
+		runAt: null,
+		nextRunAt: 1700000300000,
+		lastRunAt: 1700000000000,
+		lastRun: { ok: true, running: false, error: null, at: 1700000000000 },
+		status: "active" as const,
+		mutable: false,
+		tenantId: null,
+		createdBy: null,
+		createdAt: null,
+		updatedAt: null,
+	};
 	const adminStub = (overrides: Partial<CronAdmin["Service"]> = {}) =>
 		({
 			jobs: () => Effect.succeed([JOB]),
 			runs: () => Effect.succeed([RUN]),
 			runNow: () => Effect.succeed({ ok: true as const }),
 			schedules: () => Effect.succeed([]),
+			entries: () => Effect.succeed([ENTRY]),
 			scheduleKinds: () => Effect.succeed(["agenda.sendReminder"]),
 			schedulableKinds: () => Effect.succeed([]),
 			createSchedule: () => Effect.succeed({ ok: true as const, job: {} }),
@@ -127,9 +148,8 @@ describe("cron panel page loader", () => {
 			loader().pipe(Effect.provideService(CronAdmin, adminStub())),
 		);
 		expect(result).toEqual({
-			jobs: [JOB],
 			runs: [RUN],
-			schedules: [],
+			entries: [ENTRY],
 			scheduleKinds: ["agenda.sendReminder"],
 			schedulableKinds: [],
 		});
@@ -142,9 +162,8 @@ describe("cron panel page loader", () => {
 				Effect.provideService(
 					CronAdmin,
 					adminStub({
-						jobs: forbidden,
 						runs: forbidden,
-						schedules: forbidden,
+						entries: forbidden,
 						scheduleKinds: forbidden,
 						schedulableKinds: forbidden,
 					}),
@@ -152,9 +171,8 @@ describe("cron panel page loader", () => {
 			),
 		);
 		expect(result).toEqual({
-			jobs: null,
 			runs: null,
-			schedules: null,
+			entries: null,
 			scheduleKinds: null,
 			schedulableKinds: null,
 		});

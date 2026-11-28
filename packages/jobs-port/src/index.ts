@@ -336,6 +336,86 @@ export interface JobRegistration {
 
 export type JobHandlers = Readonly<Record<string, JobRegistration>>;
 
+// ---------------------------------------------------------------------------
+// Inline dispatch: transport-less kind dispatch with the same projection.
+// ---------------------------------------------------------------------------
+
+/** One job to dispatch without a queue transport — the shape
+ * @ktb/scheduler-port's ScheduledJobDispatch adapts onto when no queue
+ * is bound. */
+export interface InlineJobDispatch {
+	readonly kind: string;
+	readonly payload: unknown;
+	/** Projection/envelope id — generated when absent. */
+	readonly id?: string;
+	readonly tenantId?: TenantId | null;
+}
+
+export interface InlineDispatchDeps {
+	readonly handlers: JobHandlers;
+	/** When bound, delivery lifecycle writes the job_runs projection
+	 * (best-effort — a projection failure never fails the job). */
+	readonly db?: DbClient;
+	readonly newId?: () => string;
+	readonly now?: () => number;
+}
+
+/**
+ * Canonical inline (no-transport) dispatch: the same kind → handler
+ * resolution, payload decode and job_runs projection writes
+ * `makeJobConsumer` performs per message, minus queue semantics — no
+ * ack/retry, no attempt ceiling, no idempotent-redelivery check. A
+ * failure (unknown kind, payload decode, handler throw) marks the run
+ * failed and RETHROWS so the caller reports an honest dispatch
+ * failure; there is no broker to retry through.
+ *
+ * This is the single implementation every transport-less dispatch site
+ * must use — scheduler sweep fallbacks, console "run now" paths and
+ * tests — so projection shape and error strings never drift between
+ * call sites.
+ */
+export const dispatchJobInline = async (
+	deps: InlineDispatchDeps,
+	job: InlineJobDispatch,
+): Promise<void> => {
+	const registration = deps.handlers[job.kind];
+	if (registration === undefined) throw new Error(`unknown job kind: ${job.kind}`);
+	const id = job.id ?? deps.newId?.() ?? crypto.randomUUID();
+	const tenantId = job.tenantId ?? null;
+	const now = deps.now?.() ?? Date.now();
+	const mark = async (status: JobStatus, error?: string | null): Promise<void> => {
+		if (deps.db === undefined) return;
+		try {
+			await upsertJobRun(
+				deps.db,
+				{ id, kind: job.kind, status, error: error ?? null, tenantId },
+				now,
+			);
+		} catch (markError) {
+			// Projection is best-effort: the job itself must not fail
+			// because job_runs is unavailable.
+			console.warn("job_runs projection write failed", {
+				id,
+				kind: job.kind,
+				status,
+				error: String(markError),
+			});
+		}
+	};
+	await mark("processing");
+	try {
+		const decoded =
+			registration.decodePayload === undefined
+				? job.payload
+				: registration.decodePayload(job.payload);
+		await registration.handle(decoded, { id, kind: job.kind, payload: decoded, tenantId });
+	} catch (error) {
+		await mark("failed", error instanceof Error ? error.message : String(error));
+		throw error;
+	}
+	await mark("done");
+};
+
 /**
  * Composition-built kind → handler registry (PL-007). Each composition
  * root constructs its own via {@link makeJobHandlerRegistry} and

@@ -11,7 +11,12 @@ import { makeTestD1 } from "@ktb/db-testing";
 import { insertJobRun } from "@ktb/jobs-port";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { installServerFnRuntime, resetServerFnRuntime, stubAuth } from "@ktb/server-fns/testing";
-import type { CronJobInfo, CronRunResult, ScheduledJobInfo } from "@ktb/server-fns";
+import type {
+	CronJobInfo,
+	CronRunResult,
+	ScheduleEntryInfo,
+	ScheduledJobInfo,
+} from "@ktb/server-fns";
 
 import { CronAdmin, CronAdminLive, type CronRunNowResult } from "./admin.ts";
 
@@ -222,6 +227,93 @@ describe("CronAdminLive", () => {
 			);
 			expect(result).toEqual({ ok: false, reason: "unavailable" });
 		}
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("reads unified schedule entries through the capability", async () => {
+		const ENTRY: ScheduleEntryInfo = {
+			id: "cron:agenda-reminders",
+			refId: "agenda-reminders",
+			source: "cron",
+			name: "agenda-reminders",
+			description: null,
+			kind: null,
+			params: null,
+			cronExprs: ["*/5 * * * *"],
+			runAt: null,
+			nextRunAt: null,
+			lastRunAt: null,
+			lastRun: null,
+			status: "active",
+			mutable: false,
+			tenantId: null,
+			createdBy: null,
+			createdAt: null,
+			updatedAt: null,
+		};
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [],
+					entries: async () => [ENTRY],
+					create: async () => ({ ok: false as const, reason: "invalid" as const }),
+					update: async () => ({ ok: false as const, reason: "not-found" as const }),
+					remove: async () => ({ ok: false as const, reason: "not-found" as const }),
+					runNow: async () => null,
+				},
+			},
+		);
+		const entries = await asPrincipal(runtime, (a) => a.entries(), "admin@x.com");
+		expect(entries).toEqual([ENTRY]);
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a missing entries capability to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [],
+					create: async () => ({ ok: false as const, reason: "invalid" as const }),
+					update: async () => ({ ok: false as const, reason: "not-found" as const }),
+					remove: async () => ({ ok: false as const, reason: "not-found" as const }),
+					runNow: async () => null,
+				},
+			},
+		);
+		const entries = await asPrincipal(runtime, (a) => a.entries(), "admin@x.com");
+		expect(entries).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a throwing entries read to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [],
+					entries: async () => {
+						throw new Error("merge exploded");
+					},
+					create: async () => ({ ok: false as const, reason: "invalid" as const }),
+					update: async () => ({ ok: false as const, reason: "not-found" as const }),
+					remove: async () => ({ ok: false as const, reason: "not-found" as const }),
+					runNow: async () => null,
+				},
+			},
+		);
+		const entries = await asPrincipal(runtime, (a) => a.entries(), "admin@x.com");
+		expect(entries).toBeNull();
 		await runtime.dispose();
 		resetServerFnRuntime();
 	});
@@ -565,6 +657,7 @@ describe("CronAdminLive", () => {
 			(a: CronAdmin["Service"]) => a.runs(),
 			(a: CronAdmin["Service"]) => a.runNow("agenda-reminders"),
 			(a: CronAdmin["Service"]) => a.schedules(),
+			(a: CronAdmin["Service"]) => a.entries(),
 			(a: CronAdmin["Service"]) => a.scheduleKinds(),
 			(a: CronAdmin["Service"]) => a.schedulableKinds(),
 			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),

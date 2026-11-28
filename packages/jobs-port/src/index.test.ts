@@ -8,6 +8,7 @@ import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	decodeJobEnvelope,
+	dispatchJobInline,
 	getJobRun,
 	insertJobRun,
 	JobEnvelopeSchema,
@@ -680,6 +681,171 @@ describe("makeJobConsumer", () => {
 			expect.objectContaining({ id: "x" }),
 		);
 		warn.mockRestore();
+	});
+});
+
+describe("dispatchJobInline", () => {
+	it("kind-dispatches with decode, envelope and processing→done projection", async () => {
+		const { db } = makeTestDb();
+		const calls: { payload: unknown; envelope: JobEnvelope }[] = [];
+		const seenDuring: JobRecord[] = [];
+		await dispatchJobInline(
+			{
+				handlers: {
+					"test.inline": {
+						decodePayload: (p) => ({ decoded: p }),
+						handle: async (payload, envelope) => {
+							calls.push({ payload, envelope });
+							const row = await getJobRun(db, "gen-id");
+							if (row !== null) seenDuring.push(row);
+						},
+					},
+				},
+				db,
+				newId: () => "gen-id",
+				now: () => 42,
+			},
+			{ kind: "test.inline", payload: { v: 1 }, tenantId: 7 },
+		);
+		expect(calls).toEqual([
+			{
+				payload: { decoded: { v: 1 } },
+				envelope: {
+					id: "gen-id",
+					kind: "test.inline",
+					payload: { decoded: { v: 1 } },
+					tenantId: 7,
+				},
+			},
+		]);
+		// The handler observed the in-flight "processing" mark.
+		expect(seenDuring[0]).toMatchObject({ status: "processing", kind: "test.inline" });
+		expect(await getJobRun(db, "gen-id")).toMatchObject({
+			kind: "test.inline",
+			status: "done",
+			error: null,
+			tenantId: 7,
+			createdAt: 42,
+			updatedAt: 42,
+		});
+	});
+
+	it("honors a caller-supplied id", async () => {
+		const { db } = makeTestDb();
+		await dispatchJobInline(
+			{ handlers: { "test.inline": { handle: async () => {} } }, db },
+			{ kind: "test.inline", payload: null, id: "caller-id" },
+		);
+		expect(await getJobRun(db, "caller-id")).toMatchObject({ status: "done" });
+	});
+
+	it("throws on unknown kinds before any projection write", async () => {
+		const { db } = makeTestDb();
+		await expect(
+			dispatchJobInline({ handlers: {}, db }, { kind: "test.missing", payload: null }),
+		).rejects.toThrow("unknown job kind: test.missing");
+		expect(await listJobRuns(db)).toEqual([]);
+	});
+
+	it("marks failed and rethrows on decode and handler failures", async () => {
+		const { db } = makeTestDb();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			await expect(
+				dispatchJobInline(
+					{
+						handlers: {
+							"test.baddecode": {
+								decodePayload: () => {
+									throw new Error("bad payload");
+								},
+								handle: async () => {},
+							},
+							"test.boom": {
+								handle: async () => {
+									throw "string failure";
+								},
+							},
+						},
+						db,
+						newId: (() => {
+							let n = 0;
+							return () => `id-${++n}`;
+						})(),
+					},
+					{ kind: "test.baddecode", payload: {} },
+				),
+			).rejects.toThrow("bad payload");
+			await expect(
+				dispatchJobInline(
+					{
+						handlers: {
+							"test.boom": {
+								handle: async () => {
+									throw "string failure";
+								},
+							},
+						},
+						db,
+					},
+					{ kind: "test.boom", payload: null, id: "boom-1" },
+				),
+			).rejects.toBe("string failure");
+			expect(await getJobRun(db, "id-1")).toMatchObject({
+				status: "failed",
+				error: "bad payload",
+			});
+			expect(await getJobRun(db, "boom-1")).toMatchObject({
+				status: "failed",
+				error: "string failure",
+			});
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("swallows projection failures and still dispatches", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const handled: string[] = [];
+		try {
+			await dispatchJobInline(
+				{
+					handlers: {
+						"test.inline": {
+							handle: async () => {
+								handled.push("ran");
+							},
+						},
+					},
+					db: {} as never,
+				},
+				{ kind: "test.inline", payload: null, id: "x" },
+			);
+			expect(handled).toEqual(["ran"]);
+			expect(warn).toHaveBeenCalledWith(
+				"job_runs projection write failed",
+				expect.objectContaining({ id: "x" }),
+			);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("runs without a db bound", async () => {
+		const seen: unknown[] = [];
+		await dispatchJobInline(
+			{
+				handlers: {
+					"test.inline": {
+						handle: async (payload) => {
+							seen.push(payload);
+						},
+					},
+				},
+			},
+			{ kind: "test.inline", payload: { a: 1 } },
+		);
+		expect(seen).toEqual([{ a: 1 }]);
 	});
 });
 

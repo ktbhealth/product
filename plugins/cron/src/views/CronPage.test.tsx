@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,24 +27,59 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo, ScheduledJobInfo, SchedulableKindInfo } from "@ktb/server-fns";
+import type { ScheduleEntryInfo, SchedulableKindInfo } from "@ktb/server-fns";
 
 import { CronPage } from "./CronPage.tsx";
 
-const job = (over: Partial<CronJobInfo> = {}): CronJobInfo => ({
-	id: "agenda-reminders",
-	schedules: ["*/5 * * * *", "17 3 * * *"],
+const entry = (over: Partial<ScheduleEntryInfo> = {}): ScheduleEntryInfo => ({
+	id: "cron:agenda-reminders",
+	refId: "agenda-reminders",
+	source: "cron",
+	name: "agenda-reminders",
 	description: "Dispatch appointment reminders",
+	kind: null,
+	params: null,
+	cronExprs: ["*/5 * * * *", "17 3 * * *"],
+	runAt: null,
+	nextRunAt: 1700000300000,
+	lastRunAt: 1700000000000,
 	lastRun: {
-		id: "run-1",
 		ok: true,
 		running: false,
 		error: null,
-		startedAt: 1700000000000,
-		finishedAt: 1700000001000,
+		at: 1700000000000,
 	},
+	status: "active",
+	mutable: false,
+	tenantId: null,
+	createdBy: null,
+	createdAt: null,
+	updatedAt: null,
 	...over,
 });
+
+const schedEntry = (over: Partial<ScheduleEntryInfo> = {}): ScheduleEntryInfo => {
+	const merged = entry({
+		id: "sched-1",
+		refId: "sched-1",
+		source: "scheduled-job",
+		name: "agenda.reminders",
+		description: null,
+		kind: "agenda.reminders",
+		params: null,
+		cronExprs: ["*/15 * * * *"],
+		nextRunAt: 1700000000000,
+		lastRunAt: null,
+		lastRun: null,
+		mutable: true,
+		createdBy: null,
+		createdAt: 1700000000000,
+		updatedAt: 1700000000000,
+		...over,
+	});
+	// refId tracks the row id unless explicitly overridden.
+	return { ...merged, refId: over.refId ?? over.id ?? merged.refId };
+};
 
 const run = (over: Partial<JobRecord> = {}): JobRecord => ({
 	id: "run-1",
@@ -68,80 +103,86 @@ afterEach(() => {
 });
 
 describe("CronPage", () => {
-	it("renders both sections with data", () => {
-		render(<CronPage jobs={[job()]} runs={[run()]} locale="en" />);
+	it("renders the unified schedules table and run history", () => {
+		render(<CronPage entries={[entry()]} runs={[run()]} locale="en" />);
 		expect(screen.getByRole("heading", { name: "Cronjobs" })).toBeTruthy();
-		expect(screen.getAllByText("Scheduled jobs").length).toBeGreaterThan(0);
 		expect(screen.getByText("agenda-reminders")).toBeTruthy();
 		expect(screen.getByText("*/5 * * * *")).toBeTruthy();
+		expect(screen.getByText("Deployed")).toBeTruthy();
 		expect(screen.getAllByText("OK").length).toBeGreaterThan(0);
 		openTab("Run history");
 		expect(screen.getAllByText("agenda-reminders").length).toBeGreaterThan(0);
 	});
 
 	it("renders unavailable states for null signals", () => {
-		render(<CronPage jobs={null} runs={null} locale="en" />);
+		render(<CronPage entries={null} runs={null} locale="en" />);
 		expect(screen.getAllByText("Signal unavailable").length).toBeGreaterThan(0);
 		openTab("Run history");
 		expect(screen.getAllByText("Signal unavailable").length).toBeGreaterThan(0);
 	});
 
 	it("renders honest empty states", () => {
-		render(<CronPage jobs={[]} runs={[]} locale="en" />);
-		expect(screen.getByText(/No cron jobs registered/)).toBeTruthy();
+		render(<CronPage entries={[]} runs={[]} locale="en" />);
+		expect(screen.getByText(/No schedules/)).toBeTruthy();
 		openTab("Run history");
 		expect(screen.getByText(/No cron runs recorded/)).toBeTruthy();
 	});
 
-	it("renders never-run jobs without fabricating a last run", () => {
-		render(<CronPage jobs={[job({ lastRun: null })]} runs={[]} locale="en" />);
-		expect(screen.getByText("Never run")).toBeTruthy();
+	it("renders never-run entries without fabricating a last run", () => {
+		render(
+			<CronPage
+				entries={[entry({ lastRunAt: null, lastRun: null }), schedEntry()]}
+				runs={[]}
+				locale="en"
+			/>,
+		);
+		expect(screen.getAllByText("Never run").length).toBe(2);
 	});
 
-	it("fires runNow and shows the outcome", async () => {
+	it("fires runNow on a cron entry through the registry path", async () => {
 		runCronJobFn.mockResolvedValueOnce({ ok: true, summary: "3 reminders" } as never);
-		render(<CronPage jobs={[job()]} runs={[]} locale="en" />);
+		render(<CronPage entries={[entry()]} runs={[]} locale="en" />);
 		fireEvent.click(screen.getByRole("button", { name: "Run now" }));
 		expect(runCronJobFn).toHaveBeenCalledWith({ data: { id: "agenda-reminders" } });
+		expect(scheduleFns.runScheduleFn).not.toHaveBeenCalled();
 		expect(await screen.findByText(/3 reminders/)).toBeTruthy();
+	});
+
+	it("fires runNow on a scheduled-job entry through the schedule path", async () => {
+		scheduleFns.runScheduleFn.mockResolvedValueOnce({
+			ok: true as const,
+			summary: "fired agenda.reminders",
+		});
+		render(<CronPage entries={[schedEntry()]} runs={[]} locale="en" />);
+		fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+		expect(scheduleFns.runScheduleFn).toHaveBeenCalledWith({ data: { id: "sched-1" } });
+		expect(runCronJobFn).not.toHaveBeenCalled();
+		expect(await screen.findByText(/Run finished — fired agenda\.reminders/)).toBeTruthy();
 	});
 
 	it("renders every last-run signal and missing timestamps honestly", () => {
 		render(
 			<CronPage
-				jobs={[
-					job({ id: "no-desc", description: undefined }),
-					job({
-						id: "running-job",
-						lastRun: {
-							id: "r1",
-							ok: false,
-							running: true,
-							error: null,
-							startedAt: 1700000000000,
-							finishedAt: 0,
-						},
+				entries={[
+					entry({ id: "cron:no-desc", name: "no-desc", description: null }),
+					entry({
+						id: "cron:running-job",
+						refId: "running-job",
+						name: "running-job",
+						lastRun: { ok: false, running: true, error: null, at: 1700000000000 },
 					}),
-					job({
-						id: "failed-job",
-						lastRun: {
-							id: "r2",
-							ok: false,
-							running: false,
-							error: "walk exploded",
-							startedAt: 1700000000000,
-							finishedAt: 0,
-						},
+					entry({
+						id: "cron:failed-job",
+						refId: "failed-job",
+						name: "failed-job",
+						lastRun: { ok: false, running: false, error: "walk exploded", at: 1700000000000 },
 					}),
-					job({
-						id: "untimed-job",
-						lastRun: {
-							id: "r3",
-							ok: true,
-							running: false,
-							startedAt: null as unknown as number,
-							finishedAt: 0,
-						},
+					entry({
+						id: "cron:untimed",
+						refId: "untimed",
+						name: "untimed",
+						lastRunAt: null,
+						lastRun: null,
 					}),
 				]}
 				runs={[
@@ -154,14 +195,12 @@ describe("CronPage", () => {
 		expect(screen.getByText("Running")).toBeTruthy();
 		expect(screen.getByText("Failed")).toBeTruthy();
 		expect(screen.getByText("walk exploded")).toBeTruthy();
-		// Missing description and the null startedAt render as dashes.
-		expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+		// Missing description renders as a dash.
+		expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
 		openTab("Run history");
 		expect(screen.getByText("boom")).toBeTruthy();
 		// A non-cron.* kind keeps its full kind string.
 		expect(screen.getByText("other.kind")).toBeTruthy();
-		// The undefined createdAt degrades to the dash marker.
-		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 	});
 
 	it("surfaces every runNow outcome, including dispatch rejections", async () => {
@@ -188,7 +227,13 @@ describe("CronPage", () => {
 			"failed-plain",
 			"rejected",
 		];
-		render(<CronPage jobs={ids.map((id) => job({ id }))} runs={[]} locale="en" />);
+		render(
+			<CronPage
+				entries={ids.map((id) => entry({ id: `cron:${id}`, refId: id, name: id }))}
+				runs={[]}
+				locale="en"
+			/>,
+		);
 		for (const btn of screen.getAllByRole("button", { name: "Run now" })) {
 			fireEvent.click(btn);
 		}
@@ -204,87 +249,104 @@ describe("CronPage", () => {
 	});
 });
 
-const sched = (over: Partial<ScheduledJobInfo> = {}): ScheduledJobInfo => ({
-	id: "sched-1",
-	kind: "agenda.reminders",
-	params: null,
-	cronExpr: "*/15 * * * *",
-	runAt: null,
-	nextRunAt: 1700000000000,
-	lastRunAt: null,
-	status: "active",
-	tenantId: null,
-	createdBy: null,
-	createdAt: 1700000000000,
-	updatedAt: 1700000000000,
-	...over,
-});
+describe("CronPage unified schedules", () => {
+	const renderEntries = (
+		entries: readonly ScheduleEntryInfo[] | null,
+		kinds: readonly string[] | null = null,
+		schedulable: readonly SchedulableKindInfo[] | null = null,
+	) => {
+		render(
+			<CronPage
+				entries={entries}
+				runs={[]}
+				scheduleKinds={kinds}
+				schedulableKinds={schedulable}
+				locale="en"
+			/>,
+		);
+	};
 
-const renderSchedules = (
-	schedules: readonly ScheduledJobInfo[] | null,
-	kinds: readonly string[] | null = null,
-	schedulable: readonly SchedulableKindInfo[] | null = null,
-) => {
-	render(
-		<CronPage
-			jobs={[]}
-			runs={[]}
-			schedules={schedules}
-			scheduleKinds={kinds}
-			schedulableKinds={schedulable}
-			locale="en"
-		/>,
-	);
-	openTab("Dynamic");
-};
-
-describe("CronPage dynamic schedules", () => {
 	it("renders unavailable and empty states", () => {
-		renderSchedules(null);
+		renderEntries(null);
 		expect(screen.getByText("Signal unavailable")).toBeTruthy();
 		cleanup();
-		renderSchedules([]);
-		expect(screen.getByText(/No dynamic schedules/)).toBeTruthy();
+		renderEntries([]);
+		expect(screen.getByText(/No schedules/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Create schedule" })).toBeTruthy();
 	});
 
-	it("renders schedule rows with per-status actions", () => {
-		renderSchedules([
-			sched({ id: "active-1", cronExpr: "*/15 * * * *" }),
-			sched({
-				id: "paused-1",
+	it("renders rows from both sources with per-status actions", () => {
+		renderEntries([
+			entry({ id: "cron:reg-1", refId: "reg-1", name: "reg-1" }),
+			schedEntry({ id: "s-active", refId: "s-active", name: "kind.active" }),
+			schedEntry({
+				id: "s-paused",
+				refId: "s-paused",
+				name: "kind.paused",
 				status: "paused",
-				cronExpr: "0 * * * *",
+				cronExprs: ["0 * * * *"],
 				runAt: 1700003600000,
 			}),
-			sched({ id: "done-1", status: "done", cronExpr: "30 * * * *", lastRunAt: 1700000001000 }),
-			// One-off rows carry no cronExpr — the runAt timestamp renders instead.
-			sched({
-				id: "once-1",
+			schedEntry({
+				id: "s-done",
+				refId: "s-done",
+				name: "kind.done",
 				status: "done",
-				cronExpr: null,
+				cronExprs: ["30 * * * *"],
+				lastRunAt: 1700000001000,
+			}),
+			// One-off rows carry no cronExpr — the runAt timestamp renders instead.
+			schedEntry({
+				id: "s-once",
+				refId: "s-once",
+				name: "kind.once",
+				status: "done",
+				cronExprs: [],
 				runAt: 1700003600000,
 				lastRunAt: 1700000001000,
 			}),
 		]);
-		// cronExpr renders as code, runAt as a formatted timestamp.
-		expect(screen.getByText("*/15 * * * *")).toBeTruthy();
+		expect(screen.getByText("reg-1")).toBeTruthy();
+		expect(screen.getByText("kind.active")).toBeTruthy();
+		expect(screen.getByText("*/5 * * * *")).toBeTruthy();
 		expect(screen.getByText("0 * * * *")).toBeTruthy();
-		expect(screen.getAllByText("Active")).toHaveLength(1);
+		expect(screen.getAllByText("Runtime").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("Active")).toHaveLength(2);
 		expect(screen.getByText("Paused")).toBeTruthy();
 		expect(screen.getAllByText("Done")).toHaveLength(2);
+		// The cron entry has a joined lastRun; the two active scheduled
+		// rows never ran.
 		expect(screen.getAllByText("Never run")).toHaveLength(2);
-		// Active row: Run now + Pause + Delete; paused row: Resume + Delete;
-		// done rows: Delete only.
-		expect(screen.getAllByRole("button", { name: "Run now" })).toHaveLength(1);
+		// Run now: the cron entry + the active scheduled row; Pause only on
+		// mutable active rows; Resume on the paused row; Delete on the four
+		// mutable rows (cron is immutable).
+		expect(screen.getAllByRole("button", { name: "Run now" })).toHaveLength(2);
 		expect(screen.getAllByRole("button", { name: "Pause" })).toHaveLength(1);
 		expect(screen.getAllByRole("button", { name: "Resume" })).toHaveLength(1);
 		expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(4);
 	});
 
+	it("renders dash placeholders for triggerless schedules and missing next run", () => {
+		renderEntries([
+			entry({
+				id: "cron:bare",
+				refId: "bare",
+				name: "bare",
+				cronExprs: [],
+				runAt: null,
+				nextRunAt: null,
+			}),
+		]);
+		const row = screen.getByText("bare").closest("tr");
+		expect(row).not.toBeNull();
+		// No cron exprs and no runAt → "—" in the triggers cell; null
+		// nextRunAt → "—" in the next-run cell. Description stays text.
+		expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
+	});
+
 	it("creates a recurring schedule and reports success", async () => {
-		scheduleFns.createScheduleFn.mockResolvedValueOnce({ ok: true as const, job: sched() });
-		renderSchedules([], ["agenda.reminders"]);
+		scheduleFns.createScheduleFn.mockResolvedValueOnce({ ok: true as const, job: {} });
+		renderEntries([], ["agenda.reminders"]);
 		fireEvent.change(screen.getByLabelText("Job kind"), { target: { value: "agenda.reminders" } });
 		fireEvent.change(screen.getByLabelText(/Cron expression/), {
 			target: { value: "*/15 * * * *" },
@@ -304,7 +366,7 @@ describe("CronPage dynamic schedules", () => {
 	});
 
 	it("rejects malformed params JSON before calling the server fn", async () => {
-		renderSchedules([]);
+		renderEntries([]);
 		fireEvent.change(screen.getByLabelText("Job kind"), { target: { value: "agenda.reminders" } });
 		fireEvent.change(screen.getByLabelText(/Params/), { target: { value: "{bad" } });
 		fireEvent.click(screen.getByRole("button", { name: "Create schedule" }));
@@ -317,7 +379,7 @@ describe("CronPage dynamic schedules", () => {
 			.mockResolvedValueOnce({ ok: false as const, reason: "invalid" as const })
 			.mockResolvedValueOnce({ ok: false as const, reason: "unavailable" as const })
 			.mockRejectedValueOnce(new Error("wire down"));
-		renderSchedules([]);
+		renderEntries([]);
 		const kind = screen.getByLabelText("Job kind");
 		const submit = () => fireEvent.click(screen.getByRole("button", { name: "Create schedule" }));
 
@@ -335,8 +397,8 @@ describe("CronPage dynamic schedules", () => {
 
 	it("creates a one-off schedule with a runAt timestamp", async () => {
 		const user = userEvent.setup();
-		scheduleFns.createScheduleFn.mockResolvedValue({ ok: true as const, job: sched() });
-		renderSchedules([]);
+		scheduleFns.createScheduleFn.mockResolvedValue({ ok: true as const, job: {} });
+		renderEntries([]);
 		// The kind input's datalist also exposes combobox role — pick the
 		// mode Select trigger by its data-slot.
 		const modeSelect = screen
@@ -370,9 +432,12 @@ describe("CronPage dynamic schedules", () => {
 	});
 
 	it("pause, resume and delete round-trip through the schedule fns", async () => {
-		scheduleFns.updateScheduleFn.mockResolvedValue({ ok: true as const, job: sched() });
+		scheduleFns.updateScheduleFn.mockResolvedValue({ ok: true as const, job: {} });
 		scheduleFns.deleteScheduleFn.mockResolvedValue({ ok: true as const });
-		renderSchedules([sched({ id: "s-pause" }), sched({ id: "s-resume", status: "paused" })]);
+		renderEntries([
+			schedEntry({ id: "s-pause" }),
+			schedEntry({ id: "s-resume", status: "paused" }),
+		]);
 
 		fireEvent.click(screen.getByRole("button", { name: "Pause" }));
 		expect(scheduleFns.updateScheduleFn).toHaveBeenCalledWith({
@@ -398,17 +463,6 @@ describe("CronPage dynamic schedules", () => {
 		expect(scheduleFns.invalidate).toHaveBeenCalled();
 	});
 
-	it("run-now reports the schedule outcome", async () => {
-		scheduleFns.runScheduleFn.mockResolvedValueOnce({
-			ok: true as const,
-			summary: "fired agenda.reminders",
-		});
-		renderSchedules([sched({ id: "s-run" })]);
-		fireEvent.click(screen.getByRole("button", { name: "Run now" }));
-		expect(scheduleFns.runScheduleFn).toHaveBeenCalledWith({ data: { id: "s-run" } });
-		expect(await screen.findByText(/Run finished — fired agenda\.reminders/)).toBeTruthy();
-	});
-
 	it("surfaces schedule action failures honestly", async () => {
 		scheduleFns.updateScheduleFn
 			.mockResolvedValueOnce({ ok: false as const, reason: "invalid" as const })
@@ -421,11 +475,11 @@ describe("CronPage dynamic schedules", () => {
 		scheduleFns.runScheduleFn
 			.mockResolvedValueOnce({ ok: false as const, reason: "run-failed" as const, error: "kaput" })
 			.mockRejectedValueOnce(new Error("wire down"));
-		renderSchedules([
-			sched({ id: "s-upd" }),
-			sched({ id: "s-del", status: "paused" }),
-			sched({ id: "s-run1" }),
-			sched({ id: "s-run2" }),
+		renderEntries([
+			schedEntry({ id: "s-upd" }),
+			schedEntry({ id: "s-del", status: "paused" }),
+			schedEntry({ id: "s-run1" }),
+			schedEntry({ id: "s-run2" }),
 		]);
 
 		fireEvent.click(screen.getAllByRole("button", { name: "Pause" })[0]!);
@@ -439,7 +493,9 @@ describe("CronPage dynamic schedules", () => {
 		fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[1]!);
 		expect(await screen.findAllByText("Schedule operation failed.")).not.toHaveLength(0);
 
+		// Run now renders on active rows only (s-del is paused).
 		const runButtons = screen.getAllByRole("button", { name: "Run now" });
+		expect(runButtons).toHaveLength(3);
 		fireEvent.click(runButtons[0]!);
 		expect(await screen.findByText("Run failed. kaput")).toBeTruthy();
 		fireEvent.click(runButtons[1]!);
@@ -451,7 +507,7 @@ describe("CronPage dynamic schedules", () => {
 			id: over.kind,
 			...over,
 		});
-		renderSchedules(
+		renderEntries(
 			[],
 			["plain.job"],
 			[

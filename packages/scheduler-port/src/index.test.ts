@@ -12,6 +12,7 @@ import {
 	getScheduledJob,
 	insertScheduledJob,
 	InvalidScheduleError,
+	listScheduleEntries,
 	listScheduledJobs,
 	nextRunAfter,
 	runScheduledJobNow,
@@ -484,5 +485,115 @@ describe("runSchedulerSweep", () => {
 		} finally {
 			warn.mockRestore();
 		}
+	});
+});
+
+describe("listScheduleEntries", () => {
+	const scheduledRow = (over: Partial<ScheduledJob> = {}): ScheduledJob => ({
+		id: "row-1",
+		kind: "agenda.reminders",
+		params: { n: 1 },
+		cronExpr: "*/15 * * * *",
+		runAt: null,
+		nextRunAt: T0 + 60_000,
+		claimedUntil: null,
+		lastRunAt: T0 - 60_000,
+		status: "active",
+		tenantId: 7,
+		createdBy: "admin@x.com",
+		createdAt: T0 - 120_000,
+		updatedAt: T0 - 30_000,
+		...over,
+	});
+
+	it("merges cron registry jobs and scheduled_jobs rows uniformly", () => {
+		const entries = listScheduleEntries({
+			cronJobs: [
+				{
+					id: "scheduler-heartbeat",
+					schedules: ["* * * * *"],
+					description: "Sweep due schedules",
+				},
+			],
+			scheduledJobs: [scheduledRow()],
+			cronLastRuns: new Map([
+				["scheduler-heartbeat", { ok: true, running: false, error: null, at: T0 - 30_000 }],
+			]),
+			now: T0,
+		});
+		expect(entries).toHaveLength(2);
+		const [cron, row] = entries;
+		expect(cron).toMatchObject({
+			id: "cron:scheduler-heartbeat",
+			refId: "scheduler-heartbeat",
+			source: "cron",
+			name: "scheduler-heartbeat",
+			description: "Sweep due schedules",
+			kind: null,
+			cronExprs: ["* * * * *"],
+			status: "active",
+			mutable: false,
+			lastRunAt: T0 - 30_000,
+		});
+		// "* * * * *" fires every minute — next occurrence is T0 + 60s.
+		expect(cron?.nextRunAt).toBe(T0 + 60_000);
+		expect(cron?.lastRun).toEqual({ ok: true, running: false, error: null, at: T0 - 30_000 });
+		expect(row).toMatchObject({
+			id: "row-1",
+			refId: "row-1",
+			source: "scheduled-job",
+			name: "agenda.reminders",
+			kind: "agenda.reminders",
+			params: { n: 1 },
+			cronExprs: ["*/15 * * * *"],
+			runAt: null,
+			nextRunAt: T0 + 60_000,
+			lastRunAt: T0 - 60_000,
+			lastRun: null,
+			status: "active",
+			mutable: true,
+			tenantId: 7,
+			createdBy: "admin@x.com",
+		});
+	});
+
+	it("picks the earliest next occurrence across cron expressions", () => {
+		const [entry] = listScheduleEntries({
+			cronJobs: [
+				{
+					id: "multi",
+					// Hourly vs every-5-minutes from T0 (12:00:00):
+					// "0 * * * *" → 13:00, "*/5 * * * *" → 12:05.
+					schedules: ["0 * * * *", "*/5 * * * *"],
+				},
+			],
+			now: T0,
+		});
+		expect(entry?.nextRunAt).toBe(T0 + 5 * 60_000);
+	});
+
+	it("skips unparseable cron expressions and reports null nextRunAt", () => {
+		const [entry] = listScheduleEntries({
+			cronJobs: [{ id: "bad", schedules: ["not a cron", "61 * * * *"] }],
+			now: T0,
+		});
+		expect(entry?.nextRunAt).toBeNull();
+		expect(entry?.lastRun).toBeNull();
+		expect(entry?.lastRunAt).toBeNull();
+	});
+
+	it("maps one-off scheduled rows to runAt with no cron expressions", () => {
+		const [entry] = listScheduleEntries({
+			scheduledJobs: [scheduledRow({ cronExpr: null, runAt: T0 + 3_600_000 })],
+		});
+		expect(entry).toMatchObject({
+			cronExprs: [],
+			runAt: T0 + 3_600_000,
+			status: "active",
+		});
+	});
+
+	it("returns an empty list with no sources", () => {
+		expect(listScheduleEntries({})).toEqual([]);
 	});
 });
