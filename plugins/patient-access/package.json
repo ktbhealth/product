@@ -21,6 +21,7 @@
 		"@ktb/i18n": "workspace:*",
 		"@ktb/invites": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/outbox": "workspace:*",
 		"@ktb/patients": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

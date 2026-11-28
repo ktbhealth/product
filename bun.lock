@@ -91,6 +91,7 @@
         "@ktb/observability": "workspace:*",
         "@ktb/observability-edge": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patient-portal": "workspace:*",
         "@ktb/patients": "workspace:*",
@@ -337,6 +338,7 @@
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/plugin-pipeline": "workspace:*",
@@ -765,6 +767,18 @@
         "@ktb/eval-core": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "effect": "4.1.2",
+      },
+    },
+    "packages/outbox": {
+      "name": "@ktb/outbox",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
       },
     },
     "packages/pipeline": {
@@ -1975,6 +1989,7 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/invites": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -2297,6 +2312,7 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/invites": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/portal": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -3267,6 +3283,8 @@
     "@ktb/orchestrator": ["@ktb/orchestrator@workspace:packages/orchestrator"],
 
     "@ktb/orchestrator-ai": ["@ktb/orchestrator-ai@workspace:packages/orchestrator-ai"],
+
+    "@ktb/outbox": ["@ktb/outbox@workspace:packages/outbox"],
 
     "@ktb/pages": ["@ktb/pages@workspace:plugins/pages"],
 

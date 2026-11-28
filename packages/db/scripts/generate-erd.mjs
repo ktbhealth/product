@@ -180,6 +180,14 @@ const DOMAINS = [
 		tables: ["scheduled_jobs"],
 	},
 	{
+		id: "outbox",
+		title: "Outbox",
+		owner: "`packages/db/src/outbox.ts` + `packages/outbox`",
+		description:
+			"Reliable-delivery outbox — domain writes enqueue pending rows (kind + JSON payload) that the edge drainer delivers through registered kind deliverers (email today) with retry, backoff and a terminal failed state.",
+		tables: ["outbox"],
+	},
+	{
 		id: "eval-validator",
 		title: "Eval validator",
 		owner: "`plugins/eval-validator`",

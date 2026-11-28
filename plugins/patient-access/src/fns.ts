@@ -7,7 +7,8 @@ import { and, eq, inArray, isNotNull, like, or } from "drizzle-orm";
 
 import { Db } from "@ktb/db";
 import { consultations, patientAccess, patients, portalKeys } from "@ktb/db/schema";
-import { Email } from "@ktb/email";
+import { EMAIL_OUTBOX_KIND, Email } from "@ktb/email";
+import { Outbox } from "@ktb/outbox";
 import { inviteAcceptPath } from "@ktb/invites";
 import {
 	forbiddenTo,
@@ -89,8 +90,9 @@ export type InvitePatientResult =
 	| {
 			readonly ok: true;
 			readonly link: Pick<PatientLink, "id" | "email" | "status">;
-			/** Whether the access email actually went out — false when this
-			 * deployment sends no email or the delivery failed. */
+			/** Whether the access email was accepted for delivery — false
+			 * when this deployment sends no email or the outbox write
+			 * failed. Delivery itself is async (@ktb/outbox). */
 			readonly emailed: boolean;
 	  }
 	| { readonly ok: false; readonly error: PatientInviteErrorCode | "failed" };
@@ -99,8 +101,12 @@ export type InvitePatientResult =
  * Tell the invitee by email, in the acting user's current locale.
  * Someone with no account yet gets a single-use accept link that
  * creates it; an existing account is pointed at the portal sign-in.
- * Best effort: the grant already exists, so a deployment without email
- * or a failed delivery never fails the invite — it only reports `false`.
+ * The rendered message is queued on the outbox (@ktb/outbox) so a
+ * provider outage retries instead of losing the invite — the grant
+ * already exists, so a deployment without email or a failed row write
+ * never fails the invite, it only reports `false`. When no Outbox
+ * service is bound (partial runtimes/tests) it degrades to the legacy
+ * inline send.
  */
 const notifyInvitee = async (
 	to: string,
@@ -109,20 +115,29 @@ const notifyInvitee = async (
 ): Promise<boolean> => {
 	const { getRequestUrl } = await import("@tanstack/react-start/server");
 	const copy = patientAccessMessages(getLocale()).inviteEmail;
-	const sender = await run(
-		Effect.map(Effect.serviceOption(Email), (email) => Option.getOrNull(email)),
+	const services = await run(
+		Effect.gen(function* () {
+			const email = yield* Effect.serviceOption(Email);
+			const outbox = yield* Effect.serviceOption(Outbox);
+			return { sender: Option.getOrNull(email), outbox: Option.getOrNull(outbox) };
+		}),
 	);
-	if (!sender) return false;
+	if (!services.sender) return false;
 	const acceptPath = await run(
 		inviteAcceptPath({ email: to, kind: "patient", inviterName: doctorName }),
 	);
 	const url = new URL(acceptPath ?? "/login/patient", getRequestUrl()).toString();
+	const message = {
+		to,
+		subject: copy.subject(doctorName),
+		text: copy.body(doctorName, patientName, url, acceptPath !== null),
+	};
 	try {
-		await sender.send({
-			to,
-			subject: copy.subject(doctorName),
-			text: copy.body(doctorName, patientName, url, acceptPath !== null),
-		});
+		if (services.outbox !== null) {
+			await services.outbox.enqueue({ kind: EMAIL_OUTBOX_KIND, payload: message });
+		} else {
+			await services.sender.send(message);
+		}
 		return true;
 	} catch (error) {
 		console.error("patient invite email failed", error);

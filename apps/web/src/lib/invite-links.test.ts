@@ -61,13 +61,19 @@ describe("invite links, end to end", () => {
 	let doctor = "";
 	let patientId = 0;
 
-	/** The body of the last email "sent" to `to`. */
-	const lastEmailTo = (to: string): string => {
-		const found = mail.mock.calls
-			.map((call) => String(call[0]))
-			.filter((line) => line.startsWith(`[email-stub] to=${to} `))
-			.pop();
-		expect(found).toBeDefined();
+	/** The body of the last email "sent" to `to`. Invite mail rides the
+	 * outbox: enqueue kicks a best-effort drain, so delivery lands a
+	 * tick after the server fn returns — poll until the stub logs it. */
+	const lastEmailTo = async (to: string, includes?: string): Promise<string> => {
+		let found: string | undefined;
+		await vi.waitFor(() => {
+			found = mail.mock.calls
+				.map((call) => String(call[0]))
+				.filter((line) => line.startsWith(`[email-stub] to=${to} `))
+				.filter((line) => includes === undefined || line.includes(includes))
+				.pop();
+			expect(found).toBeDefined();
+		});
 		return found!;
 	};
 	/** The accept-link token in an email — null when it links elsewhere. */
@@ -93,7 +99,7 @@ describe("invite links, end to end", () => {
 	it("a new secretary accepts the emailed link, signs in and works for the doctor", async () => {
 		const invited = await inviteSecretaryFn({ data: { email: "nova-sec@x.com" } });
 		expect(invited).toMatchObject({ ok: true, secretary: { status: "invited" } });
-		const email = lastEmailTo("nova-sec@x.com");
+		const email = await lastEmailTo("nova-sec@x.com");
 		const token = tokenIn(email)!;
 		expect(token).toMatch(/^[\w-]{43}$/);
 		expect(email).not.toContain("/login/secretary");
@@ -143,7 +149,7 @@ describe("invite links, end to end", () => {
 			data: { patientId, email: "novo-paciente@x.com", relation: "self" },
 		});
 		expect(invited).toMatchObject({ ok: true, emailed: true, link: { status: "invited" } });
-		const email = lastEmailTo("novo-paciente@x.com");
+		const email = await lastEmailTo("novo-paciente@x.com");
 		const token = tokenIn(email)!;
 		expect(email).not.toContain("/login/patient");
 
@@ -175,7 +181,9 @@ describe("invite links, end to end", () => {
 			body: { email: "ja-tem-conta@x.com", password: PASSWORD, name: "Já Tem" },
 		});
 		await inviteSecretaryFn({ data: { email: "ja-tem-conta@x.com" } });
-		const email = lastEmailTo("ja-tem-conta@x.com");
+		// signUpEmail queued a verification mail to the same address —
+		// wait for the invite's sign-in link specifically.
+		const email = await lastEmailTo("ja-tem-conta@x.com", "/login/secretary");
 		expect(tokenIn(email)).toBeNull();
 		expect(email).toContain("http://localhost:3000/login/secretary");
 		expect(
@@ -185,7 +193,7 @@ describe("invite links, end to end", () => {
 
 	it("a link never opens or verifies an account registered before it was used", async () => {
 		await inviteSecretaryFn({ data: { email: "vitima@x.com" } });
-		const token = tokenIn(lastEmailTo("vitima@x.com"))!;
+		const token = tokenIn(await lastEmailTo("vitima@x.com"))!;
 		// Someone else registers the invited address — unverified, since
 		// they cannot read its mail — hoping the invite lands on them.
 		await auth.api.signUpEmail({
@@ -213,10 +221,10 @@ describe("invite links, end to end", () => {
 
 	it("re-inviting replaces the link, and a refused password leaves it usable", async () => {
 		await inviteSecretaryFn({ data: { email: "reconvite@x.com" } });
-		const first = tokenIn(lastEmailTo("reconvite@x.com"))!;
+		const first = tokenIn(await lastEmailTo("reconvite@x.com"))!;
 		mail.mockClear();
 		await inviteSecretaryFn({ data: { email: "reconvite@x.com" } });
-		const second = tokenIn(lastEmailTo("reconvite@x.com"))!;
+		const second = tokenIn(await lastEmailTo("reconvite@x.com"))!;
 		expect(second).not.toBe(first);
 
 		as(null);
@@ -230,7 +238,7 @@ describe("invite links, end to end", () => {
 
 	it("an expired link creates nothing", async () => {
 		await inviteSecretaryFn({ data: { email: "expirado@x.com" } });
-		const token = tokenIn(lastEmailTo("expirado@x.com"))!;
+		const token = tokenIn(await lastEmailTo("expirado@x.com"))!;
 		await db
 			.update(inviteTokens)
 			.set({ expiresAt: new Date(Date.now() - 1000) })

@@ -67,6 +67,7 @@ import { builtinKinds } from "@ktb/orchestrator";
 import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
 import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
 import { Jobs, makeJobs } from "@ktb/jobs-port";
+import { insertOutboxRecord, kickOutboxDrain, makeOutbox, Outbox } from "@ktb/outbox";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
 import {
@@ -88,7 +89,7 @@ import {
 	makeAuth,
 	makeAuthService,
 } from "@ktb/auth-better";
-import { Email, nullEmailDriver, type EmailMessage } from "@ktb/email";
+import { Email, EMAIL_OUTBOX_KIND, nullEmailDriver, type EmailMessage } from "@ktb/email";
 import { cloudflareEmailDriver } from "@ktb/email-cloudflare";
 import { smtpEmailDriver } from "@ktb/email-smtp";
 import { stubEmailDriver } from "@ktb/email-stub";
@@ -568,14 +569,22 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		...(emailSender === null
 			? {}
 			: {
-					// A failed delivery must not fail the sign-up itself — the
-					// account exists and the link can be requested again.
+					// Transactional email rides the outbox (@ktb/outbox):
+					// the rendered message is written as a pending row and
+					// the edge drainer delivers it with retry — a provider
+					// outage delays mail instead of losing it to a
+					// console.error. The sign-up itself never fails on
+					// delivery; only the row write can, and that error is
+					// logged honestly below. The kick is best-effort — the
+					// cron sweep is the durable backstop.
 					sendVerificationEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({
+							const message: EmailMessage = {
 								to: email,
 								...(await verificationEmail({ name, url })),
-							});
+							};
+							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("verification email failed", error);
 						}
@@ -584,10 +593,12 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 					// just request the link again.
 					sendPasswordResetEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({
+							const message: EmailMessage = {
 								to: email,
 								...(await passwordResetEmail({ name, url })),
-							});
+							};
+							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("password reset email failed", error);
 						}
@@ -658,6 +669,12 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		jobsQueue === undefined
 			? Layer.empty
 			: Layer.succeed(Jobs, makeJobs({ send: (envelope) => jobsQueue.send(envelope), db }));
+	// Outbox port (@ktb/outbox): reliable-delivery writes — always bound
+	// (Db is unconditional); plugins enqueue via serviceOption and the
+	// edge's drain sweep + deliverer registry handle delivery. The auth
+	// email callbacks above write rows directly through the repo
+	// helpers (they are plain async hooks, not Effect code).
+	const OutboxLive = Layer.succeed(Outbox, makeOutbox({ db }));
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
@@ -819,6 +836,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		EvalRunnerLive,
 		EvalArtifactsLive,
 		JobsLive,
+		OutboxLive,
 		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,
