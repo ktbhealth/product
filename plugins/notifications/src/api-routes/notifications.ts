@@ -1,7 +1,13 @@
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
-import { createPluginApiRoute, getDoctorUser, runAs } from "@ktb/server-fns";
+import {
+	actingAs,
+	createPluginApiRoute,
+	getDoctorUser,
+	getSessionUser,
+	runAs,
+} from "@ktb/server-fns";
 
 import { Notifications } from "../Notifications.ts";
 
@@ -24,7 +30,16 @@ export const Route = createPluginApiRoute("notifications.routes")("/api/notifica
 	server: {
 		handlers: {
 			GET: async () => {
-				const user = await getDoctorUser();
+				// Doctor-acting identity when a profile is selected (same
+				// user.id the listMy*/markMy* seed fns stream), falling
+				// back to the bare session identity: `Notifications.stream`
+				// only requires principal.userId === userId, so non-doctor
+				// accounts (platform admins, patient users) must still
+				// reach their own stream instead of 401ing on a missing
+				// doctor profile.
+				const user =
+					(await getDoctorUser()) ??
+					(await getSessionUser().then((u) => (u === null ? null : actingAs(u, null))));
 				if (!user) return new Response("unauthorized", { status: 401 });
 
 				const body = await runAs(

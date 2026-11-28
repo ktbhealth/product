@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { DoctorProfiles, type DoctorProfile } from "@ktb/server-fns";
 import {
 	installServerFnRuntime,
 	reactStartServerMock,
@@ -8,6 +9,7 @@ import {
 
 vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
@@ -40,6 +42,18 @@ INSERT INTO "user" (id, name, email, email_verified, image, created_at, updated_
 
 const SESSION_USER = { id: "u-sse", email: "sse@x.com", name: "Dra SSE" };
 
+/** The doctor profile the directory reports for the session user —
+ * mutable so a test can simulate an account with no doctor side. */
+let doctorProfiles: readonly DoctorProfile[] = [
+	{
+		doctorId: 1,
+		userId: SESSION_USER.id,
+		email: SESSION_USER.email,
+		displayName: SESSION_USER.name,
+		role: "owner",
+	},
+];
+
 /** Mutable enable-state behind the route gate (createPluginApiRoute). */
 const pluginGate = { enabled: true };
 
@@ -67,6 +81,12 @@ const infra = Layer.mergeAll(
 	makeEventBus(),
 	// No producer plugins in this harness — empty ingestion registry.
 	Layer.succeed(NotificationIngestions, makeNotificationIngestions([])),
+	// Doctor-profile directory: deployed so getDoctorUser can return
+	// null for accounts with no profile (the route's session fallback).
+	Layer.succeed(DoctorProfiles, {
+		listFor: () => Effect.succeed(doctorProfiles),
+		claimInvites: () => Effect.succeed(0),
+	}),
 );
 
 // The runtime must re-export the infra services too: getSessionUser
@@ -159,5 +179,27 @@ describe("GET /api/notifications", () => {
 		// Stream.tick emits a heartbeat immediately, then every 25s — the
 		// first `: hb` comment should already be in the buffer.
 		expect(buf).toContain(": hb");
+	});
+
+	it("streams for a signed-in account with no doctor profile", async () => {
+		const saved = doctorProfiles;
+		doctorProfiles = [];
+		try {
+			serverFnRequestHeaders.current = new Headers({ cookie: "session=sse" });
+			const h = handlersOf(NotificationsRoute);
+			const res = await h.GET!({
+				request: new Request("http://x/api/notifications", {
+					headers: { cookie: "session=sse" },
+				}),
+			} as never);
+			expect(res.status).toBe(200);
+			expect(res.headers.get("content-type")).toBe("text/event-stream");
+			expect(res.body).toBeTruthy();
+
+			const buf = await readUntil(res.body!, ": hb");
+			expect(buf).toContain(": hb");
+		} finally {
+			doctorProfiles = saved;
+		}
 	});
 });

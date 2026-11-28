@@ -3,7 +3,7 @@ import * as Stream from "effect/Stream";
 
 import { Consultations } from "@ktb/consultations";
 import { PlatformAdmin } from "@ktb/platform";
-import { createPluginApiRoute, getDoctorUser, runAs } from "@ktb/server-fns";
+import { actingAs, createPluginApiRoute, getSessionUser, runAs } from "@ktb/server-fns";
 
 /**
  * GET /api/jobs — SSE feed of the consultation audio-pipeline rows behind
@@ -29,8 +29,16 @@ export const Route = createPluginApiRoute("jobs.routes")("/api/jobs")({
 	server: {
 		handlers: {
 			GET: async () => {
-				const user = await getDoctorUser();
-				if (!user) return new Response("unauthorized", { status: 401 });
+				// Session-only gate: the feed is platform-admin data, not
+				// doctor-scoped — `audioJobsStream` authorizes via
+				// PlatformAdmin.requireAdmin on the bound principal, so a
+				// missing doctor profile (non-doctor superadmin, env
+				// allowlist entry) must not 401 here. `actingAs(user, null)`
+				// binds actorId = the signed-in id, which is what the
+				// isAdmin/requireAdmin grant checks evaluate.
+				const sessionUser = await getSessionUser();
+				if (!sessionUser) return new Response("unauthorized", { status: 401 });
+				const user = actingAs(sessionUser, null);
 
 				const admin = await runAs(
 					user,
