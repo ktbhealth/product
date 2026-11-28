@@ -35,6 +35,11 @@ const OPTIONAL = [
 	"EMAIL_STUB",
 	"SMTP_URL",
 	"EMAIL_FROM",
+	// Google Calendar import OAuth (T-272) — all three or none;
+	// the driver degrades to oauth-less when absent.
+	"GOOGLE_CLIENT_ID",
+	"GOOGLE_CLIENT_SECRET",
+	"GOOGLE_OAUTH_REDIRECT_URI",
 	// Telemetry config — mirrors observabilityEnvKeys("KTB_") in
 	// @ktb/observability (config.ts); keep in sync. These are optional
 	// OTEL_*/KTB_* vars so `OTEL_EXPORTER_OTLP_ENDPOINT=… bun run

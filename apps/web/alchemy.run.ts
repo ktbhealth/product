@@ -117,6 +117,16 @@ export default Alchemy.Stack(
 				...(process.env.TURNSTILE_SECRET_KEY
 					? { TURNSTILE_SECRET_KEY: Redacted.make(process.env.TURNSTILE_SECRET_KEY) }
 					: {}),
+				// Google Calendar import OAuth (T-272) — client secret is
+				// redacted; id/redirect-uri are non-secret client config.
+				...(process.env.GOOGLE_CLIENT_SECRET
+					? { GOOGLE_CLIENT_SECRET: Redacted.make(process.env.GOOGLE_CLIENT_SECRET) }
+					: {}),
+				...Object.fromEntries(
+					["GOOGLE_CLIENT_ID", "GOOGLE_OAUTH_REDIRECT_URI"]
+						.filter((k) => process.env[k])
+						.map((k) => [k, process.env[k] as string]),
+				),
 				// LLM provider config — bound as worker vars/secrets so
 				// createApp's env mapping reaches them in production.
 				...Object.fromEntries(
