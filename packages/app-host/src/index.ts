@@ -57,6 +57,8 @@ import { NotificationIngestions, makeNotificationIngestions } from "@ktb/notific
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
+import { Calendars } from "@ktb/calendar";
+import { googleCalendarsDriver } from "@ktb/calendar-google";
 import {
 	EvalArtifacts,
 	EvalRunner,
@@ -98,6 +100,7 @@ import { Captcha, nullCaptchaDriver } from "@ktb/captcha";
 import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
 import { EntityCipher } from "@ktb/crypto/cipher";
+import { SecretKeyring } from "@ktb/crypto/secret-keyring";
 import { passthroughCipherDriver } from "@ktb/crypto-stub";
 import { buildPermissions } from "@ktb/rbac";
 import { vaultKeyringEnvDriver } from "@ktb/vault-keyring";
@@ -435,6 +438,7 @@ export interface AppOptions {
 export const defaultDrivers: readonly Driver<unknown>[] = [
 	recallDriver,
 	stubBotDriver,
+	googleCalendarsDriver,
 	stubCaptchaDriver,
 	turnstileCaptchaDriver,
 	nullCaptchaDriver,
@@ -554,6 +558,10 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 	// its secret is bound; null skips verification entirely.
 	const BotLive = layerFor<Bot>(Bot.key, env);
 	const CaptchaLive = layerFor<Captcha>(Captcha.key, env);
+	// External calendar provider registry (P-008): Google is the first
+	// adapter. The provider registry is always available; OAuth operations
+	// appear only when the deployment supplies the Google client env.
+	const CalendarsLive = layerFor<Calendars>(Calendars.key, env);
 
 	// Outbound email. SMTP_URL + EMAIL_FROM select the SMTP driver — an
 	// explicit opt-in that wins over EMAIL_STUB (which stays the dev
@@ -679,6 +687,9 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
+	// Vault KEK keyring (P-098 C1): bound only when VAULT_MASTER_KEY is
+	// set — absent, Secrets ops fail closed via serviceOption.
+	const SecretKeyringLive = optionalLayerFor<SecretKeyring>(SecretKeyring.key, env);
 	// LLM script generation for persona cohorts — bound only when an
 	// ACP endpoint is configured; the service degrades to templates.
 	const LlmLive = optionalLayerFor<LlmPort>(LlmPort.key, env);
@@ -838,6 +849,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 	const core = Layer.mergeAll(
 		BotLive,
 		CaptchaLive,
+		CalendarsLive,
 		EmailLive,
 		DbLive,
 		AuthServiceLive,
@@ -850,6 +862,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		JobsLive,
 		OutboxLive,
 		EntityCipherLive,
+		SecretKeyringLive,
 		LlmLive,
 		LlmFactoryLive,
 		DecisionsFactoryLive,
@@ -1254,6 +1267,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		plugins,
 		BindingLive,
 		CaptchaLive,
+		CalendarsLive,
 		EmailLive,
 		AppLive,
 		runtime,

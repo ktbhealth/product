@@ -1,7 +1,10 @@
 import type { AgendaApi, AppointmentDraft } from "./views/index.ts";
 import type { AppointmentStatus } from "./schema.ts";
 import {
+	calendarConnectionFn,
 	createAppointmentFn,
+	importGoogleCalendarFn,
+	resolveCalendarImportItemFn,
 	listAppointmentsFn,
 	setAppointmentStatusFn,
 	startAppointmentFn,
@@ -20,4 +23,7 @@ export const agendaApi: AgendaApi = {
 		setAppointmentStatusFn({ data: { id, status } }),
 	start: (id: number) => startAppointmentFn({ data: { id } }),
 	list: (from: Date, to: Date) => listAppointmentsFn({ data: { from, to } }),
+	calendarConnection: () => calendarConnectionFn(),
+	importGoogleCalendar: (input) => importGoogleCalendarFn({ data: input }),
+	resolveCalendarImportItem: (input) => resolveCalendarImportItemFn({ data: input }),
 };

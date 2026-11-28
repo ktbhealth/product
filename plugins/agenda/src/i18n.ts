@@ -70,6 +70,36 @@ export interface AgendaMessages {
 	readonly detailsTitle: string;
 	readonly startingSoon: (minutes: number) => string;
 	readonly durationMin: (minutes: number) => string;
+	/** External calendar import affordance and result copy. */
+	readonly calendar: {
+		readonly importGoogle: string;
+		readonly connectGoogle: string;
+		readonly importing: string;
+		readonly connected: string;
+		readonly result: (
+			imported: number,
+			existing: number,
+			review: number,
+			conflicts: number,
+		) => string;
+		readonly unavailable: string;
+		readonly failed: string;
+		/** Post-import review dialog — events that need doctor input. */
+		readonly review: {
+			readonly title: string;
+			readonly patientNeeded: string;
+			readonly ambiguousPatient: string;
+			readonly allDay: string;
+			readonly cancelled: string;
+			readonly pickPatient: string;
+			readonly schedule: string;
+			readonly scheduling: string;
+			readonly ignore: string;
+			readonly close: string;
+			readonly conflict: string;
+			readonly failed: string;
+		};
+	};
 }
 
 const en: AgendaMessages = {
@@ -119,6 +149,33 @@ const en: AgendaMessages = {
 	detailsTitle: "Appointment",
 	startingSoon: paramMessage("en", "Starts in {minutes} min", ["minutes"]),
 	durationMin: paramMessage("en", "{minutes} min", ["minutes"]),
+	calendar: {
+		importGoogle: "Import from Google",
+		connectGoogle: "Connect Google Calendar",
+		importing: "Importing…",
+		connected: "Google Calendar connected.",
+		result: paramMessage(
+			"en",
+			"{imported} imported · {existing} already existed · {review} need review · {conflicts} conflicts",
+			["imported", "existing", "review", "conflicts"],
+		),
+		unavailable: "Google Calendar connection is not configured yet.",
+		failed: "Calendar import failed.",
+		review: {
+			title: "Review imported events",
+			patientNeeded: "No matching patient",
+			ambiguousPatient: "Multiple possible patients",
+			allDay: "All-day event — not imported",
+			cancelled: "Cancelled in Google — not imported",
+			pickPatient: "Pick a patient",
+			schedule: "Schedule",
+			scheduling: "Scheduling…",
+			ignore: "Ignore",
+			close: "Close",
+			conflict: "This time overlaps another appointment.",
+			failed: "Couldn't schedule this event.",
+		},
+	},
 };
 
 const ptBR: AgendaMessages = {
@@ -168,6 +225,33 @@ const ptBR: AgendaMessages = {
 	detailsTitle: "Agendamento",
 	startingSoon: paramMessage("pt-BR", "Começa em {minutes} min", ["minutes"]),
 	durationMin: paramMessage("pt-BR", "{minutes} min", ["minutes"]),
+	calendar: {
+		importGoogle: "Importar do Google",
+		connectGoogle: "Conectar Google Agenda",
+		importing: "Importando…",
+		connected: "Google Agenda conectado.",
+		result: paramMessage(
+			"pt-BR",
+			"{imported} importados · {existing} já existiam · {review} precisam de revisão · {conflicts} conflitos",
+			["imported", "existing", "review", "conflicts"],
+		),
+		unavailable: "A conexão com o Google Agenda ainda não está configurada.",
+		failed: "Falha ao importar a agenda.",
+		review: {
+			title: "Revisar eventos importados",
+			patientNeeded: "Nenhum paciente correspondente",
+			ambiguousPatient: "Mais de um paciente possível",
+			allDay: "Evento de dia inteiro — não importado",
+			cancelled: "Cancelado no Google — não importado",
+			pickPatient: "Escolha um paciente",
+			schedule: "Agendar",
+			scheduling: "Agendando…",
+			ignore: "Ignorar",
+			close: "Fechar",
+			conflict: "O horário conflita com outro agendamento.",
+			failed: "Não foi possível agendar este evento.",
+		},
+	},
 };
 
 const es: AgendaMessages = {
@@ -217,6 +301,33 @@ const es: AgendaMessages = {
 	detailsTitle: "Cita",
 	startingSoon: paramMessage("es", "Empieza en {minutes} min", ["minutes"]),
 	durationMin: paramMessage("es", "{minutes} min", ["minutes"]),
+	calendar: {
+		importGoogle: "Importar de Google",
+		connectGoogle: "Conectar Google Calendar",
+		importing: "Importando…",
+		connected: "Google Calendar conectado.",
+		result: paramMessage(
+			"es",
+			"{imported} importadas · {existing} ya existían · {review} requieren revisión · {conflicts} conflictos",
+			["imported", "existing", "review", "conflicts"],
+		),
+		unavailable: "La conexión con Google Calendar aún no está configurada.",
+		failed: "La importación del calendario falló.",
+		review: {
+			title: "Revisar eventos importados",
+			patientNeeded: "Ningún paciente coincide",
+			ambiguousPatient: "Más de un paciente posible",
+			allDay: "Evento de día completo — no importado",
+			cancelled: "Cancelado en Google — no importado",
+			pickPatient: "Elige un paciente",
+			schedule: "Agendar",
+			scheduling: "Agendando…",
+			ignore: "Ignorar",
+			close: "Cerrar",
+			conflict: "El horario se solapa con otra cita.",
+			failed: "No se pudo agendar este evento.",
+		},
+	},
 };
 
 const CATALOGS: Record<AgendaLocale, AgendaMessages> = {

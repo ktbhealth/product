@@ -11,6 +11,13 @@ export type I18nKey =
 	| "agenda.actions.noShow"
 	| "agenda.actions.start"
 	| "agenda.actions.started"
+	| "agenda.calendar.connected"
+	| "agenda.calendar.connectGoogle"
+	| "agenda.calendar.failed"
+	| "agenda.calendar.importGoogle"
+	| "agenda.calendar.importing"
+	| "agenda.calendar.result"
+	| "agenda.calendar.unavailable"
 	| "agenda.detailsTitle"
 	| "agenda.durationMin"
 	| "agenda.empty"
@@ -2499,6 +2506,21 @@ export interface I18nTypedT {
 	(key: "agenda.actions.noShow"): Effect.Effect<string>;
 	(key: "agenda.actions.start"): Effect.Effect<string>;
 	(key: "agenda.actions.started"): Effect.Effect<string>;
+	(key: "agenda.calendar.connected"): Effect.Effect<string>;
+	(key: "agenda.calendar.connectGoogle"): Effect.Effect<string>;
+	(key: "agenda.calendar.failed"): Effect.Effect<string>;
+	(key: "agenda.calendar.importGoogle"): Effect.Effect<string>;
+	(key: "agenda.calendar.importing"): Effect.Effect<string>;
+	(
+		key: "agenda.calendar.result",
+		params: {
+			imported: unknown;
+			existing: unknown;
+			review: unknown;
+			conflicts: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "agenda.calendar.unavailable"): Effect.Effect<string>;
 	(key: "agenda.detailsTitle"): Effect.Effect<string>;
 	(
 		key: "agenda.durationMin",

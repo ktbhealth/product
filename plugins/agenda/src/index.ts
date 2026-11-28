@@ -1,18 +1,23 @@
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { CalendarClockIcon } from "lucide-react";
 
 import { clinicianPortalPlugin } from "@ktb/clinician";
 import { consultationsServicesPlugin } from "@ktb/consultations";
+import { physical } from "@tanstack/virtual-file-routes";
+
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 import { notificationIngestion, notificationIngestMessages } from "@ktb/notifications-port";
 import { AppointmentReminderDue } from "./api.ts";
 import { Principal } from "@ktb/authz";
 import { Patients, patientsServicesPlugin, type Patient } from "@ktb/patients";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
+import { vaultSecretsPlugin } from "@ktb/vault";
 
-import { appointments } from "@ktb/db/schema";
+import { appointments, calendarConnections } from "@ktb/db/schema";
 import { AgendaPortalPage, type AgendaListItem } from "./views/index.ts";
 import { Appointments, AppointmentsLive } from "./service.ts";
+import { CalendarIntegrationsLive } from "./calendar.ts";
 import { AGENDA_WINDOW } from "./window.ts";
 
 export {
@@ -20,7 +25,11 @@ export {
 	APPOINTMENT_SYNC_STATES,
 	APPOINTMENT_TRANSITIONS,
 	appointments,
+	calendarConnections,
+	CALENDAR_CONNECTION_STATUSES,
 	type Appointment,
+	type CalendarConnection,
+	type CalendarConnectionStatus,
 	type AppointmentStatus,
 	type AppointmentSyncState,
 } from "./schema.ts";
@@ -43,6 +52,16 @@ export {
 	type AppointmentPatch,
 	type AppointmentRow,
 } from "./service.ts";
+export {
+	CalendarIntegrationError,
+	CalendarIntegrations,
+	CalendarIntegrationsLive,
+	type CalendarConnectionCard,
+	type CalendarImportConflictItem,
+	type CalendarImportResult,
+	type CalendarImportReviewItem,
+} from "./calendar.ts";
+
 export {
 	AppointmentCancelled,
 	AppointmentReminderDue,
@@ -121,7 +140,7 @@ const agendaChrome = (instance: (typeof CLINICAL_INSTANCES)[number]): ChromeCont
 export const agendaTablesPlugin = definePlugin({
 	id: "agenda.tables",
 	meta: { keywords: ["agenda", "tables"] },
-	tables: { appointments },
+	tables: { appointments, calendarConnections },
 });
 
 export const agendaServicesPlugin = definePlugin({
@@ -133,7 +152,7 @@ export const agendaServicesPlugin = definePlugin({
 	// port the patient-link tuple check consumes is composed (still
 	// optional — absent fails the check closed).
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
-	optionalDeps: [rbacServicesPlugin.id],
+	optionalDeps: [rbacServicesPlugin.id, vaultSecretsPlugin.id],
 	// Notification ingestion (@ktb/notifications-port): the reminder
 	// sweep's due event projects into a per-user console notification.
 	// The app host collects this into `NotificationIngestions` at
@@ -160,7 +179,17 @@ export const agendaServicesPlugin = definePlugin({
 			};
 		}),
 	],
-	services: AppointmentsLive,
+	services: CalendarIntegrationsLive.pipe(Layer.provideMerge(AppointmentsLive)),
+});
+
+/** OAuth/connect API routes for external calendar providers. Modules
+ * live in this package and reach the composed runtime through
+ * @ktb/server-fns — no host route files. */
+export const agendaRoutesPlugin = definePlugin({
+	id: "agenda.routes",
+	meta: { keywords: ["agenda", "routes", "calendar"] },
+	requiredDeps: [agendaServicesPlugin.id],
+	routes: [physical("/api", "../../../../plugins/agenda/src/api-routes")],
 });
 
 /** Agenda pages under the clinical portals (P-081): mounted as page
@@ -189,6 +218,7 @@ export const agendaChromePlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	agendaTablesPlugin,
 	agendaServicesPlugin,
+	agendaRoutesPlugin,
 	agendaPagesPlugin,
 	agendaChromePlugin,
 ];
@@ -199,6 +229,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"agenda.tables": true;
 		"agenda.services": true;
+		"agenda.routes": true;
 		"agenda.pages": true;
 		"agenda.chrome": true;
 	}

@@ -103,8 +103,9 @@ export const appointments = sqliteTable(
 		index("appointments_reminder_idx").on(table.reminderSentAt, table.startsAt),
 		index("appointments_tenant_id_idx").on(table.tenantId),
 		index("appointments_patient_idx").on(table.patientId),
-		// Sync dedup: one appointment per (provider, calendar, event).
+		// Sync dedup: one appointment per owner + (provider, calendar, event).
 		uniqueIndex("appointments_external_idx").on(
+			table.ownerId,
 			table.externalProvider,
 			table.externalCalendarId,
 			table.externalEventId,
@@ -113,3 +114,46 @@ export const appointments = sqliteTable(
 );
 
 export type Appointment = typeof appointments.$inferSelect;
+
+/** External calendar connection lifecycle — revoked rows stay as history
+ * for already-imported appointments; only `active` rows are read for sync. */
+export const CALENDAR_CONNECTION_STATUSES = ["active", "revoked", "error"] as const;
+export type CalendarConnectionStatus = (typeof CALENDAR_CONNECTION_STATUSES)[number];
+
+/**
+ * One doctor-owned external calendar connection. OAuth material itself
+ * never lives here: `credentialRef` points at a user-scoped vault secret
+ * (`vault:<id>`) containing the provider-specific credential object.
+ * `syncToken` is nullable until continuous sync lands — the first import
+ * flow performs bounded one-shot reads.
+ */
+export const calendarConnections = sqliteTable(
+	"calendar_connections",
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		ownerId: text("owner_id").notNull(),
+		tenantId: integer("tenant_id").references(() => groups.id, { onDelete: "set null" }),
+		provider: text().notNull(),
+		externalCalendarId: text("external_calendar_id").notNull().default("primary"),
+		externalAccountId: text("external_account_id"),
+		credentialRef: text("credential_ref").notNull(),
+		status: text().notNull().default("active"),
+		syncToken: text("sync_token"),
+		lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [
+		index("calendar_connections_owner_idx").on(table.ownerId, table.provider),
+		index("calendar_connections_tenant_id_idx").on(table.tenantId),
+		uniqueIndex("calendar_connections_owner_provider_calendar_idx").on(
+			table.ownerId,
+			table.provider,
+			table.externalCalendarId,
+		),
+	],
+);
+
+export type CalendarConnection = typeof calendarConnections.$inferSelect;

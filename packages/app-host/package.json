@@ -22,6 +22,8 @@
 		"@ktb/authz": "workspace:*",
 		"@ktb/bot": "workspace:*",
 		"@ktb/bot-recall": "workspace:*",
+		"@ktb/calendar": "workspace:*",
+		"@ktb/calendar-google": "workspace:*",
 		"@ktb/captcha": "workspace:*",
 		"@ktb/captcha-stub": "workspace:*",
 		"@ktb/captcha-turnstile": "workspace:*",

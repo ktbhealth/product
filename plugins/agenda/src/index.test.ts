@@ -843,6 +843,7 @@ describe("agenda plugins", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"agenda.tables",
 			"agenda.services",
+			"agenda.routes",
 			"agenda.pages",
 			"agenda.chrome",
 		]);

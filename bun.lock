@@ -316,6 +316,8 @@
         "@ktb/authz": "workspace:*",
         "@ktb/bot": "workspace:*",
         "@ktb/bot-recall": "workspace:*",
+        "@ktb/calendar": "workspace:*",
+        "@ktb/calendar-google": "workspace:*",
         "@ktb/captcha": "workspace:*",
         "@ktb/captcha-stub": "workspace:*",
         "@ktb/captcha-turnstile": "workspace:*",
@@ -435,6 +437,14 @@
     "packages/calendar": {
       "name": "@ktb/calendar",
       "dependencies": {
+        "@ktb/driver-framework": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "packages/calendar-google": {
+      "name": "@ktb/calendar-google",
+      "dependencies": {
+        "@ktb/calendar": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
         "effect": "4.1.2",
       },
@@ -953,6 +963,7 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/authz": "workspace:*",
+        "@ktb/calendar": "workspace:*",
         "@ktb/clinician": "workspace:*",
         "@ktb/consultations": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -966,10 +977,12 @@
         "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktb/views": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
+        "@tanstack/virtual-file-routes": "1.162.0",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
         "lucide-react": "0.544.0",
@@ -3184,6 +3197,8 @@
     "@ktb/builder-blocks": ["@ktb/builder-blocks@workspace:plugins/builder-blocks"],
 
     "@ktb/calendar": ["@ktb/calendar@workspace:packages/calendar"],
+
+    "@ktb/calendar-google": ["@ktb/calendar-google@workspace:packages/calendar-google"],
 
     "@ktb/captcha": ["@ktb/captcha@workspace:packages/captcha"],
 

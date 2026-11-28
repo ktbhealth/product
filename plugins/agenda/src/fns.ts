@@ -14,6 +14,12 @@ import {
 	type AppointmentListItem,
 	type AppointmentRow,
 } from "./service.ts";
+import {
+	CalendarIntegrations,
+	type CalendarConnectionCard,
+	type CalendarImportResolveResult,
+	type CalendarImportResult,
+} from "./calendar.ts";
 import { MAX_LIST_RANGE_DAYS } from "./window.ts";
 
 // Agenda plugin server functions: plugin-owned like the route modules —
@@ -186,6 +192,126 @@ export const startAppointmentFn = createServerFn({ method: "POST" })
 						? ({ ok: false } as const)
 						: ({ ok: true, consultationId: result.consultationId } as const);
 				}).pipe(forbiddenTo({ ok: false } as const)),
+			);
+		}),
+	);
+
+// ── External calendar import fns ─────────────────────────────────
+
+export type CalendarConnectionFnResult =
+	| { readonly ok: true; readonly connection: CalendarConnectionCard | null }
+	| { readonly ok: false };
+
+/** Current Google primary-calendar connection state for the acting
+ * doctor. Metadata only — vault refs and token material never leave. */
+export const calendarConnectionFn = createServerFn({ method: "GET" }).handler(
+	doctorHandler(async ({ user, run }) => {
+		return run(
+			Effect.gen(function* () {
+				const integrations = yield* CalendarIntegrations;
+				const connection = yield* integrations.connection(user.id, "google", "primary");
+				return { ok: true, connection } as const;
+			}).pipe(forbiddenTo({ ok: false } as const)),
+		);
+	}),
+);
+
+const ImportCalendarInput = Schema.Struct({
+	from: Schema.optionalKey(Schema.Date),
+	to: Schema.optionalKey(Schema.Date),
+});
+
+export type ImportCalendarFnResult =
+	| { readonly ok: true; readonly result: CalendarImportResult }
+	| { readonly ok: false; readonly reason?: "not-connected" | "unavailable" | "provider-error" };
+
+/** Import the visible/bounded Google primary-calendar window into the
+ * agenda. Idempotent by external event identity; unmatched events are
+ * returned for review instead of guessed into patient rows. */
+export const importGoogleCalendarFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) =>
+		Schema.decodeUnknownSync(ImportCalendarInput)(normalizeRange(input ?? {})),
+	)
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			const now = Date.now();
+			const from = data.from ?? new Date(now - 7 * 86_400_000);
+			const to = data.to ?? new Date(now + 90 * 86_400_000);
+			if (to.getTime() < from.getTime() || to.getTime() - from.getTime() > 180 * 86_400_000) {
+				return { ok: false, reason: "unavailable" } as const;
+			}
+			return run(
+				Effect.gen(function* () {
+					const integrations = yield* CalendarIntegrations;
+					const result = yield* integrations.importEvents(user.id, {
+						provider: "google",
+						calendarId: "primary",
+						from,
+						to,
+					});
+					return { ok: true, result } as const;
+				}).pipe(
+					forbiddenTo({ ok: false } as const),
+					Effect.catchTag("CalendarIntegrationError", (error) => {
+						const reason: "not-connected" | "provider-error" | "unavailable" =
+							error.reason === "not-connected"
+								? "not-connected"
+								: error.reason === "provider-error"
+									? "provider-error"
+									: "unavailable";
+						return Effect.succeed({ ok: false, reason } as const);
+					}),
+				),
+			);
+		}),
+	);
+
+/** Wire input for resolving one review item — startsAt/endsAt tolerate
+ * ISO strings and epoch ms like the other date-carrying fns. */
+const normalizeResolveInput = (input: unknown): unknown => {
+	if (input === null || typeof input !== "object") return input;
+	const o = { ...(input as Record<string, unknown>) };
+	for (const key of ["startsAt", "endsAt"] as const) {
+		if (typeof o[key] === "string" || typeof o[key] === "number") o[key] = new Date(o[key]);
+	}
+	return o;
+};
+
+const ResolveImportItemInput = Schema.Struct({
+	externalEventId: Schema.String,
+	startsAt: Schema.Date,
+	endsAt: Schema.Date,
+	patientId: Schema.Number,
+});
+
+export type ResolveCalendarImportItemFnResult =
+	| { readonly ok: true; readonly result: CalendarImportResolveResult }
+	| { readonly ok: false };
+
+/** Schedule one review item with the patient the doctor picked — the
+ * external event identity rides along so a later import dedupes it. */
+export const resolveCalendarImportItemFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) =>
+		Schema.decodeUnknownSync(ResolveImportItemInput)(normalizeResolveInput(input ?? {})),
+	)
+	.handler(
+		doctorHandler(async ({ data, user, run }) => {
+			return run(
+				Effect.gen(function* () {
+					const integrations = yield* CalendarIntegrations;
+					const result = yield* integrations.resolveImportItem(user.id, {
+						provider: "google",
+						calendarId: "primary",
+						externalEventId: data.externalEventId,
+						startsAt: data.startsAt,
+						endsAt: data.endsAt,
+						patientId: data.patientId,
+					});
+					return { ok: true, result } as const;
+				}).pipe(
+					forbiddenTo({ ok: false } as const),
+					Effect.catchTag("CalendarIntegrationError", () => Effect.succeed({ ok: false } as const)),
+				),
 			);
 		}),
 	);

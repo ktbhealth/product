@@ -9,11 +9,16 @@ import type { Driver } from "@ktb/driver-framework";
  * `appointments` table stays the source of truth for consult links and
  * statuses — adapters only mirror/sync.
  *
- * PHI contract (LGPD — see proposal-0008 cautions): nothing crossing
- * this port may carry clinical data or full patient names. Titles are
- * initials or a generic label plus the internal appointment id; the
- * doctor's own calendar already implies the rest. Adapters that leak
- * PHI are contract violations, not configuration choices.
+ * PHI contract (LGPD — see proposal-0008 cautions): the direction
+ * matters. Events KTB writes to a provider may never carry clinical
+ * data or full patient names — titles are initials or a generic label
+ * plus the internal appointment id; the doctor's own calendar already
+ * implies the rest. Provider events read inbound are user-authored data
+ * and may already contain names or other sensitive text. That inbound
+ * text may cross the port only transiently for the connected owner's
+ * import/sync flow: consumers must not persist it, log it, send it to
+ * analytics/LLMs, or expose it beyond that owner. Adapters that leak
+ * PHI outbound are contract violations, not configuration choices.
  */
 
 /** What the local system asks an adapter to materialize as an event. */
@@ -26,6 +31,18 @@ export interface ExternalEventDraft {
 	readonly description?: string;
 }
 
+/** Bounded read options for one-shot imports. Continuous synchronization
+ * uses {@link ExternalCalendar.syncEvents} instead — providers commonly
+ * forbid mixing delta tokens with date filters. */
+export interface CalendarListQuery {
+	/** Lower bound for events overlapping the window. */
+	readonly from?: Date;
+	/** Upper bound for events overlapping the window. */
+	readonly to?: Date;
+	/** Expand recurring series into instances when the provider can. */
+	readonly expandRecurring?: boolean;
+}
+
 /** Wire shape of an event read from or written to a provider. */
 export interface ExternalCalendarEvent extends ExternalEventDraft {
 	/** Provider-side event id — stored on the appointment row. */
@@ -36,7 +53,17 @@ export interface ExternalCalendarEvent extends ExternalEventDraft {
 	readonly etag?: string;
 	/** "cancelled" when the provider tombstones instead of deleting. */
 	readonly status?: "confirmed" | "cancelled";
+	/** Date-only event — imports normally treat these as blocks, not consults. */
+	readonly allDay?: boolean;
 	readonly updatedAt?: Date;
+}
+
+/** A calendar collection exposed by a connected provider account. */
+export interface ExternalCalendarInfo {
+	readonly id: string;
+	readonly name: string;
+	readonly primary?: boolean;
+	readonly readOnly?: boolean;
 }
 
 /** A provider call failed — network, auth, or quota. Callers may retry. */
@@ -83,7 +110,13 @@ export interface CalendarWatchNotification {
 export interface ExternalCalendar {
 	/** Adapter's provider id — an opaque key, never a hardcoded literal here. */
 	readonly provider: string;
-	listEvents(calendarId: string): Promise<readonly ExternalCalendarEvent[]>;
+	/** Calendars visible to the connected account; absent for adapters that
+	 * only support one implicitly configured collection. */
+	listCalendars?(): Promise<readonly ExternalCalendarInfo[]>;
+	listEvents(
+		calendarId: string,
+		query?: CalendarListQuery,
+	): Promise<readonly ExternalCalendarEvent[]>;
 	createEvent(calendarId: string, draft: ExternalEventDraft): Promise<ExternalCalendarEvent>;
 	/** `etag` enables conditional writes; adapters without etag support ignore it. */
 	updateEvent(
@@ -108,11 +141,27 @@ export interface ExternalCalendar {
  * port; each adapter narrows it (OAuth tokens, app passwords, ...). */
 export type CalendarCredentials = Record<string, unknown>;
 
+/** OAuth operations some calendar providers expose for user-account
+ * connections. Credentials remain opaque provider-specific data; callers
+ * persist the serialized object in a secret store and pass it back to
+ * `connect`/`refresh`. */
+export interface CalendarOAuthOperations {
+	/** URL the user is redirected to in order to authorize the connection. */
+	authorizationUrl(input: { readonly state: string; readonly scopes?: readonly string[] }): string;
+	/** Exchange the redirect callback's authorization code for tokens. */
+	exchangeCode(code: string): Promise<CalendarCredentials>;
+	/** Refresh expired credentials; providers may rotate refresh tokens. */
+	refresh(credentials: CalendarCredentials): Promise<CalendarCredentials>;
+}
+
 /** Adapter factory: one per provider, registered at the edge. */
 export interface CalendarProvider {
 	/** Stable provider key stored on synced rows, e.g. from the adapter
 	 * package — the port never enumerates valid values. */
 	readonly id: string;
+	/** OAuth connection machinery when the provider supports it. Absent
+	 * for credential schemes such as CalDAV app passwords. */
+	readonly oauth?: CalendarOAuthOperations;
 	connect(credentials: CalendarCredentials): Promise<ExternalCalendar>;
 }
 
@@ -193,7 +242,14 @@ export const makeMemoryCalendarProvider = (
 			};
 			return {
 				provider,
-				listEvents: async (calendarId) => [...calendar(calendarId).values()],
+				listEvents: async (calendarId, query) =>
+					[...calendar(calendarId).values()].filter((event) => {
+						const start = event.startsAt.getTime();
+						const end = event.endsAt.getTime();
+						if (query?.from !== undefined && end < query.from.getTime()) return false;
+						if (query?.to !== undefined && start >= query.to.getTime()) return false;
+						return true;
+					}),
 				createEvent: async (calendarId, draft) => {
 					const event: ExternalCalendarEvent = {
 						...draft,

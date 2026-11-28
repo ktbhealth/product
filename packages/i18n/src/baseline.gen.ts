@@ -4293,6 +4293,50 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "agenda",
+		key: "calendar.importGoogle",
+		locale: "en",
+		value: "Import from Google",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.connectGoogle",
+		locale: "en",
+		value: "Connect Google Calendar",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.importing",
+		locale: "en",
+		value: "Importing…",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.connected",
+		locale: "en",
+		value: "Google Calendar connected.",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.result",
+		locale: "en",
+		kind: "text",
+		value:
+			"{imported} imported · {existing} already existed · {review} need review · {conflicts} conflicts",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.unavailable",
+		locale: "en",
+		value: "Google Calendar connection is not configured yet.",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.failed",
+		locale: "en",
+		value: "Calendar import failed.",
+	},
+	{
+		namespace: "agenda",
 		key: "title",
 		locale: "pt-BR",
 		value: "Agenda",
@@ -4537,6 +4581,50 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "agenda",
+		key: "calendar.importGoogle",
+		locale: "pt-BR",
+		value: "Importar do Google",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.connectGoogle",
+		locale: "pt-BR",
+		value: "Conectar Google Agenda",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.importing",
+		locale: "pt-BR",
+		value: "Importando…",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.connected",
+		locale: "pt-BR",
+		value: "Google Agenda conectado.",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.result",
+		locale: "pt-BR",
+		kind: "text",
+		value:
+			"{imported} importados · {existing} já existiam · {review} precisam de revisão · {conflicts} conflitos",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.unavailable",
+		locale: "pt-BR",
+		value: "A conexão com o Google Agenda ainda não está configurada.",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.failed",
+		locale: "pt-BR",
+		value: "Falha ao importar a agenda.",
+	},
+	{
+		namespace: "agenda",
 		key: "title",
 		locale: "es",
 		value: "Agenda",
@@ -4778,6 +4866,50 @@ export const I18N_BASELINE = [
 		locale: "es",
 		kind: "text",
 		value: "{minutes} min",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.importGoogle",
+		locale: "es",
+		value: "Importar de Google",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.connectGoogle",
+		locale: "es",
+		value: "Conectar Google Calendar",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.importing",
+		locale: "es",
+		value: "Importando…",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.connected",
+		locale: "es",
+		value: "Google Calendar conectado.",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.result",
+		locale: "es",
+		kind: "text",
+		value:
+			"{imported} importadas · {existing} ya existían · {review} requieren revisión · {conflicts} conflictos",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.unavailable",
+		locale: "es",
+		value: "La conexión con Google Calendar aún no está configurada.",
+	},
+	{
+		namespace: "agenda",
+		key: "calendar.failed",
+		locale: "es",
+		value: "La importación del calendario falló.",
 	},
 	{
 		namespace: "audience",

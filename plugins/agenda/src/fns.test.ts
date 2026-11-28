@@ -39,8 +39,11 @@ vi.mock("@ktb/server-fns", async (importOriginal) => {
 });
 
 import { AppointmentConflict, Appointments } from "./service.ts";
+import { CalendarIntegrationError, CalendarIntegrations } from "./calendar.ts";
 import {
+	calendarConnectionFn,
 	createAppointmentFn,
+	importGoogleCalendarFn,
 	listAppointmentsFn,
 	setAppointmentStatusFn,
 	startAppointmentFn,
@@ -53,6 +56,20 @@ const runEffects = (impl: Partial<Appointments["Service"]>) => {
 		Effect.runPromise(
 			(effect as Effect.Effect<unknown>).pipe(
 				Effect.provideService(Appointments, Appointments.of(impl as Appointments["Service"])),
+			),
+		),
+	);
+};
+
+/** `runAs` executes the effect against a stub CalendarIntegrations service. */
+const runCalendarEffects = (impl: Partial<CalendarIntegrations["Service"]>) => {
+	mocks.runAs.mockImplementation(async (_user, effect) =>
+		Effect.runPromise(
+			(effect as Effect.Effect<unknown>).pipe(
+				Effect.provideService(
+					CalendarIntegrations,
+					CalendarIntegrations.of(impl as CalendarIntegrations["Service"]),
+				),
 			),
 		),
 	);
@@ -233,5 +250,64 @@ describe("listAppointmentsFn", () => {
 		});
 		await expect(listAppointmentsFn({ data: { from: "nope" } })).rejects.toThrow(/./);
 		await expect(listAppointmentsFn({ data: null })).rejects.toThrow(/./);
+	});
+});
+
+describe("calendar import fns", () => {
+	const card = {
+		id: 1,
+		provider: "google",
+		calendarId: "primary",
+		status: "active",
+		lastSyncAt: null,
+	};
+
+	it("returns only connection metadata for the acting doctor", async () => {
+		let seen: unknown;
+		runCalendarEffects({
+			connection: (owner: string, provider: string, calendarId?: string) => {
+				seen = [owner, provider, calendarId];
+				return Effect.succeed(card);
+			},
+		});
+		expect(await calendarConnectionFn()).toEqual({ ok: true, connection: card });
+		expect(seen).toEqual(["u1", "google", "primary"]);
+	});
+
+	it("decodes the optional import window and returns the import result", async () => {
+		let seen: unknown;
+		const result = { imported: 1, existing: 2, skipped: 3, review: [], conflicts: [] };
+		runCalendarEffects({
+			importEvents: (_owner: string, input: unknown) => {
+				seen = input;
+				return Effect.succeed(result);
+			},
+		});
+		expect(
+			await importGoogleCalendarFn({
+				data: { from: "2030-01-01T00:00:00Z", to: "2030-01-20T00:00:00Z" },
+			}),
+		).toEqual({ ok: true, result });
+		expect((seen as { from: Date }).from).toBeInstanceOf(Date);
+		expect((seen as { to: Date }).to).toBeInstanceOf(Date);
+	});
+
+	it("maps a missing connection to the reconnect reason", async () => {
+		runCalendarEffects({
+			importEvents: () => Effect.fail(new CalendarIntegrationError({ reason: "not-connected" })),
+		});
+		expect(await importGoogleCalendarFn({ data: {} })).toEqual({
+			ok: false,
+			reason: "not-connected",
+		});
+	});
+
+	it("refuses over-wide ranges before touching the runtime", async () => {
+		mocks.runAs.mockClear();
+		const day = 86_400_000;
+		expect(
+			await importGoogleCalendarFn({ data: { from: new Date(0), to: new Date(181 * day) } }),
+		).toEqual({ ok: false, reason: "unavailable" });
+		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 });

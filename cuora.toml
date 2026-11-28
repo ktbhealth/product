@@ -41,11 +41,20 @@ VITE_TURNSTILE_SITE_KEY = "cuora://ktb/turnstile-site-key"
 # fails when a declared ref doesn't resolve. Non-secret OTLP config
 # (endpoint, service name, sample rates, KTB_*) is plain env, not cuora.
 # OTEL_EXPORTER_OTLP_HEADERS = "cuora://ktb/otel-exporter-otlp-headers"
-METRICS_SCRAPE_TOKEN = "cuora://ktb/metrics-scrape-token"
-# Google OAuth client for Calendar API (GCP project ktbhealth-dev).
-# Dev-only for now — add preview/prod puts before `cuora run` there.
+# Google Calendar import (T-272): OAuth client for the calendar connect
+# flow. Uncomment after `cuora put` — like every optional ref, declaring
+# without storing breaks `cuora run` for the whole surface. Redirect URI
+# is config, not secret, but lives here per-env like better-auth-url:
+# dev = http://localhost:3000/api/calendar/google/callback, prod = the
+# deployed origin. Client must be type "Web application" in Google Cloud
+# (GCP project ktbhealth-dev).
 GOOGLE_CLIENT_ID = "cuora://ktb/google-oauth-client-id"
 GOOGLE_CLIENT_SECRET = "cuora://ktb/google-oauth-client-secret"
+GOOGLE_OAUTH_REDIRECT_URI = "cuora://ktb/google-oauth-redirect-uri"
+METRICS_SCRAPE_TOKEN = "cuora://ktb/metrics-scrape-token"
+# Dev KEK for the vault plugin envelope encryption (runbook:
+# docs/security/vault-runbook.md). Prod uses the Alchemy binding instead.
+VAULT_MASTER_KEY = "cuora://ktb/vault-master-key"
 # GitHub org webhook receiver (infra/ci-hook → ci.ktbhealth.workers.dev).
 # Prod-only refs — kept commented so `cuora run` in dev/preview still
 # resolves; set worker secrets with `wrangler secret bulk` from prod.
