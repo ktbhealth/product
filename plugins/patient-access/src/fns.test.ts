@@ -89,8 +89,10 @@ const sent: Array<{ to: string; subject: string; text: string }> = [];
 let sender: EmailSender | null = null;
 /** The invites plugin's `issue`, or null when it is not deployed. */
 let issue: ReturnType<typeof vi.fn> | null = null;
-/** The outbox service's enqueue spy; null = service unbound (legacy
- * inline-send fallback). */
+/** The outbox service's enqueue spy; null = service unbound (the
+ * invites-kit sender then falls back to a direct Email send). The
+ * default impl records the payload into `sent` — the messages that
+ * would be delivered — so assertions read the same either way. */
 let enqueue: ReturnType<typeof vi.fn> | null = null;
 const delivering: EmailSender = {
 	send: async (message) => {
@@ -103,26 +105,29 @@ beforeEach(() => {
 	sent.length = 0;
 	sender = delivering;
 	issue = null;
-	enqueue = null;
+	enqueue = vi.fn(async (write: { readonly payload: unknown }) => {
+		sent.push(write.payload as (typeof sent)[number]);
+		return { id: "ob1" };
+	});
 	mocks.getLocale.mockReturnValue("en");
 	mocks.getDoctorUser.mockResolvedValue(acting);
 	const provide = (effect: Effect.Effect<unknown, unknown, unknown>) => {
-		const base = (effect as Effect.Effect<unknown, unknown, PatientLinks | Db | Email>).pipe(
+		const bound = (effect as Effect.Effect<unknown, unknown, PatientLinks | Db | Email>).pipe(
 			Effect.provideService(PatientLinks, links as never),
-			Effect.provideService(Db, db),
 			Effect.provideService(Email, sender),
+			Effect.provideService(Db, db),
 		);
 		const withOutbox =
 			enqueue === null
-				? base
-				: base.pipe(
+				? bound
+				: bound.pipe(
 						Effect.provideService(Outbox, {
 							enqueue,
 							drain: vi.fn(),
 						} as never),
 					);
 		return Effect.runPromise(
-			issue === null
+			(issue === null
 				? withOutbox
 				: withOutbox.pipe(
 						Effect.provideService(Invites, {
@@ -130,7 +135,7 @@ beforeEach(() => {
 							preview: vi.fn(),
 							accept: vi.fn(),
 						}),
-					),
+					)) as Effect.Effect<unknown>,
 		);
 	};
 	mocks.runAs.mockImplementation((_user: unknown, effect: never) => provide(effect));
@@ -311,8 +316,21 @@ describe("invitePatientFn", () => {
 		logged.mockRestore();
 	});
 
-	it("still grants access, but says so, when the delivery fails", async () => {
+	it("sends inline when the Outbox service is unbound", async () => {
+		// The invites-kit sender falls back to a direct Email send when no
+		// Outbox service is bound — the grant still reports emailed:true.
+		enqueue = null;
+		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({
+			ok: true,
+			emailed: true,
+		});
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toMatchObject({ to: "ana@ktb.test" });
+	});
+
+	it("reports emailed:false when the inline send fails", async () => {
 		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		enqueue = null;
 		sender = {
 			send: async () => {
 				throw new Error("smtp down");

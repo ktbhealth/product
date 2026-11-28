@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 	enqueue: vi.fn(),
 	emailService: { current: "sender" as "sender" | "disabled" | "absent" },
 	/** Whether the outbox service is bound (app-host always binds it). */
-	outboxService: { current: false },
+	outboxService: { current: true },
 	issue: vi.fn(),
 	/** Whether the invites plugin is deployed (its service resolvable). */
 	inviteLinks: { current: false },
@@ -84,10 +84,15 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.getLocale.mockReturnValue("en");
 	mocks.emailService.current = "sender";
-	mocks.outboxService.current = false;
+	mocks.outboxService.current = true;
 	mocks.inviteLinks.current = false;
 	mocks.send.mockResolvedValue(undefined);
-	mocks.enqueue.mockResolvedValue({ id: "ob1" });
+	// Default: the outbox path "delivers" through the send spy so the
+	// message-content assertions read the same as the old inline send.
+	mocks.enqueue.mockImplementation(async (write: { payload: unknown }) => {
+		await mocks.send(write.payload);
+		return { id: "ob1" };
+	});
 	const service = {
 		list: mocks.list,
 		invite: mocks.invite,
@@ -254,7 +259,7 @@ describe("inviteSecretaryFn", () => {
 	);
 
 	it("queues the invite email on the outbox when the service is bound", async () => {
-		mocks.outboxService.current = true;
+		mocks.enqueue.mockResolvedValue({ id: "ob1" });
 		mocks.getDoctorContext.mockResolvedValue(context);
 		mocks.invite.mockReturnValue(Effect.succeed(row));
 		await invite();
@@ -267,6 +272,30 @@ describe("inviteSecretaryFn", () => {
 				text: expect.any(String),
 			}),
 		});
+	});
+
+	it("sends inline when the Outbox service is unbound", async () => {
+		// The invites-kit sender falls back to a direct Email send when no
+		// Outbox service is bound — the delegation still reports ok.
+		mocks.outboxService.current = false;
+		mocks.getDoctorContext.mockResolvedValue(context);
+		mocks.invite.mockReturnValue(Effect.succeed(row));
+		await expect(invite()).resolves.toMatchObject({ ok: true });
+		expect(mocks.enqueue).not.toHaveBeenCalled();
+		expect(mocks.send).toHaveBeenCalledTimes(1);
+		expect(mocks.send.mock.calls[0]![0]).toMatchObject({ to: "sec@ktb.test" });
+	});
+
+	it("sends nothing when no email sender is bound", async () => {
+		// No Outbox service and no Email sender — there is nowhere the
+		// message can go, but the invite itself still lands.
+		mocks.outboxService.current = false;
+		mocks.emailService.current = "disabled";
+		mocks.getDoctorContext.mockResolvedValue(context);
+		mocks.invite.mockReturnValue(Effect.succeed(row));
+		await expect(invite()).resolves.toMatchObject({ ok: true });
+		expect(mocks.send).not.toHaveBeenCalled();
+		expect(mocks.enqueue).not.toHaveBeenCalled();
 	});
 
 	it("still succeeds when the outbox write fails", async () => {
