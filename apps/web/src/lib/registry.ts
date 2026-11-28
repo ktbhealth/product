@@ -9,8 +9,6 @@ export {
 	boundaryEntries,
 	collectChrome,
 	collectI18nKeys,
-	collectPortals,
-	defaultPageContext,
 	enabledIdSet,
 	enabledPlugins,
 	findPage,

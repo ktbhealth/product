@@ -350,11 +350,14 @@
         "@ktb/vault-keyring": "workspace:*",
         "@ktb/views": "workspace:*",
         "@ktb/wizards": "workspace:*",
+        "@tanstack/react-router": "1.170.46",
         "effect": "4.1.2",
+        "react": "^19.2.0",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20251014.0",
         "@ktb/db-testing": "workspace:*",
+        "@types/react": "^19.2.0",
       },
     },
     "packages/auth": {
