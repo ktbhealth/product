@@ -45,9 +45,9 @@ VITE_TURNSTILE_SITE_KEY = "cuora://ktb/turnstile-site-key"
 # is config, not secret, but lives here per-env like better-auth-url:
 # dev = http://localhost:3000/api/calendar/google/callback, prod = the
 # deployed origin. Client must be type "Web application" in Google Cloud.
-# GOOGLE_CLIENT_ID = "cuora://ktb/google-client-id"
-# GOOGLE_CLIENT_SECRET = "cuora://ktb/google-client-secret"
-# GOOGLE_OAUTH_REDIRECT_URI = "cuora://ktb/google-oauth-redirect-uri"
+GOOGLE_CLIENT_ID = "cuora://ktb/google-oauth-client-id"
+GOOGLE_CLIENT_SECRET = "cuora://ktb/google-oauth-client-secret"
+GOOGLE_OAUTH_REDIRECT_URI = "cuora://ktb/google-oauth-redirect-uri"
 METRICS_SCRAPE_TOKEN = "cuora://ktb/metrics-scrape-token"
 # GitHub org webhook receiver (infra/ci-hook → ci.ktbhealth.workers.dev).
 # Prod-only refs — kept commented so `cuora run` in dev/preview still
