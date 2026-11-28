@@ -682,5 +682,28 @@ describe("Credentials (vault-backed, P-098 C3)", () => {
 			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("credential:9")))).toBeNull();
 			await rt.dispose();
 		}
+
+		// credential:<numeric> ownership check: an owned id whose vault
+		// resolve fails degrades to null; a failing ownership list
+		// fails closed (empty).
+		{
+			const { rt, run } = make({
+				extra: [
+					stub({
+						list: () => Effect.succeed([meta(9)]),
+						resolve: () => Effect.fail(new SecretError({ reason: "not-found" })),
+					}),
+				],
+			});
+			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("credential:9")))).toBeNull();
+			await rt.dispose();
+		}
+		{
+			const { rt, run } = make({
+				extra: [stub({ list: () => Effect.fail(new SecretError({ reason: "invalid" })) })],
+			});
+			expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("credential:9")))).toBeNull();
+			await rt.dispose();
+		}
 	});
 });
