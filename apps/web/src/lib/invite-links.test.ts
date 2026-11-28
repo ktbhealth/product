@@ -26,6 +26,7 @@ const { invitePatientFn } = await import("@ktb/patient-access/fns");
 const { createPatientFn, listPatientsFn } = await import("@ktb/patients/fns");
 const { inviteSecretaryFn } = await import("@ktb/secretaries/fns");
 const { signUpDoctor } = await import("#/test/doctor.ts");
+const { drainOutbox } = await import("@ktb/outbox");
 const { auth, db } = await import("./platform.ts");
 const { portalPageDataFn } = await import("./fns.ts");
 
@@ -61,20 +62,27 @@ describe("invite links, end to end", () => {
 	let doctor = "";
 	let patientId = 0;
 
-	/** The body of the last email "sent" to `to`. Invite mail rides the
-	 * outbox: enqueue kicks a best-effort drain, so delivery lands a
-	 * tick after the server fn returns — poll until the stub logs it. */
-	const lastEmailTo = async (to: string, includes?: string): Promise<string> => {
-		let found: string | undefined;
-		await vi.waitFor(() => {
-			found = mail.mock.calls
+	/** The body of the last email "sent" to `to`. */
+	const lastEmailTo = async (to: string, contains?: string): Promise<string> => {
+		// Invite mail rides the outbox (@ktb/outbox): enqueue only kicks a
+		// best-effort drain that claims the row asynchronously, so poll —
+		// flushing any unclaimed pending rows each pass — until the stub
+		// logs the message. `contains` picks one message out when the
+		// address gets several (e.g. a verification email at sign-up).
+		for (let attempt = 0; attempt < 100; attempt++) {
+			await drainOutbox(db);
+			const found = mail.mock.calls
 				.map((call) => String(call[0]))
-				.filter((line) => line.startsWith(`[email-stub] to=${to} `))
-				.filter((line) => includes === undefined || line.includes(includes))
+				.filter(
+					(line) =>
+						line.startsWith(`[email-stub] to=${to} `) &&
+						(contains === undefined || line.includes(contains)),
+				)
 				.pop();
-			expect(found).toBeDefined();
-		});
-		return found!;
+			if (found !== undefined) return found;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		throw new Error(`no email stubbed to ${to}`);
 	};
 	/** The accept-link token in an email — null when it links elsewhere. */
 	const tokenIn = (email: string): string | null =>

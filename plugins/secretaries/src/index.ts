@@ -10,7 +10,13 @@ import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { doctors, user } from "@ktb/db/schema";
 import { doctorsServicesPlugin } from "@ktb/doctors";
-import { invitesServicesPlugin } from "@ktb/invites";
+import {
+	EMAIL_SHAPE,
+	inviteAccessTarget,
+	invitesServicesPlugin,
+	normalizeEmail,
+	verifiedAccountEmail,
+} from "@ktb/invites";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { routeContribution } from "@ktb/platform/routes";
 import { portalShellPlugin } from "@ktb/portal";
@@ -20,6 +26,10 @@ import { doctorAccess, type DoctorAccess } from "./schema.ts";
 import { SecretariesPortalPage } from "./views/SecretariesPortalPage.tsx";
 
 export type { DoctorAccess, DoctorAccessRole, DoctorAccessStatus } from "./schema.ts";
+
+// Canonical home is the invites kit — re-exported so existing imports
+// (tests, seed scripts) keep working.
+export { normalizeEmail } from "@ktb/invites";
 
 /**
  * The doctor profiles delegated to `userId`: one per *active*
@@ -45,31 +55,18 @@ export async function listDelegatedProfiles(
 	return rows.map((row) => ({ ...row, role: "secretary" as const }));
 }
 
-/** Emails are matched case-insensitively: stored and compared lowercased. */
-export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
-
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /**
  * Activate every pending invite addressed to the user's email — only
  * when that email is verified, so nobody claims a delegation by signing
  * up with someone else's address. Returns how many were claimed.
  */
 export async function claimDoctorInvites(db: DbClient, userId: string): Promise<number> {
-	const [account] = await db
-		.select({ email: user.email, emailVerified: user.emailVerified })
-		.from(user)
-		.where(eq(user.id, userId));
-	if (!account?.emailVerified) return 0;
+	const email = await verifiedAccountEmail(db, userId);
+	if (email === null) return 0;
 	const claimed = await db
 		.update(doctorAccess)
 		.set({ userId, status: "active" })
-		.where(
-			and(
-				eq(doctorAccess.email, normalizeEmail(account.email)),
-				eq(doctorAccess.status, "invited"),
-			),
-		)
+		.where(and(eq(doctorAccess.email, email), eq(doctorAccess.status, "invited")))
 		.returning({ id: doctorAccess.id });
 	return claimed.length;
 }
@@ -115,13 +112,7 @@ export async function inviteSecretary(
 		readonly invitedBy: string;
 	},
 ): Promise<DoctorAccess> {
-	const [account] = await db
-		.select({ id: user.id, emailVerified: user.emailVerified })
-		.from(user)
-		.where(eq(user.email, input.email));
-	const link = account?.emailVerified
-		? { userId: account.id, status: "active" }
-		: { userId: null, status: "invited" };
+	const link = await inviteAccessTarget(db, input.email);
 	const [row] = await db
 		.insert(doctorAccess)
 		.values({

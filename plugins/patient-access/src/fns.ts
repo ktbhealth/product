@@ -1,15 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import { Schema } from "effect";
 import { and, eq, inArray, isNotNull, like, or } from "drizzle-orm";
 
 import { Db } from "@ktb/db";
 import { consultations, patientAccess, patients, portalKeys } from "@ktb/db/schema";
-import { EMAIL_OUTBOX_KIND, Email } from "@ktb/email";
-import { Outbox } from "@ktb/outbox";
-import { inviteAcceptPath } from "@ktb/invites";
+import { sendInviteEmail } from "@ktb/invites";
 import {
 	forbiddenTo,
 	getDoctorAccess,
@@ -101,48 +98,26 @@ export type InvitePatientResult =
  * Tell the invitee by email, in the acting user's current locale.
  * Someone with no account yet gets a single-use accept link that
  * creates it; an existing account is pointed at the portal sign-in.
- * The rendered message is queued on the outbox (@ktb/outbox) so a
- * provider outage retries instead of losing the invite — the grant
- * already exists, so a deployment without email or a failed row write
- * never fails the invite, it only reports `false`. When no Outbox
- * service is bound (partial runtimes/tests) it degrades to the legacy
- * inline send.
+ * Delivery goes through the shared invites-kit sender (@ktb/invites
+ * `sendInviteEmail`): queued on the outbox when bound, inline
+ * otherwise — best effort, the grant already exists, so a deployment
+ * without email or a failed delivery never fails the invite, it only
+ * reports `false`.
  */
-const notifyInvitee = async (
+const notifyInvitee = (
 	to: string,
 	doctorName: string,
 	patientName: string | null,
 ): Promise<boolean> => {
-	const { getRequestUrl } = await import("@tanstack/react-start/server");
 	const copy = patientAccessMessages(getLocale()).inviteEmail;
-	const services = await run(
-		Effect.gen(function* () {
-			const email = yield* Effect.serviceOption(Email);
-			const outbox = yield* Effect.serviceOption(Outbox);
-			return { sender: Option.getOrNull(email), outbox: Option.getOrNull(outbox) };
-		}),
-	);
-	if (!services.sender) return false;
-	const acceptPath = await run(
-		inviteAcceptPath({ email: to, kind: "patient", inviterName: doctorName }),
-	);
-	const url = new URL(acceptPath ?? "/login/patient", getRequestUrl()).toString();
-	const message = {
+	return sendInviteEmail({
 		to,
+		kind: "patient",
+		inviterName: doctorName,
 		subject: copy.subject(doctorName),
-		text: copy.body(doctorName, patientName, url, acceptPath !== null),
-	};
-	try {
-		if (services.outbox !== null) {
-			await services.outbox.enqueue({ kind: EMAIL_OUTBOX_KIND, payload: message });
-		} else {
-			await services.sender.send(message);
-		}
-		return true;
-	} catch (error) {
-		console.error("patient invite email failed", error);
-		return false;
-	}
+		body: (url, accept) => copy.body(doctorName, patientName, url, accept),
+		errorLabel: "patient invite email failed",
+	});
 };
 
 /** Invite an email to a patient record of the acting doctor. */
