@@ -23,6 +23,7 @@
 		"@ktb/i18n": "workspace:*",
 		"@ktb/jobs-port": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/media": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/platform-header": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

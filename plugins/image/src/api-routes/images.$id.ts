@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { serveStoredObject } from "@ktb/media";
 import { createPluginApiRoute, getServerRuntime, run } from "@ktb/server-fns";
 
 import { Images } from "../service.ts";
@@ -39,13 +40,10 @@ export const Route = createPluginApiRoute("image.routes")("/api/images/$id")({
 				}
 				const object = await bucket.get(row.storageKey);
 				if (object === null) return Response.json({ error: "not found" }, { status: 404 });
-				return new Response(object.body, {
-					headers: {
-						"content-type": object.httpMetadata?.contentType ?? row.mime,
-						"content-length": String(object.size),
-						// Keys embed a uuid — content is immutable per key.
-						"cache-control": "public, max-age=31536000, immutable",
-					},
+				return serveStoredObject(object, {
+					contentType: row.mime,
+					// Keys embed a uuid — content is immutable per key.
+					cacheControl: "public, max-age=31536000, immutable",
 				});
 			},
 		},

@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import { Db } from "@ktb/db";
 import type { DbClient } from "@ktb/db";
 import { makeJobConsumer, type JobMessageLike, type JobRegistration } from "@ktb/jobs-port";
+import { readJobObject, writeJobObject, type MediaBucket } from "@ktb/media";
 import { getServerRuntime, run } from "@ktb/server-fns";
 import {
 	BRAND_FIELD_FOR_KIND,
@@ -12,7 +13,6 @@ import {
 	THEME_ASSETS_PREFIX,
 	THEME_FONT_JOB_KIND,
 	completeThemeAsset,
-	contentTypeForKey,
 	decodeThemeAssetJob,
 	decodeThemeFontJob,
 	dominantColorHex,
@@ -82,21 +82,6 @@ export const MAX_THEME_ASSET_BYTES = 10 * 1024 * 1024;
  * this only guards against a hostile/garbage response). */
 const MAX_FONT_FILE_BYTES = 5 * 1024 * 1024;
 
-/** Minimal R2 surface the consumer needs. The runtime registry's
- * AudioStore type omits arrayBuffer; the real R2Bucket (and the
- * dev:node filesystem stand-in) both provide it. */
-interface ThemeAssetBucketLike {
-	get(key: string): Promise<{
-		readonly size: number;
-		arrayBuffer(): Promise<ArrayBuffer>;
-	} | null>;
-	put(
-		key: string,
-		value: Uint8Array,
-		options?: { readonly httpMetadata?: { readonly contentType?: string } },
-	): Promise<unknown>;
-}
-
 /** One decoded variant the processor produced. */
 export interface RenderedVariant {
 	readonly bytes: Uint8Array;
@@ -133,7 +118,7 @@ export interface ThemeFontFetch {
 
 export interface ThemeJobDeps {
 	readonly db: DbClient;
-	readonly bucket: ThemeAssetBucketLike | undefined;
+	readonly bucket: MediaBucket | undefined;
 	readonly processor: ThemeImageProcessor | undefined;
 	readonly fetchImpl?: ThemeFontFetch;
 }
@@ -244,20 +229,18 @@ export async function processThemeAssetJob(
 		await markFailed(deps, payload.assetId, "theme asset pipeline not configured");
 		return;
 	}
-	const object = await deps.bucket.get(payload.key);
-	if (object === null) {
-		await markFailed(deps, payload.assetId, "asset object missing from storage");
-		return;
-	}
-	if (object.size > MAX_THEME_ASSET_BYTES) {
+	const read = await readJobObject(deps.bucket, payload.key, MAX_THEME_ASSET_BYTES);
+	if (!read.ok) {
 		await markFailed(
 			deps,
 			payload.assetId,
-			`asset too large (${object.size} bytes > ${MAX_THEME_ASSET_BYTES})`,
+			read.reason === "missing"
+				? "asset object missing from storage"
+				: `asset too large (${read.size} bytes > ${MAX_THEME_ASSET_BYTES})`,
 		);
 		return;
 	}
-	const bytes = new Uint8Array(await object.arrayBuffer());
+	const bytes = read.bytes;
 	const dims = await deps.processor.decode(bytes);
 	if (dims === null) {
 		await markFailed(deps, payload.assetId, "undecodable image");
@@ -268,9 +251,7 @@ export async function processThemeAssetJob(
 	const files: Record<string, { key: string; width: number; height: number; format: string }> = {};
 	for (const variant of planned) {
 		const rendered = await deps.processor.render(bytes, variant);
-		await deps.bucket.put(variant.key, rendered.bytes, {
-			httpMetadata: { contentType: contentTypeForKey(variant.key) },
-		});
+		await writeJobObject(deps.bucket, variant.key, rendered.bytes);
 		files[`${variant.name}.${variant.format}`] = {
 			key: variant.key,
 			width: rendered.width,
@@ -406,16 +387,18 @@ export async function processThemeFontJob(
 	let metrics: FontMetrics | null = null;
 
 	if (payload.source === "upload") {
-		const object = await deps.bucket.get(payload.key);
-		if (object === null) {
-			await markFailed(deps, payload.assetId, "font object missing from storage");
+		const read = await readJobObject(deps.bucket, payload.key, MAX_FONT_FILE_BYTES);
+		if (!read.ok) {
+			await markFailed(
+				deps,
+				payload.assetId,
+				read.reason === "missing"
+					? "font object missing from storage"
+					: `font file too large (${read.size} bytes)`,
+			);
 			return;
 		}
-		if (object.size > MAX_FONT_FILE_BYTES) {
-			await markFailed(deps, payload.assetId, `font file too large (${object.size} bytes)`);
-			return;
-		}
-		const bytes = new Uint8Array(await object.arrayBuffer());
+		const bytes = read.bytes;
 		const ext = extOfKey(payload.key) || payload.format;
 		metrics = await parseFontMetrics(bytes, ext);
 		// Same probe as the catalog upload: fvar wght → ranged face,
@@ -490,9 +473,7 @@ export async function processThemeFontJob(
 					key = `${THEME_ASSETS_PREFIX}${payload.themeId}/fonts/${slug}-${weight}${subsetTag}-${n}.${ext}`;
 				}
 				usedKeys.add(key);
-				await deps.bucket.put(key, downloaded.bytes, {
-					httpMetadata: { contentType: contentTypeForKey(key) },
-				});
+				await writeJobObject(deps.bucket, key, downloaded.bytes);
 				faces.push({
 					url: themeAssetUrl(key),
 					weight: face.weight,
@@ -573,7 +554,7 @@ export const defaultThemeJobDeps = async (): Promise<ThemeJobDeps> => {
 	);
 	return {
 		db,
-		bucket: runtime.themeAssets as unknown as ThemeAssetBucketLike | undefined,
+		bucket: runtime.themeAssets as unknown as MediaBucket | undefined,
 		processor: makePhotonProcessor(),
 	};
 };
