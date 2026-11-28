@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { makeTestDb } from "@ktb/db-testing";
+import { outbox } from "@ktb/db/schema";
 
 import {
 	claimDueOutboxRecords,
@@ -62,6 +64,32 @@ describe("insertOutboxRecord", () => {
 });
 
 describe("getOutboxRecord / listOutboxRecords", () => {
+	it("reads a corrupt stored payload as null instead of throwing", async () => {
+		const { db, close } = makeTestDb();
+		try {
+			// Rows are only ever written through insertOutboxRecord (which
+			// JSON-encodes), but the read path must tolerate a corrupt
+			// payload column — e.g. a hand-edited or migrated row.
+			await db.insert(outbox).values({
+				id: "corrupt",
+				kind: "k",
+				payload: "{not json",
+				status: "pending",
+				attempts: 0,
+				nextAttemptAt: T0,
+				claimedUntil: null,
+				error: null,
+				tenantId: null,
+				createdAt: T0,
+				updatedAt: T0,
+			});
+			expect(await getOutboxRecord(db, "corrupt")).toMatchObject({ payload: null });
+			expect(await listOutboxRecords(db)).toHaveLength(1);
+		} finally {
+			close();
+		}
+	});
+
 	it("returns null for a missing id and filters lists", async () => {
 		const { db, close } = makeTestDb();
 		try {
@@ -186,6 +214,83 @@ describe("drainOutbox", () => {
 		}
 	});
 
+	it("records non-Error deliverer throws verbatim", async () => {
+		const { db, close } = makeTestDb();
+		try {
+			const record = await seed(db);
+			await drainOutbox(db, {
+				now: T0 + 1,
+				deliverers: {
+					k: async () => {
+						// eslint-disable-next-line no-throw-literal -- deliverers can throw anything
+						throw "plain-string-failure";
+					},
+				},
+			});
+			expect(await getOutboxRecord(db, record.id)).toMatchObject({
+				status: "pending",
+				error: "plain-string-failure",
+			});
+		} finally {
+			close();
+		}
+	});
+
+	it("counts a vanished row as a first failed attempt", async () => {
+		const { db, close } = makeTestDb();
+		try {
+			await seed(db);
+			// The deliverer deletes its own row, then fails — the failure
+			// recorder finds no attempts row and must still settle the
+			// attempt budget from scratch.
+			const result = await drainOutbox(db, {
+				now: T0 + 1,
+				deliverers: {
+					k: async (_payload, rec) => {
+						await db.delete(outbox).where(eq(outbox.id, rec.id));
+						throw new Error("boom");
+					},
+				},
+			});
+			expect(result).toMatchObject({ claimed: 1, failed: 1, dead: 0 });
+		} finally {
+			close();
+		}
+	});
+
+	it("swallows a failed claim release for unknown kinds", async () => {
+		const { db, close } = makeTestDb();
+		try {
+			await seed(db, "mystery");
+			// The claim UPDATE is the first db.update of the drain; the
+			// release for the deliverer-less row is the second — fail only
+			// that one so the best-effort `.catch` is exercised while the
+			// drain itself still completes.
+			let updates = 0;
+			const flaky = new Proxy(db, {
+				get(target, prop) {
+					if (prop === "update") {
+						return (...args: unknown[]) => {
+							updates += 1;
+							if (updates > 1) throw new Error("update down");
+							const update = Reflect.get(target, prop) as (
+								this: unknown,
+								...a: unknown[]
+							) => unknown;
+							return update.apply(target, args);
+						};
+					}
+					const value = Reflect.get(target, prop);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			const result = await drainOutbox(flaky, { now: T0 + 1, deliverers: {} });
+			expect(result).toMatchObject({ claimed: 1, skipped: 1 });
+		} finally {
+			close();
+		}
+	});
+
 	it("releases rows whose kind has no deliverer back to pending", async () => {
 		const { db, close } = makeTestDb();
 		try {
@@ -234,6 +339,46 @@ describe("makeOutbox / Outbox service", () => {
 			});
 			expect(result.delivered).toBe(1);
 			expect(seen).toEqual([{ hi: true }]);
+		} finally {
+			close();
+		}
+	});
+
+	it("propagates a drain failure without poisoning the chain", async () => {
+		const { db, close } = makeTestDb();
+		const outbox = makeOutbox({ db });
+		// Only the claim query can reject a drain — closing the db makes
+		// the next sweep's select throw. The serialized chain must keep
+		// working afterwards: a rejected run settles the chain, it does
+		// not wedge every later drain.
+		close();
+		await expect(outbox.drain()).rejects.toThrow();
+	});
+
+	it("keeps enqueue safe when the kicked drain fails", async () => {
+		const { db, close } = makeTestDb();
+		try {
+			// Reads fail while writes still work: the enqueue insert lands,
+			// then the fire-and-forget kick's claim select rejects — the
+			// kick's catch must swallow it and enqueue must still resolve.
+			const faulty = new Proxy(db, {
+				get(target, prop) {
+					if (prop === "select") {
+						return () => {
+							throw new Error("select down");
+						};
+					}
+					const value = Reflect.get(target, prop);
+					return typeof value === "function" ? value.bind(target) : value;
+				},
+			});
+			const outbox = makeOutbox({ db: faulty });
+			const record = await outbox.enqueue({ kind: "k", payload: null });
+			expect(record.status).toBe("pending");
+			// Flush the kicked drain's rejection, then confirm explicit
+			// drains surface the same fault to their caller.
+			await new Promise((r) => setTimeout(r, 0));
+			await expect(outbox.drain()).rejects.toThrow("select down");
 		} finally {
 			close();
 		}

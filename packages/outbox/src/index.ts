@@ -428,7 +428,20 @@ export const makeOutbox = (deps: OutboxDeps): OutboxShape => {
 	// `deps.now` is a clock for enqueue timestamps; the drain option's
 	// `now` is a sweep instant — different shapes, never forwarded.
 	const { db, newId, now: clock, ...defaults } = deps;
-	const drain = (options: OutboxDrainOptions = {}) => drainOutbox(db, { ...defaults, ...options });
+	// Drains run one at a time: the enqueue kick and explicit drains
+	// share a single chain, so a caller's `drain()` can never race an
+	// in-flight kick on the same rows. Claims are lease-fenced either
+	// way, but serializing keeps ordering deterministic for callers
+	// (and tests) that drain right after enqueue.
+	let chain: Promise<unknown> = Promise.resolve();
+	const drain = (options: OutboxDrainOptions = {}): Promise<OutboxDrainResult> => {
+		const run = chain.then(() => drainOutbox(db, { ...defaults, ...options }));
+		chain = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
+	};
 	return {
 		enqueue: async (write) => {
 			const record = await insertOutboxRecord(db, write, clock?.() ?? Date.now(), newId);
