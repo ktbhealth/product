@@ -59,6 +59,12 @@ export interface BridgeRpcOptions {
  * offline detection is the DO's job (503 → PortError). */
 export const makeBridgeRpc = (opts: BridgeRpcOptions): AcpRpc => {
 	const stub = opts.ns.get(opts.ns.idFromName(opts.name));
+	// The DO correlates replies by id alone on a socket SHARED by every
+	// rpc instance bound to the same endpoint — a per-instance `req-1`
+	// counter would collide across concurrent sessions (cross-talk,
+	// wrong responses, timeouts). A random per-instance nonce makes
+	// ids unique on the shared JSON-RPC channel.
+	const nonce = crypto.randomUUID();
 	let nextId = 0;
 	const post = (wire: unknown) =>
 		Effect.tryPromise({
@@ -73,7 +79,7 @@ export const makeBridgeRpc = (opts: BridgeRpcOptions): AcpRpc => {
 	return {
 		request: (method, params) =>
 			Effect.gen(function* () {
-				const id = `req-${++nextId}`;
+				const id = `req-${nonce}-${++nextId}`;
 				const res = yield* post({
 					jsonrpc: "2.0",
 					id,

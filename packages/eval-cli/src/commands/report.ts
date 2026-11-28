@@ -119,14 +119,22 @@ export const makeReportCommand = (ctx: CmdContext) =>
 					}).pipe(Effect.provide(report)),
 				);
 
+				// Mean over results that actually ran a corrected stage —
+				// a result without correctedMetrics (transcribe-only
+				// selection, failed cleanup) is not a perfect score and
+				// must not be zero-filled into the denominator.
+				const corrected = forRun.filter((r) => r.correctedMetrics !== undefined);
 				const meanWer =
-					forRun.length === 0
+					corrected.length === 0
 						? null
-						: forRun.reduce((acc, r) => acc + (r.correctedMetrics?.wer ?? 0), 0) / forRun.length;
+						: corrected.reduce((acc, r) => acc + (r.correctedMetrics?.wer ?? 0), 0) /
+							corrected.length;
 				yield* Console.log(markdown);
 				yield* Console.log(
 					`run ${runId}: ${forRun.length} result(s)` +
-						(meanWer !== null ? `, mean corrected WER ${meanWer.toFixed(3)}` : ""),
+						(meanWer !== null
+							? `, mean corrected WER ${meanWer.toFixed(3)} over ${corrected.length} corrected result(s)`
+							: ""),
 				);
 			}),
 	).pipe(

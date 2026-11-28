@@ -30,6 +30,10 @@ export class WhisperTranscriber implements Transcriber {
 	/** …or force a cut here, even mid-speech. */
 	private readonly maxChunkSec = 20;
 	private stopping = false;
+	/** Bumped per start() — a boot still awaiting acquire() from a
+	 * superseded start (or one that was stopped mid-flight) must not
+	 * wire up the recorder, engine subscription or AudioContext. */
+	private epoch = 0;
 	private inflight = 0;
 	private emit: ((event: TranscriptEvent) => void) | null = null;
 	// Session stats for the server-fallback heuristic (ADR-0002).
@@ -61,7 +65,12 @@ export class WhisperTranscriber implements Transcriber {
 			});
 			return;
 		}
+		// Restart safety: end any live session (and neutralize an
+		// in-flight boot via the epoch bump below) before wiring a new
+		// one — otherwise the old stream/ctx/subscription would leak.
+		this.stop();
 		this.stopping = false;
+		this.epoch += 1;
 		this.inflight = 0;
 		this.emit = onEvent;
 		this.voicedSec = 0;
@@ -70,7 +79,7 @@ export class WhisperTranscriber implements Transcriber {
 		this.recorderChunks = [];
 		this.recorderDone = null;
 		if (this.hint) onEvent({ type: "partial", text: this.hint });
-		void this.boot(onEvent).catch((e) =>
+		void this.boot(onEvent, this.epoch).catch((e) =>
 			onEvent({
 				type: "error",
 				message: e instanceof Error ? e.message : String(e),
@@ -78,8 +87,18 @@ export class WhisperTranscriber implements Transcriber {
 		);
 	}
 
-	private async boot(onEvent: (event: TranscriptEvent) => void) {
-		this.stream = await this.acquire();
+	private async boot(onEvent: (event: TranscriptEvent) => void, epoch: number) {
+		const stream = await this.acquire();
+		// Stopped — or superseded by a newer start() — while the
+		// permission prompt / getUserMedia was still pending. Release
+		// the mic immediately and never wire up the recorder, engine
+		// subscription or AudioContext: nothing else would ever stop
+		// them (stop() already ran and emitted "end").
+		if (this.stopping || epoch !== this.epoch) {
+			for (const t of stream.getTracks()) t.stop();
+			return;
+		}
+		this.stream = stream;
 		const audio = this.stream.getAudioTracks()[0];
 		if (!audio) {
 			this.stop();
@@ -88,7 +107,6 @@ export class WhisperTranscriber implements Transcriber {
 		}
 		audio.onended = () => this.stop();
 		this.startRecorder(this.stream);
-		if (this.stopping) this.recorder?.stop();
 
 		this.active = true;
 		this.unsubscribe = subscribeWhisper((msg: EngineMessage) => {

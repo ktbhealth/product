@@ -137,6 +137,17 @@ const mimeMessage = (message: EmailMessage & { readonly from: string }): string 
 	].join("\r\n");
 };
 
+/** Envelope/header address: a bare addr-spec. CR/LF would inject SMTP
+ * commands during the envelope phase and forged headers in DATA;
+ * whitespace/brackets/quotes break the `<addr>` wrapping. Reject
+ * rather than mangle — a silently altered recipient is worse. */
+const smtpAddress = (value: string, what: string): string => {
+	if (value === "" || /[\x00-\x20\x7f<>"']/.test(value)) {
+		throw new EmailSendError(`invalid ${what} address: ${JSON.stringify(value)}`);
+	}
+	return value;
+};
+
 /** CRLF-normalize, then transparency-stuff lines starting with '.'. */
 export const dotStuff = (data: string): string =>
 	data
@@ -233,6 +244,13 @@ export const sendSmtpMessage = async (
 	config: SmtpConfig,
 	message: EmailMessage & { readonly from: string },
 ): Promise<void> => {
+	// Sanitize BEFORE opening the socket — addresses land raw in
+	// envelope commands and headers (see smtpAddress).
+	const clean = {
+		...message,
+		from: smtpAddress(message.from, "from"),
+		to: smtpAddress(message.to, "to"),
+	};
 	let socket: SmtpSocket | undefined;
 	try {
 		socket = connect(
@@ -260,13 +278,13 @@ export const sendSmtpMessage = async (
 			await conn.send(`AUTH PLAIN ${credential}\r\n`);
 			await expect(conn, "AUTH", 235);
 		}
-		await conn.send(`MAIL FROM:<${message.from}>\r\n`);
+		await conn.send(`MAIL FROM:<${clean.from}>\r\n`);
 		await expect(conn, "MAIL FROM", 250);
-		await conn.send(`RCPT TO:<${message.to}>\r\n`);
+		await conn.send(`RCPT TO:<${clean.to}>\r\n`);
 		await expect(conn, "RCPT TO", 250);
 		await conn.send("DATA\r\n");
 		await expect(conn, "DATA", 354);
-		await conn.send(`${dotStuff(mimeMessage(message))}\r\n.\r\n`);
+		await conn.send(`${dotStuff(mimeMessage(clean))}\r\n.\r\n`);
 		await expect(conn, "DATA end", 250);
 		await conn.send("QUIT\r\n");
 		await expect(conn, "QUIT", 221);

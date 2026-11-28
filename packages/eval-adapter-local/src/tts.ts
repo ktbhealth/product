@@ -233,6 +233,12 @@ export const makeLocalTts = (opts: LocalTtsOptions): Layer.Layer<TtsPort, PortEr
 									voiceId: input.voiceId,
 									speakerVoices: input.speakerVoices ?? null,
 									acoustic: input.acoustic,
+									// Turn segmentation changes which text each
+									// voice speaks — same script/voice with
+									// different turns must not share artifact
+									// paths (concurrent syntheses would
+									// cross-write the same mp3/wav files).
+									turns: input.turns ?? null,
 								}),
 							)
 							.digest("hex")

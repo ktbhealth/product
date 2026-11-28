@@ -449,22 +449,58 @@ describe("WhisperTranscriber", () => {
 		await expect(t.recording()).resolves.toBeNull();
 	});
 
-	it("stop while boot is in flight still stops the recorder", async () => {
+	it("stop while boot is in flight releases the stream without wiring anything up", async () => {
 		const { mod } = await setup();
 		let release!: (s: unknown) => void;
 		const gate = new Promise((r) => {
 			release = r;
 		});
+		const late = makeStream();
 		const t = new mod.WhisperTranscriber(async () => {
 			await gate;
-			return makeStream() as never;
+			return late as never;
+		});
+		const events: TranscriptEvent[] = [];
+		t.start((e) => events.push(e));
+		t.stop();
+		release(late);
+		// The late-resolving stream's tracks are stopped immediately and
+		// no recorder, engine subscription or AudioContext is ever
+		// created — nothing would ever stop them otherwise (mic leak).
+		await vi.waitFor(() => expect(late._track.stop).toHaveBeenCalled());
+		await new Promise((r) => setTimeout(r, 20));
+		expect(MockMediaRecorder.instances).toHaveLength(0);
+		expect(MockAudioContext.instances).toHaveLength(0);
+		expect(engineSubscribers.size).toBe(0);
+		await expect(t.recording()).resolves.toBeNull();
+	});
+
+	it("a second start() supersedes an in-flight boot", async () => {
+		const { mod } = await setup();
+		let release!: (s: unknown) => void;
+		const gate = new Promise((r) => {
+			release = r;
+		});
+		const stale = makeStream();
+		const fresh = makeStream();
+		let calls = 0;
+		const t = new mod.WhisperTranscriber(async () => {
+			calls += 1;
+			if (calls === 1) {
+				await gate;
+				return stale as never;
+			}
+			return fresh as never;
 		});
 		t.start(() => {});
+		t.start(() => {});
+		release(stale);
+		// The superseded boot's stream is released; only the fresh
+		// stream gets wired up.
+		await vi.waitFor(() => expect(stale._track.stop).toHaveBeenCalled());
+		await vi.waitFor(() => expect(MockAudioContext.instances).toHaveLength(1));
+		expect(fresh._track.stop).not.toHaveBeenCalled();
 		t.stop();
-		release(makeStream());
-		await vi.waitFor(() => expect(MockMediaRecorder.instances).toHaveLength(1));
-		expect(MockMediaRecorder.instances[0]!.stop).toHaveBeenCalled();
-		await expect(t.recording()).resolves.toBeNull();
 	});
 
 	it("factories create mic and tab transcribers", async () => {
