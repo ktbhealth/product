@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { listJobRuns } from "@ktb/jobs-port";
+import { insertOutboxRecord } from "@ktb/outbox";
 import { insertScheduledJob } from "@ktb/scheduler-port";
 
 // Scheduler dispatch (P-094): the scheduler-heartbeat cron runner claims
@@ -356,4 +357,37 @@ describe("platform schedules capability", () => {
 			});
 		},
 	);
+});
+
+describe("platform outbox-drain cron", () => {
+	it("delivers a queued email through the stub sender", { timeout: 90_000 }, async () => {
+		const { runtime, platform } = await compose((env) => {
+			env.EMAIL_STUB = "1";
+		});
+		await insertOutboxRecord(platform.db, {
+			kind: "email",
+			payload: { to: "a@ktb.test", subject: "Hi", text: "Body" },
+		});
+
+		expect(await runtime.crons!.runNow("outbox-drain")).toMatchObject({
+			ok: true,
+			summary: "1 outbox item delivered",
+		});
+	});
+
+	it("reports failed deliveries honestly", { timeout: 90_000 }, async () => {
+		const { runtime, platform } = await compose();
+		// A payload that fails EmailMessageSchema decode at the delivery
+		// edge — a failed attempt like any provider refusal.
+		await insertOutboxRecord(platform.db, {
+			kind: "email",
+			payload: { bogus: true },
+		});
+
+		expect(await runtime.crons!.runNow("outbox-drain")).toMatchObject({
+			ok: false,
+			error: "1 deliverie(s) failed",
+			summary: "0 outbox items delivered, 1 failed",
+		});
+	});
 });
