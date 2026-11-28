@@ -81,9 +81,11 @@ describe("checkUpload", () => {
 			error: "unsupported file type",
 		});
 		// fileName "" falls back to the "upload" placeholder → unknown ext.
-		expect(
-			checkUpload({ bytes: bytes(4), fileName: "", mime: "image/png" }, policy),
-		).toEqual({ ok: false, status: 415, error: "unsupported file type" });
+		expect(checkUpload({ bytes: bytes(4), fileName: "", mime: "image/png" }, policy)).toEqual({
+			ok: false,
+			status: 415,
+			error: "unsupported file type",
+		});
 		expect(checkUpload({ bytes: bytes(4), fileName: "a.png", mime: "text/html" }, policy)).toEqual({
 			ok: false,
 			status: 415,
@@ -370,7 +372,11 @@ describe("catalog font variants contract", () => {
 						{ url: "" },
 						{ url: "/s", weight: "700", weightRange: "bad" },
 						{ url: "/t", weightRange: [100] },
-						{ url: "/a", format: "woff2", axes: [{ tag: "wdth", min: 50, default: 100, max: 200 }] },
+						{
+							url: "/a",
+							format: "woff2",
+							axes: [{ tag: "wdth", min: 50, default: 100, max: 200 }],
+						},
 						null,
 						"junk",
 					],
@@ -398,7 +404,12 @@ describe("catalog font variants contract", () => {
 		const faceWeighted = catalogFontInfoOf(
 			JSON.stringify({
 				family: "F",
-				fontAsset: { faces: [{ url: "/a", weight: 300 }, { url: "/b", weight: 600 }] },
+				fontAsset: {
+					faces: [
+						{ url: "/a", weight: 300 },
+						{ url: "/b", weight: 600 },
+					],
+				},
 			}),
 		);
 		expect(faceWeighted?.weights).toEqual([300, 600]);
