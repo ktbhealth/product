@@ -274,8 +274,23 @@ describe("inviteSecretaryFn", () => {
 		});
 	});
 
-	it("sends nothing when neither the outbox service nor a Db is bound", async () => {
+	it("sends inline when the Outbox service is unbound", async () => {
+		// The invites-kit sender falls back to a direct Email send when no
+		// Outbox service is bound — the delegation still reports ok.
 		mocks.outboxService.current = false;
+		mocks.getDoctorContext.mockResolvedValue(context);
+		mocks.invite.mockReturnValue(Effect.succeed(row));
+		await expect(invite()).resolves.toMatchObject({ ok: true });
+		expect(mocks.enqueue).not.toHaveBeenCalled();
+		expect(mocks.send).toHaveBeenCalledTimes(1);
+		expect(mocks.send.mock.calls[0]![0]).toMatchObject({ to: "sec@ktb.test" });
+	});
+
+	it("sends nothing when no email sender is bound", async () => {
+		// No Outbox service and no Email sender — there is nowhere the
+		// message can go, but the invite itself still lands.
+		mocks.outboxService.current = false;
+		mocks.emailService.current = "disabled";
 		mocks.getDoctorContext.mockResolvedValue(context);
 		mocks.invite.mockReturnValue(Effect.succeed(row));
 		await expect(invite()).resolves.toMatchObject({ ok: true });
