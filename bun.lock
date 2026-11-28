@@ -438,6 +438,7 @@
       "name": "@ktb/calendar",
       "dependencies": {
         "@ktb/driver-framework": "workspace:*",
+        "@ktb/filters": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -446,6 +447,7 @@
       "dependencies": {
         "@ktb/calendar": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
+        "@ktb/filters": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -656,6 +658,12 @@
       "dependencies": {
         "@ktb/anamnesis": "workspace:*",
         "pdf-lib": "^1.17.1",
+      },
+    },
+    "packages/filters": {
+      "name": "@ktb/filters",
+      "dependencies": {
+        "effect": "4.1.2",
       },
     },
     "packages/i18n": {
@@ -967,6 +975,7 @@
         "@ktb/clinician": "workspace:*",
         "@ktb/consultations": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/filters": "workspace:*",
         "@ktb/groups": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
@@ -3267,6 +3276,8 @@
     "@ktb/eval-validator": ["@ktb/eval-validator@workspace:plugins/eval-validator"],
 
     "@ktb/export-pdf": ["@ktb/export-pdf@workspace:packages/export-pdf"],
+
+    "@ktb/filters": ["@ktb/filters@workspace:packages/filters"],
 
     "@ktb/flows": ["@ktb/flows@workspace:plugins/flows"],
 

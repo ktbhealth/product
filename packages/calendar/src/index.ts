@@ -1,6 +1,12 @@
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import type { Driver } from "@ktb/driver-framework";
+import {
+	evaluateFilter,
+	type FilterAccessors,
+	type FilterAnd,
+	type FilterExpr,
+} from "@ktb/filters";
 
 /**
  * @ktb/calendar — the external-calendar sync port (P-008). Provider
@@ -36,6 +42,11 @@ export interface CalendarListQuery {
 	readonly to?: Date;
 	/** Expand recurring series into instances when the provider can. */
 	readonly expandRecurring?: boolean;
+	/** Provider-agnostic filter (@ktb/filters AST) over the canonical
+	 * field vocabulary in {@link calendarEventAccessors}. Adapters push
+	 * what the provider honors natively and evaluate the residual
+	 * locally — callers never need to know which side did what. */
+	readonly filter?: FilterExpr;
 }
 
 /** Wire shape of an event read from or written to a provider. */
@@ -51,7 +62,94 @@ export interface ExternalCalendarEvent extends ExternalEventDraft {
 	/** Date-only event — imports normally treat these as blocks, not consults. */
 	readonly allDay?: boolean;
 	readonly updatedAt?: Date;
+	/** Free-text place as the provider stores it — no geo normalization
+	 * exists across providers, so filtering is textual. */
+	readonly location?: string;
+	/** Attendee emails and display names, flattened — the canonical
+	 * `attendee` filter field matches against either. */
+	readonly attendees?: readonly string[];
+	/** Provider-opaque event kind (Google: default/birthday/focusTime/
+	 * outOfOffice/workingLocation/fromGmail); the port never enumerates. */
+	readonly eventType?: string;
+	/** Busy semantics — "opaque" blocks time, "transparent" does not. */
+	readonly transparency?: string;
+	/** Organizer email or display name when the provider exposes one. */
+	readonly organizer?: string;
+	/** Provider key=value metadata (Google extendedProperties, shared
+	 * merged under private). Backs the `property.<key>` filter fields. */
+	readonly properties?: Readonly<Record<string, string>>;
 }
+
+/**
+ * Canonical filter field vocabulary for calendar events — one accessor
+ * map shared by adapters (residual evaluation) and consumers (local
+ * evaluation), so a filter means the same thing on both sides of the
+ * pushdown partition:
+ *
+ * - `title`, `description`, `location`, `organizer`, `eventType`,
+ *   `transparency` — scalar string fields
+ * - `startsAt`, `endsAt` — ordering operators compare ISO instants
+ * - `attendee` — array-valued: `contains` matches any email/display name
+ * - `text` — the free-text field: array of every searchable surface
+ *   (title, description, location, attendees, organizer), mirroring
+ *   what provider-native full-text params (Google `q`) scan
+ * - `property.<key>` — extended property lookup by key
+ */
+export const calendarEventAccessors: FilterAccessors<ExternalCalendarEvent> = {
+	title: (e) => e.title,
+	description: (e) => e.description,
+	location: (e) => e.location,
+	organizer: (e) => e.organizer,
+	eventType: (e) => e.eventType,
+	transparency: (e) => e.transparency,
+	startsAt: (e) => e.startsAt,
+	endsAt: (e) => e.endsAt,
+	attendee: (e) => e.attendees ?? [],
+	text: (e) =>
+		[e.title, e.description, e.location, e.organizer, ...(e.attendees ?? [])].filter(
+			(v): v is string => typeof v === "string",
+		),
+};
+
+/** Accessor indirection for `property.<key>` fields — the map above
+ * can't enumerate user keys, so evaluation resolves them dynamically. */
+export const calendarEventAccessorFor = (
+	field: string,
+): ((e: ExternalCalendarEvent) => unknown) | undefined => {
+	if (field.startsWith("property.")) {
+		const key = field.slice("property.".length);
+		return (e) => e.properties?.[key];
+	}
+	return calendarEventAccessors[field];
+};
+
+/** Window-overlap filter over the canonical vocabulary: events ending
+ * after `from` AND starting before `to`. Both bounds are exclusive —
+ * matching Google's timeMin/timeMax exactly, so providers that push the
+ * range natively and adapters evaluating locally return the same set.
+ * This is the shape date-range pickers should produce. */
+export const overlapWindowFilter = (from: Date, to: Date): FilterAnd => ({
+	op: "and",
+	args: [
+		{ op: "gt", field: "endsAt", value: from.toISOString() },
+		{ op: "lt", field: "startsAt", value: to.toISOString() },
+	],
+});
+
+/** Shared dynamic accessor object — stateless, so one instance serves
+ * every evaluation; property lookups resolve through the canonical map
+ * plus the `property.<key>` indirection. */
+const dynamicEventAccessors: FilterAccessors<ExternalCalendarEvent> = new Proxy(
+	{} as FilterAccessors<ExternalCalendarEvent>,
+	{
+		get: (_target, prop) => (typeof prop === "string" ? calendarEventAccessorFor(prop) : undefined),
+	},
+);
+
+/** Evaluate a filter against one event using the canonical vocabulary,
+ * including dynamic `property.<key>` fields. */
+export const evaluateEventFilter = (expr: FilterExpr, event: ExternalCalendarEvent): boolean =>
+	evaluateFilter(expr, event, dynamicEventAccessors);
 
 /** A calendar collection exposed by a connected provider account. */
 export interface ExternalCalendarInfo {
@@ -243,6 +341,8 @@ export const makeMemoryCalendarProvider = (
 						const end = event.endsAt.getTime();
 						if (query?.from !== undefined && end < query.from.getTime()) return false;
 						if (query?.to !== undefined && start >= query.to.getTime()) return false;
+						if (query?.filter !== undefined && !evaluateEventFilter(query.filter, event))
+							return false;
 						return true;
 					}),
 				createEvent: async (calendarId, draft) => {

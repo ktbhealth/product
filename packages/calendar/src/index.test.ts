@@ -4,11 +4,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import {
-	CalendarSyncError,
 	Calendars,
+	CalendarSyncError,
+	evaluateEventFilter,
 	makeCalendarsRegistry,
 	makeMemoryCalendarProvider,
 	nullCalendarsDriver,
+	overlapWindowFilter,
 	type ExternalEventDraft,
 } from "./index.ts";
 
@@ -108,6 +110,53 @@ describe("memory calendar", () => {
 		expect(a.id).toMatch(/^memory-evt-\d+$/);
 		expect(b.id).toMatch(/^memory-evt-\d+$/);
 		expect(b.id).not.toBe(a.id);
+	});
+
+	it("evaluates list filters residually over the canonical vocabulary", async () => {
+		const provider = makeMemoryCalendarProvider();
+		const cal = await provider.connect({});
+		await cal.createEvent("primary", draft);
+		const match = await cal.listEvents("primary", {
+			filter: {
+				op: "and",
+				args: [
+					{ op: "contains", field: "title", value: "consulta" },
+					{ op: "gt", field: "endsAt", value: draft.startsAt.toISOString() },
+				],
+			},
+		});
+		expect(match).toHaveLength(1);
+		const miss = await cal.listEvents("primary", {
+			filter: { op: "contains", field: "location", value: "não-existe" },
+		});
+		expect(miss).toHaveLength(0);
+	});
+
+	it("overlapWindowFilter produces exclusive overlap bounds", () => {
+		const from = new Date("2026-11-01T00:00:00.000Z");
+		const to = new Date("2026-12-01T00:00:00.000Z");
+		expect(overlapWindowFilter(from, to)).toEqual({
+			op: "and",
+			args: [
+				{ op: "gt", field: "endsAt", value: from.toISOString() },
+				{ op: "lt", field: "startsAt", value: to.toISOString() },
+			],
+		});
+	});
+
+	it("evaluateEventFilter resolves dynamic property.<key> fields", () => {
+		const event = {
+			id: "e1",
+			calendarId: "primary",
+			title: "x",
+			startsAt: new Date(),
+			endsAt: new Date(),
+			properties: { workspace: "ktb" },
+		};
+		expect(
+			evaluateEventFilter({ op: "eq", field: "property.workspace", value: "ktb" }, event),
+		).toBe(true);
+		expect(evaluateEventFilter({ op: "exists", field: "property.missing" }, event)).toBe(false);
 	});
 
 	it("isolates connections like separate accounts", async () => {
