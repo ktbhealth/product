@@ -333,8 +333,12 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 		return;
 	}
 	// The payload is untrusted queue data: the D1 row is the source of
-	// truth for ownership and linkage.
-	if (row.userId !== null && job.userId !== row.userId) {
+	// truth for ownership and linkage. The owner-match check only applies
+	// to personal rows — on tenant-owned rows `user_id` is creator
+	// attribution, not an access grant: any tenant member may upload
+	// audio (authorizeConsultationRow admits them), so the uploader's
+	// id legitimately differs from the row owner's.
+	if (tenantId === null && row.userId !== null && job.userId !== row.userId) {
 		await fail(deps, job.consultationId, "audio job owner mismatch", tenantId);
 		return;
 	}

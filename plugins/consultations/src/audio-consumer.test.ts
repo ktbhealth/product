@@ -322,6 +322,16 @@ describe("processAudioJob", () => {
 		expect(r2?.audioError).toContain("ai down");
 	});
 
+	it("admits tenant-member uploads on tenant-owned rows — userId is attribution, not a grant", async () => {
+		const { db, deps } = makeDeps();
+		// Row created by u1 under tenant 7; member u2 uploaded the audio,
+		// so job.userId legitimately differs from row.userId.
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }, 7))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id, { userId: "u2", tenantId: 7 }), deps);
+		expect((await row(db, id))?.audioStatus).toBe("done");
+	});
+
 	it("publishes live audio updates for the jobs feed", async () => {
 		const updates: {
 			consultationId: number;
