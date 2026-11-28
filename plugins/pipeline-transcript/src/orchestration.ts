@@ -110,13 +110,17 @@ const TRANSCRIPT_EVENT_SCHEMAS = [
 ] as const;
 
 const derivedPack = pipelinePackToOrchestration(transcriptPipelinePack);
+const transcriptDef: OrchestrationDef = {
+	...derivedPack.def,
+	eventSchemas: [...TRANSCRIPT_EVENT_SCHEMAS],
+};
 
 export const transcriptOrchestrationPack: TranscriptOrchestrationPack = {
 	...derivedPack,
-	def: { ...derivedPack.def, eventSchemas: [...TRANSCRIPT_EVENT_SCHEMAS] },
+	def: transcriptDef,
 };
 
-export const transcriptOrchestrationDef: OrchestrationDef = transcriptOrchestrationPack.def;
+export const transcriptOrchestrationDef: OrchestrationDef = transcriptDef;
 
 export const transcriptOrchestrationKinds: readonly OrchestrationKind[] =
 	transcriptOrchestrationPack.kinds;
