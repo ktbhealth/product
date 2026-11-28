@@ -172,6 +172,25 @@ const commandGroups = apiEntries.flatMap(({ pkg, value }) =>
 	Command.isGroup(value) ? [{ pkg, group: value }] : [],
 );
 
+/**
+ * CQRS group sets the app-wide QueryBus/CommandBus dispatch over —
+ * `pkg` is the owning plugin package (enable-state gate label),
+ * `group` the erased cqrs group. `buildApp` callers pass the groups
+ * matching their plugin subset; the default below is the
+ * filesystem-discovered set for the full registry.
+ */
+export interface CqrsGroups {
+	readonly queryGroups: ReadonlyArray<{ readonly pkg: string; readonly group: Query.AnyGroup }>;
+	readonly commandGroups: ReadonlyArray<{
+		readonly pkg: string;
+		readonly group: Command.AnyGroup;
+	}>;
+}
+
+/** CQRS groups discovered from every plugin api module —
+ * the set `createApp` composes for the full plugin registry. */
+export const cqrsGroups: CqrsGroups = { queryGroups, commandGroups };
+
 /** Minimal binding surface the host needs. Any platform (workerd, bun,
  * future adapters) supplies these; the host never touches cloudflare:*. */
 export interface AppEnv extends ObservabilityEnv {
@@ -362,11 +381,114 @@ export interface AppOptions {
 }
 
 /**
- * Composition root: wires the plugin registry, platform bindings, and
- * impl layers into a runnable app. Deploy targets (apps/web) call this
- * once with their env and re-export the pieces they need.
+ * Port→impl selection is data: impl packages export Driver descriptors
+ * and the first enabled driver for a port wins (array order is the
+ * tie-break). Ordering encodes precedence — e.g. the captcha stub
+ * before Turnstile before the disabled verifier; LLM drivers carry
+ * their own when predicates mirroring the old factory branches.
+ *
+ * Auth and Db stay manual on purpose: they are single-impl ports
+ * wrapping live instances built from `env` (the better-auth object the
+ * routes call directly; the drizzle client over the SqlDatabase
+ * binding), not env-selectable adapters. Engine variance already
+ * lives at the edges — SqlDatabase at `Binding`, better-auth config
+ * in makeAuth — and tests stub these ports via Layer.succeed, which
+ * needs no driver descriptor. Putting them in the registry would add
+ * indirection with no second impl to select between.
+ *
+ * This is the DEFAULT driver set `buildApp` composes when the caller
+ * doesn't pass `drivers` — `createApp` uses it as-is; composition
+ * tests substitute a stub-only list.
  */
-export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
+export const defaultDrivers: readonly Driver<unknown>[] = [
+	recallDriver,
+	stubBotDriver,
+	stubCaptchaDriver,
+	turnstileCaptchaDriver,
+	nullCaptchaDriver,
+	smtpEmailDriver,
+	stubEmailDriver,
+	cloudflareEmailDriver,
+	nullEmailDriver,
+	...llmDrivers,
+	// Telemetry port: OTLP exporter wins when an endpoint is bound;
+	// the console driver is the always-eligible local/DX fallback.
+	otlpTelemetryDriver,
+	telemetryConsoleDriver,
+	// Entity cipher (PL-007 F2): the passthrough is the non-ZK
+	// default — always eligible, LAST in the list once real
+	// keyring-backed drivers arrive (first eligible wins).
+	passthroughCipherDriver,
+	// Vault secrets KEK (P-098 C1): eligible only when
+	// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
+	vaultKeyringEnvDriver,
+	// Eval validator runner (P-081): eligible only when the local
+	// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
+	// otherwise no EvalRunner is bound and eval runs stay queued.
+	evalRunnerLocalDriver,
+	// Same env gate, read side: serves run audio to the validator UI.
+	evalArtifactsLocalDriver,
+	// Generative script path for persona cohorts — bound only when
+	// EVAL_ACP_URL points at an agent; otherwise the validator falls
+	// back to the deterministic template renderer.
+	evalLlmAcpDriver,
+	// Endpoint factory for the eval lab — always eligible; it only
+	// resolves descriptor rows into LlmPort layers on demand, so
+	// binding it carries no env requirement of its own.
+	evalLlmFactoryDriver,
+	// Decision-endpoint factory (`systemone` ai_endpoint rows) —
+	// same always-eligible contract as the LLM factory: resolves
+	// descriptors into DecisionsPort layers on demand.
+	systemOneDecisionsDriver,
+];
+
+/** Everything `buildApp` needs to assemble a runnable app. */
+export interface BuildAppSpec<E extends AppEnv = AppEnv> {
+	/** Platform bindings/env the composition reads (DB, secrets, and
+	 * the env each driver's `when`/`provides` predicates see). */
+	readonly env: E;
+	/** Plugin registry to compose — pass `orderPlugins` output (the
+	 * module-level `plugins` export for the full app, a subset for
+	 * composition tests). Registry-derived services (PluginStates,
+	 * Routes, document collections, pipeline/orchestrator registries,
+	 * the CQRS enable gate) are all built from THIS list. */
+	readonly plugins: readonly Plugin[];
+	/** Port→impl driver descriptors; defaults to {@link defaultDrivers}.
+	 * Every REQUIRED port (Bot, Captcha, Email, Telemetry,
+	 * AnamnesisEngine, EntityCipher) must have an eligible driver —
+	 * substitute stub drivers to compose without real providers. */
+	readonly drivers?: readonly Driver<unknown>[];
+	/** CQRS groups the app-wide buses dispatch; defaults to the
+	 * filesystem-discovered {@link cqrsGroups}. Pass the groups
+	 * matching the `plugins` subset — a group whose handler layers
+	 * aren't composed fails layer build. */
+	readonly cqrsGroups?: CqrsGroups;
+	/** Extra layers merged LAST into the core layer: app-specific
+	 * services plugin layers may require, or test stubs that should
+	 * win over driver-selected impls for the same service tag
+	 * (Context.mergeAll is right-biased). Prefer `drivers` for port
+	 * selection; use this for services with no port. Type-erased like
+	 * plugin `services` layers — requirements surface at layer build. */
+	readonly coreLayers?: readonly Layer.Any[];
+	/** {@link AppOptions} — tenant resolver, email composers,
+	 * middleware stages. */
+	readonly options?: AppOptions;
+}
+
+/**
+ * Generic app assembly: plugin registry → service layers → core
+ * layers → CQRS buses → ManagedRuntime, behind one explicit call.
+ * `createApp` is the production composition (full discovered registry
+ * + default drivers); tests and alternate apps call `buildApp`
+ * directly with a plugin subset, stub drivers and extra core layers.
+ */
+export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
+	const { env, plugins, options } = spec;
+	const drivers = spec.drivers ?? defaultDrivers;
+	const { queryGroups, commandGroups } = spec.cqrsGroups ?? cqrsGroups;
+	// Type-erased like plugin `services` layers — unsatisfied
+	// requirements still fail at layer build.
+	const coreLayers = (spec.coreLayers ?? []) as readonly Layer.Layer<unknown, unknown, unknown>[];
 	// isProductionBuild reads import.meta.env.PROD safely: the Vite build
 	// statically replaces it (true for `vp build`/`vp preview` output —
 	// prod deploy — false for dev servers and vitest), while runtimes
@@ -381,60 +503,6 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const BindingLive = Layer.succeed(Binding, env.DB);
 	const db = makeDb(env.DB);
 
-	// Port→impl selection is data: impl packages export Driver descriptors
-	// and the first enabled driver for a port wins (array order is the
-	// tie-break). Ordering encodes precedence — e.g. the captcha stub
-	// before Turnstile before the disabled verifier; LLM drivers carry
-	// their own when predicates mirroring the old factory branches.
-	// Auth and Db stay manual on purpose: they are single-impl ports
-	// wrapping live instances built here (the better-auth object the
-	// routes call directly; the drizzle client over the SqlDatabase
-	// binding), not env-selectable adapters. Engine variance already
-	// lives at the edges — SqlDatabase at `Binding`, better-auth config
-	// in makeAuth — and tests stub these ports via Layer.succeed, which
-	// needs no driver descriptor. Putting them in the registry would add
-	// indirection with no second impl to select between.
-	const drivers: readonly Driver<unknown>[] = [
-		recallDriver,
-		stubBotDriver,
-		stubCaptchaDriver,
-		turnstileCaptchaDriver,
-		nullCaptchaDriver,
-		smtpEmailDriver,
-		stubEmailDriver,
-		cloudflareEmailDriver,
-		nullEmailDriver,
-		...llmDrivers,
-		// Telemetry port: OTLP exporter wins when an endpoint is bound;
-		// the console driver is the always-eligible local/DX fallback.
-		otlpTelemetryDriver,
-		telemetryConsoleDriver,
-		// Entity cipher (PL-007 F2): the passthrough is the non-ZK
-		// default — always eligible, LAST in the list once real
-		// keyring-backed drivers arrive (first eligible wins).
-		passthroughCipherDriver,
-		// Vault secrets KEK (P-098 C1): eligible only when
-		// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
-		vaultKeyringEnvDriver,
-		// Eval validator runner (P-081): eligible only when the local
-		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
-		// otherwise no EvalRunner is bound and eval runs stay queued.
-		evalRunnerLocalDriver,
-		// Same env gate, read side: serves run audio to the validator UI.
-		evalArtifactsLocalDriver,
-		// Generative script path for persona cohorts — bound only when
-		// EVAL_ACP_URL points at an agent; otherwise the validator falls
-		// back to the deterministic template renderer.
-		evalLlmAcpDriver,
-		// Endpoint factory for the eval lab — always eligible; it only
-		// resolves descriptor rows into LlmPort layers on demand, so
-		// binding it carries no env requirement of its own.
-		evalLlmFactoryDriver,
-		// Decision-endpoint factory (`systemone` ai_endpoint rows) —
-		// same always-eligible contract as the LLM factory: resolves
-		// descriptors into DecisionsPort layers on demand.
-		systemOneDecisionsDriver,
-	];
 	// Drivers are type-erased (Layer.Any); each port maps to exactly one
 	// service, so the concrete layer type is restored here — same shape
 	// the hand-written ternaries used to produce.
@@ -759,6 +827,11 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),
 		...TenantResolverLive,
+		// Caller-supplied extras LAST: Context.mergeAll is right-biased,
+		// so a coreLayer providing the same service tag as a
+		// driver-selected impl wins — the test-stub seam. Plugin layers
+		// and the CQRS buses are provided `core`, so they see these too.
+		...coreLayers,
 	);
 	// App-wide CQRS buses (P-049): each group's dispatcher is built once,
 	// wrapped in shared middleware, folded into an erased DispatchTable,
@@ -1138,3 +1211,13 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		auth,
 	};
 };
+
+/**
+ * Production composition root: the full discovered plugin registry +
+ * {@link defaultDrivers} + filesystem-discovered {@link cqrsGroups}.
+ * Deploy targets (apps/web) call this once with their env and
+ * re-export the pieces they need; tests and alternate apps compose
+ * through {@link buildApp} directly.
+ */
+export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) =>
+	buildApp<E>({ env, plugins, options });
