@@ -33,8 +33,9 @@ import {
 	selectErrorBoundary,
 	selectNotFoundBoundary,
 	warnUnknownChromeRegions,
+	type PluginStatesResult,
 } from "#/lib/registry.ts";
-import { sessionFn, pluginStatesFn, i18nRouteFn } from "#/lib/fns.ts";
+import { sessionFn, pluginStatesFn, i18nRouteFn, type I18nRouteResult } from "#/lib/fns.ts";
 import { themeScopeFn } from "@ktb/theme/fns";
 import { themeHead, themeTitle } from "@ktb/theme/head";
 import { ThemePreviewBanner } from "@ktb/theme/views";
@@ -130,6 +131,29 @@ export const Route = createRootRoute({
 	notFoundComponent: NotFound,
 });
 
+/** Shape of the root loader payload. `useLoaderData` returns the match's
+ * loaderData verbatim — `undefined` when the loader itself threw, which
+ * is exactly the scenario the error boundary exists for. Every consumer
+ * below reads through `useRootLoaderData` so a failed loader degrades to
+ * empty chrome props instead of a TypeError inside the boundary. */
+type RootLoaderData = {
+	readonly user: ChromeProps["user"];
+	readonly pluginStates: PluginStatesResult;
+	readonly theme: ResolvedTheme | null;
+	readonly i18n: I18nRouteResult | undefined;
+};
+
+const EMPTY_ROOT_LOADER_DATA: RootLoaderData = {
+	user: null,
+	pluginStates: { enabled: [] },
+	theme: null,
+	i18n: undefined,
+};
+
+function useRootLoaderData(): RootLoaderData {
+	return (Route.useLoaderData() as RootLoaderData | undefined) ?? EMPTY_ROOT_LOADER_DATA;
+}
+
 /** `app.*` copy for shell-level surfaces (404/error) that render outside
  * a page context — they still read the root loader's i18n slice. */
 function useAppCopy() {
@@ -142,7 +166,7 @@ function useAppCopy() {
  * so boundary pages can render `app.*.actions` contributions without
  * duplicating the session/theme wiring. */
 function useChromeProps(): ChromeProps {
-	const { user, pluginStates, theme, i18n } = Route.useLoaderData();
+	const { user, pluginStates, theme, i18n } = useRootLoaderData();
 	const slice = i18n as PageI18nSlice | undefined;
 	const activeLocale = i18n?.locale ?? "en";
 	return {
@@ -207,7 +231,7 @@ type BoundaryKind = "notFound" | "error";
  * built-in surface. */
 function useBoundarySelection(kind: BoundaryKind) {
 	const chromeProps = useChromeProps();
-	const { pluginStates } = Route.useLoaderData();
+	const { pluginStates } = useRootLoaderData();
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const enabled = enabledIdSet(pluginStates);
 	const entry =
@@ -322,7 +346,7 @@ function TelemetryInit() {
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	const chromeProps = useChromeProps();
-	const { theme } = Route.useLoaderData();
+	const { theme } = useRootLoaderData();
 	const user = chromeProps.user;
 	// A patient account (no doctor profile to act as) only ever sees the
 	// patient portal: no doctor navigation, nothing that creates or

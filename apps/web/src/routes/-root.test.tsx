@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
 		patientProfiles?: number;
 	} | null,
 	pluginStates: null as { enabled: string[] } | null,
+	loaderDataMissing: false,
 	enabledIds: [] as string[],
 	theme: null as unknown,
 	chromeExtra: [] as {
@@ -28,11 +29,16 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 		...actual,
 		createRootRoute: (opts: Record<string, unknown>) => ({
 			options: opts,
-			useLoaderData: () => ({
-				user: state.user,
-				pluginStates: state.pluginStates ?? { enabled: state.enabledIds },
-				theme: state.theme,
-			}),
+			useLoaderData: () => {
+				// A thrown root loader leaves match.loaderData undefined —
+				// the boundary components must degrade, not TypeError.
+				if (state.loaderDataMissing) return undefined;
+				return {
+					user: state.user,
+					pluginStates: state.pluginStates ?? { enabled: state.enabledIds },
+					theme: state.theme,
+				};
+			},
 		}),
 		useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) => {
 			const loc = { pathname: state.pathname };
@@ -104,6 +110,7 @@ afterEach(() => {
 	state.pathname = "/";
 	state.user = null;
 	state.pluginStates = null;
+	state.loaderDataMissing = false;
 	state.theme = KTB_DEFAULT_THEME;
 	state.chromeExtra = [];
 });
@@ -165,6 +172,24 @@ describe("root route", () => {
 		);
 		expect(err).toContain("Something went wrong");
 		expect(err).toContain("Try again");
+	});
+
+	it("degrades to empty chrome when the root loader threw", () => {
+		state.loaderDataMissing = true;
+		// useLoaderData() → undefined: every consumer reads through
+		// useRootLoaderData's EMPTY_ROOT_LOADER_DATA fallback, so the
+		// boundaries still render the built-in surfaces.
+		const nf = renderToStaticMarkup(opts.notFoundComponent());
+		expect(nf).toContain("Page not found");
+		const err = renderToStaticMarkup(
+			opts.errorComponent({ error: new Error("boom"), reset: vi.fn() }),
+		);
+		expect(err).toContain("Something went wrong");
+		// The document shell survives too — empty plugin states mean no
+		// contributed chrome, but the layout and children still render.
+		const html = render();
+		expect(html).toContain("<header");
+		expect(html).toContain('<div id="child">page</div>');
 	});
 
 	it("ignores non-link/component entries in the boundary action regions", () => {
