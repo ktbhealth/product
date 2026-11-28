@@ -87,6 +87,25 @@ const runGenerate = (
 	return Effect.runPromise(provided);
 };
 
+const CORRECT_ENVELOPE: TaskEnvelope = {
+	...ENVELOPE,
+	role: "corrector",
+	outputSchema: "EditList",
+};
+
+const runCorrect = (
+	service: LlmPort["Service"],
+	platform?: PlatformLlm["Service"],
+): Promise<{ edits: EditList; record: RunRecord }> => {
+	const effect = Effect.gen(function* () {
+		const llm = yield* LlmPort;
+		return yield* llm.correct(CORRECT_ENVELOPE);
+	}).pipe(Effect.provideService(LlmPort, service));
+	const provided =
+		platform === undefined ? effect : effect.pipe(Effect.provideService(PlatformLlm, platform));
+	return Effect.runPromise(provided);
+};
+
 describe("preferringLlmPort", () => {
 	it("generates through the platform default endpoint and tags the record", async () => {
 		const res = await runGenerate(
@@ -154,6 +173,27 @@ describe("preferringLlmPort", () => {
 		);
 		expect(res.record.engine).toBe("platform:platform-corrector");
 	});
+
+	it("routes correct() to the inner port when the platform path cannot serve", async () => {
+		// PlatformLlm bound but no default configured.
+		expect(
+			(await runCorrect(preferringLlmPort(fallbackService), platformService(null))).record.engine,
+		).toBe("env-engine");
+		// Port unbound entirely.
+		expect((await runCorrect(preferringLlmPort(fallbackService))).record.engine).toBe("env-engine");
+		// Platform endpoint's correct() fails — degrades to fallback.
+		const failingCorrector = Layer.succeed(
+			LlmPort,
+			LlmPort.of({
+				generate: () => Effect.die("unused"),
+				correct: () => Effect.fail(new PortError({ port: "l", message: "down" })),
+			}),
+		);
+		expect(
+			(await runCorrect(preferringLlmPort(fallbackService), platformService(failingCorrector)))
+				.record.engine,
+		).toBe("env-engine");
+	});
 });
 
 describe("preferringLlmPortLive", () => {
@@ -172,6 +212,16 @@ describe("preferringLlmPortLive", () => {
 			Effect.gen(function* () {
 				const llm = yield* LlmPort;
 				return yield* llm.generate(ENVELOPE);
+			}).pipe(Effect.provide(preferringLlmPortLive())),
+		);
+		expect(exit._tag).toBe("Failure");
+	});
+
+	it("without a fallback, correct() fails honestly too", async () => {
+		const exit = await Effect.runPromiseExit(
+			Effect.gen(function* () {
+				const llm = yield* LlmPort;
+				return yield* llm.correct(CORRECT_ENVELOPE);
 			}).pipe(Effect.provide(preferringLlmPortLive())),
 		);
 		expect(exit._tag).toBe("Failure");

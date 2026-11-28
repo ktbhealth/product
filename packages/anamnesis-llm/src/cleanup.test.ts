@@ -146,6 +146,21 @@ describe("correctTranscript", () => {
 			expect(warn?.annotations.engine).toBe("anthropic");
 			expect(String(warn?.annotations.error)).toContain("provider down");
 		});
+
+		it("never fails: provider defects become null", async () => {
+			mocks.generateText.mockReturnValue(Effect.die(new Error("defect boom")));
+			const { entries, logger } = captureLogs();
+			await expect(
+				Effect.runPromise(
+					correctTranscript({ anthropicApiKey: "ak" }, "texto").pipe(
+						Effect.provide(Logger.layer([logger])),
+					),
+				),
+			).resolves.toBeNull();
+			const warn = entries.find((e) => String(e.message).includes("transcript cleanup failed"));
+			expect(warn?.annotations.engine).toBe("anthropic");
+			expect(String(warn?.annotations.error)).toContain("defect boom");
+		});
 	});
 
 	describe("openai", () => {

@@ -66,7 +66,7 @@ const unsupportedCorrect = (engine: string) => (): Effect.Effect<never, PortErro
  * already does). */
 export const makeLanguageModelLlmPort = (
 	engine: string,
-	model: string,
+	model: string | undefined,
 	languageModel: Layer.Layer<LanguageModel.LanguageModel>,
 ): Layer.Layer<LlmPort> =>
 	Layer.unwrap(

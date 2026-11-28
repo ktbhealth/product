@@ -121,6 +121,16 @@ const fakeLlmLayer = (generate: (envelope: TaskEnvelope) => GenerateOut) =>
 
 const failingLlmLayer = fakeLlmLayer(() => new Error("provider down"));
 
+/** Port that defects instead of failing — exercises the catchDefect
+ * degradation arm, which typed PortErrors never reach. */
+const dyingLlmLayer = Layer.succeed(
+	LlmPort,
+	LlmPort.of({
+		generate: () => Effect.die(new Error("defect boom")),
+		correct: () => Effect.die(new Error("unused")),
+	}),
+);
+
 const engineFrom = async (layer: Layer.Layer<AnamnesisEngine>) =>
 	Effect.runPromise(
 		Effect.gen(function* () {
@@ -224,6 +234,21 @@ describe("AnamnesisEngine", () => {
 		const warn = entries.find((e) => String(e.message).includes("anamnesis extraction failed"));
 		expect(warn?.annotations.engine).toBe("openai");
 		expect(String(warn?.annotations.error)).toContain("provider down");
+	});
+
+	it("falls back to heuristic when the port defects", async () => {
+		const layer = makeAnamnesisEngine("openai").pipe(Layer.provide(dyingLlmLayer));
+		const engine = await engineFrom(layer);
+		const { entries, logger } = captureLogs();
+		const res = await Effect.runPromise(
+			engine
+				.extract({ transcript: "paciente relata febre" })
+				.pipe(Effect.provide(Logger.layer([logger]))),
+		);
+		expect(res.engine).toBe("openai!fallback");
+		expect(res.anamnesis.queixa_principal.content).toBeTruthy();
+		const warn = entries.find((e) => String(e.message).includes("anamnesis extraction failed"));
+		expect(String(warn?.annotations.error)).toContain("defect boom");
 	});
 
 	it("falls back to heuristic when the payload is unparseable", async () => {

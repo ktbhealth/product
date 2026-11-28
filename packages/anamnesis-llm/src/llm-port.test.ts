@@ -89,6 +89,25 @@ describe("makeLanguageModelLlmPort", () => {
 		expect(exit._tag).toBe("Failure");
 	});
 
+	it("stringifies non-Error provider failures into the PortError message", async () => {
+		mocks.generateText.mockReturnValue(Effect.fail("rate limited"));
+		const error = await Effect.runPromise(
+			Effect.gen(function* () {
+				const llm = yield* LlmPort;
+				return yield* llm.generate(ENVELOPE);
+			}).pipe(Effect.provide(makeLanguageModelLlmPort("openai", "m", lmLayer())), Effect.flip),
+		);
+		expect(error).toBeInstanceOf(PortError);
+		expect(error.message).toBe("openai: rate limited");
+	});
+
+	it("omits the record model when none is configured", async () => {
+		mocks.generateText.mockReturnValue(Effect.succeed({ text: "ok" }));
+		const res = await runGenerate(makeLanguageModelLlmPort("openai", undefined, lmLayer()));
+		expect(res.record.engine).toBe("openai");
+		expect(res.record.model).toBeUndefined();
+	});
+
 	it("correct() fails honestly — env providers have no corrector", async () => {
 		const exit = await Effect.runPromiseExit(
 			Effect.gen(function* () {
