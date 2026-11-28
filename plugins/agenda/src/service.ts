@@ -8,7 +8,7 @@ import { EventBus, Query } from "@effect-server-utils/cqrs";
 import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
 import { Permissions } from "@ktb/rbac";
 import { Option } from "effect";
-import { Consultations } from "@ktb/consultations";
+import { Consultations, deleteConsultationRow } from "@ktb/consultations";
 import { Db, type DbClient } from "@ktb/db";
 import { appointments, patients } from "@ktb/db/schema";
 import { PatientsQueries } from "@ktb/patients/api";
@@ -145,6 +145,25 @@ export async function updateAppointment(
 	}>,
 ): Promise<AppointmentRow | null> {
 	const rows = await db.update(appointments).set(patch).where(eq(appointments.id, id)).returning();
+	return rows[0] ?? null;
+}
+
+/**
+ * Conditional consultation link for `Appointments.start` — the
+ * `consultation_id IS NULL` predicate makes the UPDATE itself the
+ * mutex: of two concurrent starts only the first returns a row, so a
+ * losing caller must reuse the winner's link instead of overwriting.
+ */
+export async function claimConsultationLink(
+	db: DbClient,
+	id: number,
+	consultationId: number,
+): Promise<AppointmentRow | null> {
+	const rows = await db
+		.update(appointments)
+		.set({ consultationId })
+		.where(and(eq(appointments.id, id), isNull(appointments.consultationId)))
+		.returning();
 	return rows[0] ?? null;
 }
 
@@ -473,9 +492,30 @@ export const AppointmentsLive = Layer.effect(
 				});
 				/* v8 ignore next -- consultations.create only returns null on an empty insert, which the FK-checked write cannot produce */
 				if (consultationId === null) return null;
-				const updated = yield* Effect.promise(() => updateAppointment(db, id, { consultationId }));
-				/* v8 ignore next -- updateAppointment returns the row; ?? row only on a mid-flight delete */
-				return { appointment: updated ?? row, consultationId };
+				// Claim the link atomically: a concurrent start that already
+				// linked its consultation wins the conditional update. The
+				// loser's freshly created row would be orphaned (live,
+				// unlinked forever), so drop it and reuse the winner's.
+				const claimed = yield* Effect.promise(() => claimConsultationLink(db, id, consultationId));
+				if (claimed !== null) {
+					return { appointment: claimed, consultationId };
+				}
+				yield* Effect.promise(() => deleteConsultationRow(db, consultationId)).pipe(
+					Effect.catchCause((cause) =>
+						// Best-effort cleanup — the appointment already points
+						// at the winner's consultation either way.
+						Effect.logWarning("agenda.start orphan cleanup failed", {
+							consultationId,
+							cause: String(cause),
+						}),
+					),
+				);
+				const fresh = yield* Effect.promise(() => getAppointment(db, id));
+				/* v8 ignore next -- a lost claim means a concurrent winner linked a consultation or the row was deleted mid-flight */
+				if (fresh?.consultationId != null) {
+					return { appointment: fresh, consultationId: fresh.consultationId };
+				}
+				return null;
 			}),
 			dispatchDueReminders: Effect.fn("Appointments.dispatchDueReminders")(function* (options?: {
 				readonly now?: Date;

@@ -27,6 +27,10 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/bots")({
 				if (!body.meetUrl) {
 					return Response.json({ error: "missing meetUrl" }, { status: 400 });
 				}
+				// Auth before any external side effect: provider.join
+				// dispatches a real (paid) bot into the meeting, so an
+				// unauthenticated request must never reach it.
+				const user = await ensureDoctorUser();
 
 				// Bot is provided by the composed app runtime (driver-selected
 				// in @ktb/app-host) — routes never touch impl layers directly.
@@ -46,7 +50,6 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/bots")({
 				}
 				const webhookUrl = new URL("/api/bots/webhook", request.url).toString();
 				const session = await provider.join(body.meetUrl, webhookUrl);
-				const user = await ensureDoctorUser();
 
 				const created = await runAs(
 					user,
