@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import * as Effect from "effect/Effect";
 
 import { HeuristicExtractor } from "@ktb/anamnesis";
 
-import { makeByokExtractor } from "./byok.ts";
+import { makeByokExtractor, makeByokLlmPort } from "./byok.ts";
 
 const anamnesisJson = async () =>
 	JSON.stringify(await new HeuristicExtractor().extract("Paciente com dor de cabeça."));
@@ -78,5 +79,55 @@ describe("makeByokExtractor (T-146)", () => {
 		await expect(
 			makeByokExtractor({ apiKey: "k", model: "m" }, fetchImpl).extract("t"),
 		).rejects.toThrow("invalid anamnesis");
+	});
+
+	it("surfaces transport defects as typed PortErrors", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => {
+			throw new TypeError("network down");
+		});
+		await expect(
+			makeByokExtractor({ apiKey: "k", model: "m" }, fetchImpl).extract("t"),
+		).rejects.toThrow("network down");
+	});
+
+	it("stringifies non-Error transport failures", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(() => Promise.reject("plain string failure"));
+		await expect(
+			makeByokExtractor({ apiKey: "k", model: "m" }, fetchImpl).extract("t"),
+		).rejects.toThrow("plain string failure");
+	});
+});
+
+describe("makeByokLlmPort", () => {
+	const envelope = {
+		taskId: "t1",
+		role: "generator" as const,
+		input: "transcript",
+		outputSchema: "Anamnesis",
+		seed: 7,
+	};
+
+	it("generate returns text plus a run record", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => okResponse(await anamnesisJson()));
+		const llm = makeByokLlmPort({ apiKey: "k", model: "m" }, fetchImpl);
+		const res = await Effect.runPromise(llm.generate(envelope));
+		expect(res.text).toContain("queixa_principal");
+		expect(res.record.engine).toBe("byok");
+		expect(res.record.model).toBe("m");
+		expect(res.record.taskId).toBe("t1");
+		expect(res.record.seed).toBe(7);
+	});
+
+	it("generate maps HTTP failures to PortError", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => new Response("nope", { status: 500 }));
+		const llm = makeByokLlmPort({ apiKey: "k", model: "m" }, fetchImpl);
+		const exit = await Effect.runPromiseExit(llm.generate(envelope));
+		expect(exit._tag).toBe("Failure");
+	});
+
+	it("correct fails honestly — extraction-only endpoint", async () => {
+		const llm = makeByokLlmPort({ apiKey: "k", model: "m" }, vi.fn<typeof fetch>());
+		const exit = await Effect.runPromiseExit(llm.correct(envelope));
+		expect(exit._tag).toBe("Failure");
 	});
 });

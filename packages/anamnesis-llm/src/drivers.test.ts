@@ -81,10 +81,13 @@ describe("anamnesis engine drivers", () => {
 		expect(anthropicAnamnesisDriver.when?.({ anthropicApiKey: "k" })).toBe(true);
 	});
 
-	it("openai is eligible only when anthropic is absent and its key is set", () => {
+	it("openai is eligible only when anthropic is absent and a key or base URL is set", () => {
 		expect(openAiAnamnesisDriver.id).toBe("anamnesis-openai");
 		expect(openAiAnamnesisDriver.when?.({})).toBe(false);
 		expect(openAiAnamnesisDriver.when?.({ openAiApiKey: "k" })).toBe(true);
+		// Keyless OpenAI-compatible endpoints (local servers, the
+		// AI_BASE_URL dev shim) select this driver too.
+		expect(openAiAnamnesisDriver.when?.({ openAiBaseUrl: "https://x" })).toBe(true);
 		expect(openAiAnamnesisDriver.when?.({ anthropicApiKey: "k", openAiApiKey: "k" })).toBe(false);
 		expect(openAiAnamnesisDriver.when?.({ anthropicApiKey: "k" })).toBe(false);
 	});
@@ -97,6 +100,9 @@ describe("anamnesis engine drivers", () => {
 			false,
 		);
 		expect(
+			workersAiAnamnesisDriver.when?.({ openAiBaseUrl: "https://x", workersAi: fakeWorkersAi }),
+		).toBe(false);
+		expect(
 			workersAiAnamnesisDriver.when?.({ anthropicApiKey: "k", workersAi: fakeWorkersAi }),
 		).toBe(false);
 	});
@@ -105,6 +111,7 @@ describe("anamnesis engine drivers", () => {
 		expect(heuristicAnamnesisDriver.id).toBe("anamnesis-heuristic");
 		expect(heuristicAnamnesisDriver.when?.({})).toBe(true);
 		expect(heuristicAnamnesisDriver.when?.({ openAiApiKey: "k" })).toBe(false);
+		expect(heuristicAnamnesisDriver.when?.({ openAiBaseUrl: "https://x" })).toBe(false);
 		expect(heuristicAnamnesisDriver.when?.({ anthropicApiKey: "k" })).toBe(false);
 		expect(heuristicAnamnesisDriver.when?.({ anthropicApiKey: "k", openAiApiKey: "k" })).toBe(
 			false,
@@ -159,7 +166,7 @@ describe("anamnesis engine drivers", () => {
 		});
 		openAiAnamnesisDriver.provides({});
 		expect(mocks.openAiLive).toHaveBeenLastCalledWith({
-			apiKey: "",
+			apiKey: undefined,
 			baseUrl: undefined,
 			model: "gpt-4o-mini",
 		});

@@ -172,6 +172,13 @@ describe("envLlmPort", () => {
 			baseUrl: undefined,
 			model: "gpt-4o-mini",
 		});
+		// Keyless OpenAI-compatible endpoint (local server / AI_BASE_URL).
+		expect(envLlmPort({ openAiBaseUrl: "http://local" })?.engine).toBe("openai");
+		expect(mocks.openAiLive).toHaveBeenLastCalledWith({
+			apiKey: undefined,
+			baseUrl: "http://local",
+			model: "gpt-4o-mini",
+		});
 		const ai = { run: async () => ({}) };
 		expect(envLlmPort({ workersAi: ai })?.engine).toBe(`workers-ai:${DEFAULT_WORKERS_AI_MODEL}`);
 		// Precedence: first configured provider wins.

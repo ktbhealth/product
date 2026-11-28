@@ -60,6 +60,19 @@ describe("openAiLanguageModelLive", () => {
 		const clientOptions = mocks.openAiClientLayer.mock.calls[0]![0] as Record<string, unknown>;
 		expect(clientOptions).not.toHaveProperty("apiUrl");
 	});
+
+	it("omits apiKey for keyless local endpoints and normalizes the base URL", () => {
+		openAiLanguageModelLive({ baseUrl: "http://llm.local/", model: "m" });
+		const clientOptions = mocks.openAiClientLayer.mock.calls[0]![0] as Record<string, unknown>;
+		expect(clientOptions).not.toHaveProperty("apiKey");
+		expect(clientOptions.apiUrl).toBe("http://llm.local/v1");
+	});
+
+	it("treats an empty apiKey as absent", () => {
+		openAiLanguageModelLive({ apiKey: "", model: "m" });
+		const clientOptions = mocks.openAiClientLayer.mock.calls[0]![0] as Record<string, unknown>;
+		expect(clientOptions).not.toHaveProperty("apiKey");
+	});
 });
 
 describe("anthropicLanguageModelLive", () => {

@@ -39,7 +39,9 @@ export const anthropicAnamnesisDriver: Driver<LlmConfig> = {
 export const openAiAnamnesisDriver: Driver<LlmConfig> = {
 	id: "anamnesis-openai",
 	port: AnamnesisEngine.key,
-	when: (cfg) => !cfg.anthropicApiKey && Boolean(cfg.openAiApiKey),
+	// OpenAI-compatible endpoints need no key — a bare baseUrl (local
+	// servers, the AI_BASE_URL dev shim) selects this driver too.
+	when: (cfg) => !cfg.anthropicApiKey && Boolean(cfg.openAiApiKey || cfg.openAiBaseUrl),
 	provides: (cfg) => {
 		const model = cfg.openAiModel ?? "gpt-4o-mini";
 		return anamnesisEngineFor(
@@ -48,7 +50,7 @@ export const openAiAnamnesisDriver: Driver<LlmConfig> = {
 				"openai",
 				model,
 				openAiLanguageModelLive({
-					apiKey: cfg.openAiApiKey ?? "",
+					apiKey: cfg.openAiApiKey,
 					baseUrl: cfg.openAiBaseUrl,
 					model,
 				}),
@@ -60,7 +62,8 @@ export const openAiAnamnesisDriver: Driver<LlmConfig> = {
 export const workersAiAnamnesisDriver: Driver<LlmConfig> = {
 	id: "anamnesis-workers-ai",
 	port: AnamnesisEngine.key,
-	when: (cfg) => !cfg.anthropicApiKey && !cfg.openAiApiKey && Boolean(cfg.workersAi),
+	when: (cfg) =>
+		!cfg.anthropicApiKey && !cfg.openAiApiKey && !cfg.openAiBaseUrl && Boolean(cfg.workersAi),
 	provides: (cfg) => {
 		const model = cfg.workersAiModel ?? DEFAULT_WORKERS_AI_MODEL;
 		return anamnesisEngineFor(
@@ -73,7 +76,7 @@ export const workersAiAnamnesisDriver: Driver<LlmConfig> = {
 export const heuristicAnamnesisDriver: Driver<LlmConfig> = {
 	id: "anamnesis-heuristic",
 	port: AnamnesisEngine.key,
-	when: (cfg) => !cfg.anthropicApiKey && !cfg.openAiApiKey && !cfg.workersAi,
+	when: (cfg) => !cfg.anthropicApiKey && !cfg.openAiApiKey && !cfg.openAiBaseUrl && !cfg.workersAi,
 	// No env port — the platform default (when the ai-provider plugin
 	// binds one) is the only generative path; otherwise every extract
 	// degrades to the heuristic extractor with the plain "heuristic"
