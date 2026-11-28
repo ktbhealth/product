@@ -126,6 +126,19 @@ describe("chunked AES-GCM blob (KTB1)", () => {
 		expect(await decryptBlob(key, blob)).toEqual(data);
 	});
 
+	it("skips empty chunks in the input stream", async () => {
+		const key = await generateDek();
+		const data = crypto.getRandomValues(new Uint8Array(20));
+		async function* withEmpties() {
+			yield new Uint8Array(0);
+			yield data.subarray(0, 7);
+			yield new Uint8Array(0);
+			yield data.subarray(7);
+		}
+		const blob = concat(await collect(encryptStream(key, withEmpties(), 8)));
+		expect(await decryptBlob(key, blob)).toEqual(data);
+	});
+
 	it("rejects a non-positive chunk size", async () => {
 		const key = await generateDek();
 		async function* empty() {}
