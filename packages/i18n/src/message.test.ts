@@ -625,6 +625,27 @@ describe("validateAgainstSignature", () => {
 		]);
 		expect(caseIssues.some((i) => i.detail.includes("few"))).toBe(true);
 	});
+
+	it("flags case keys present in the template but absent from the signature", () => {
+		const issues = validateAgainstSignature("{n, plural, one{x} other{y} few{z}}", [
+			{ name: "n", plural: true, cases: ["one", "other"] },
+		]);
+		expect(issues.some((i) => i.code === "param_mismatch" && i.detail.includes("few"))).toBe(
+			true,
+		);
+	});
+
+	it("skips case-key comparison when either side declares no cases", () => {
+		// Template param carries no case list — nothing to compare.
+		const plain = validateAgainstSignature("Hi {name}", [
+			{ name: "name", cases: ["one", "other"] },
+		]);
+		expect(plain.every((i) => !i.detail.includes("case keys"))).toBe(true);
+		// Signature declares no cases — the plural kind drift still fires.
+		const sig = validateAgainstSignature("{n, plural, one{x} other{y}}", [{ name: "n" }]);
+		expect(sig.some((i) => i.code === "param_mismatch")).toBe(true);
+		expect(sig.every((i) => !i.detail.includes("case keys"))).toBe(true);
+	});
 });
 
 describe("pseudoLocalize", () => {
