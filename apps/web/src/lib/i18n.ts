@@ -1,8 +1,8 @@
 import { getRouteApi } from "@tanstack/react-router";
 import type { PageI18nSlice } from "@ktb/kernel";
-import type { ChromeI18nKeys } from "@ktb/app-host/client";
 
 import { appCatalogT } from "./app-catalog.ts";
+import type { ChromeI18nKeys } from "./registry.ts";
 
 /**
  * Host i18n helpers (PL-008 Phase 5 — Paraglide retired). Locale
