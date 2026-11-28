@@ -8,6 +8,7 @@
 export * from "../../auth/src/schema.ts";
 export * from "../../jobs-port/src/schema.ts";
 export * from "../../orchestrator/src/schema.ts";
+export * from "../../outbox/src/schema.ts";
 export * from "../../platform/src/schema.ts";
 export * from "../../scheduler-port/src/schema.ts";
 export * from "../../../plugins/agenda/src/schema.ts";

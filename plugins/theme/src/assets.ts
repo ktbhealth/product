@@ -16,17 +16,36 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { themeAssets, themeDefinitions } from "@ktb/db/schema";
+import {
+	catalogFontAssetOf,
+	catalogFontFamilyOf,
+	catalogFontSubsetKeysOf,
+	contentTypeForKey,
+	extOfKey,
+	normalizeFontAxes,
+	type CatalogFontVariants,
+} from "@ktb/media";
 
 import type {
 	ThemeAssetKind,
 	ThemeBrand,
 	ThemeFontAsset,
-	ThemeFontAxis,
 	ThemeFontConfig,
 	ThemeFontFace,
 	ThemeFontSlot,
 } from "./types.ts";
 import type { FontVariationAxis, FontWeightAxis } from "./font-variations.ts";
+
+// Object-key/content-type helpers and the catalog-font variants
+// contract moved to @ktb/media — re-exported so existing import sites
+// (jobs.ts, api-routes, tests) keep working.
+export {
+	catalogFontAssetOf,
+	catalogFontFamilyOf,
+	catalogFontSubsetKeysOf,
+	contentTypeForKey,
+	extOfKey,
+};
 
 // ---------- kinds, keys, serving URLs ----------
 
@@ -56,36 +75,12 @@ export const isImageAssetKind = (kind: ThemeAssetKind): boolean => kind !== "fon
 export const themeAssetUrl = (key: string): string =>
 	`/api/theme/assets?key=${encodeURIComponent(key)}`;
 
-const CONTENT_TYPES: Readonly<Record<string, string>> = {
-	png: "image/png",
-	webp: "image/webp",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	gif: "image/gif",
-	avif: "image/avif",
-	woff2: "font/woff2",
-	woff: "font/woff",
-	ttf: "font/ttf",
-	otf: "font/otf",
-};
-
 const FORMATS: Readonly<Record<string, string>> = {
 	woff2: "woff2",
 	woff: "woff",
 	ttf: "truetype",
 	otf: "opentype",
 };
-
-export const extOfKey = (key: string): string => {
-	// split() always yields at least one element — pop() is never undefined.
-	/* v8 ignore next -- pop() on split() is never undefined */
-	const base = key.split("?")[0]!.split("/").pop() ?? "";
-	const dot = base.lastIndexOf(".");
-	return dot === -1 ? "" : base.slice(dot + 1).toLowerCase();
-};
-
-export const contentTypeForKey = (key: string): string =>
-	CONTENT_TYPES[extOfKey(key)] ?? "application/octet-stream";
 
 /** `format()` descriptor hint for a font file key/extension. */
 export const fontFormatForExt = (ext: string): string | undefined => FORMATS[ext];
@@ -97,42 +92,6 @@ export const FONT_UPLOAD_EXTENSIONS = ["woff2", "woff", "ttf", "otf"] as const;
 // ---------- catalog font weights ----------
 
 const isCatalogWeight = (n: number): boolean => Number.isInteger(n) && n >= 100 && n <= 900;
-
-/** Registered fvar axis tags are 4 printable-ASCII bytes. */
-const FONT_AXIS_TAG = /^[\x20-\x7E]{4}$/;
-
-/** Same bound as the fvar parser — keeps stored manifests small. */
-const MAX_FONT_AXES = 32;
-
-/**
- * Sanitize parser-supplied (or hand-edited) `fvar` axes for storage:
- * well-formed 4-char tag, finite min ≤ default ≤ max, first record
- * per tag wins, `wght` dropped (weightAxis owns it), capped at
- * {@link MAX_FONT_AXES}. Returns [] for absent/malformed input.
- */
-const sanitizeFontAxes = (input: readonly FontVariationAxis[] | undefined): ThemeFontAxis[] => {
-	if (!Array.isArray(input)) return [];
-	const seen = new Set<string>();
-	const out: ThemeFontAxis[] = [];
-	for (const axis of input) {
-		if (out.length >= MAX_FONT_AXES) break;
-		if (typeof axis !== "object" || axis === null) continue;
-		const { tag, min, default: def, max } = axis;
-		if (typeof tag !== "string" || !FONT_AXIS_TAG.test(tag) || tag === "wght") continue;
-		if (seen.has(tag)) continue;
-		if (
-			!Number.isFinite(min) ||
-			!Number.isFinite(def) ||
-			!Number.isFinite(max) ||
-			!(min <= def && def <= max)
-		) {
-			continue;
-		}
-		seen.add(tag);
-		out.push({ tag, min, default: def, max });
-	}
-	return out;
-};
 
 /**
  * Parse a catalog-upload weight field into a sorted, deduped CSS
@@ -442,71 +401,10 @@ export const listThemeAssets = async (db: DbClient, themeId: number): Promise<Th
 // file itself needs no processing, so the row lands directly as
 // "ready" — no queue round-trip.
 
-/** Family name stamped on a catalog font asset's variants JSON. */
-export const catalogFontFamilyOf = (variantsJson: string | null): string | null => {
-	if (variantsJson === null) return null;
-	try {
-		const parsed = JSON.parse(variantsJson) as unknown;
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-		const family = (parsed as Record<string, unknown>)["family"];
-		return typeof family === "string" && family.trim() !== "" ? family.trim() : null;
-	} catch {
-		return null;
-	}
-};
-
-/** R2 keys of the charset-subset siblings recorded as
- * `variants.subsetKeys` on catalog font rows — lets the supersede
- * path delete them alongside the primary object. Also reads the
- * legacy singular `variants.subsetKey` (latin-only era) so older
- * rows still clean up. Returns [] when absent/malformed. */
-export const catalogFontSubsetKeysOf = (variantsJson: string | null): string[] => {
-	if (variantsJson === null) return [];
-	try {
-		const parsed = JSON.parse(variantsJson) as unknown;
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
-		const rec = parsed as Record<string, unknown>;
-		const out: string[] = [];
-		const seen = new Set<string>();
-		const push = (key: unknown): void => {
-			if (typeof key === "string" && key !== "" && !seen.has(key)) {
-				seen.add(key);
-				out.push(key);
-			}
-		};
-		const list = rec["subsetKeys"];
-		if (Array.isArray(list)) {
-			for (const key of list) push(key);
-		}
-		// Legacy singular key — pre-multi-subset rows.
-		push(rec["subsetKey"]);
-		return out;
-	} catch {
-		return [];
-	}
-};
-
-/**
- * Self-host manifest stored under `variants.fontAsset` on catalog
- * font rows — the {@link ThemeFontAsset} the managed-font cascade
- * serves for `meta.assetId` lookups whose theme_assets row has no
- * owning theme. Returns null on absent/malformed payloads.
- */
-export const catalogFontAssetOf = (variantsJson: string | null): ThemeFontAsset | null => {
-	if (variantsJson === null) return null;
-	try {
-		const parsed = JSON.parse(variantsJson) as unknown;
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-		const fontAsset = (parsed as Record<string, unknown>)["fontAsset"];
-		if (typeof fontAsset !== "object" || fontAsset === null || Array.isArray(fontAsset)) {
-			return null;
-		}
-		const faces = (fontAsset as Record<string, unknown>)["faces"];
-		return Array.isArray(faces) ? (fontAsset as ThemeFontAsset) : null;
-	} catch {
-		return null;
-	}
-};
+// `catalogFontFamilyOf`/`catalogFontSubsetKeysOf`/`catalogFontAssetOf`
+// are re-exported from @ktb/media above — the variants JSON contract
+// is shared with the fonts plugin's catalog adapter (single source of
+// truth, no per-plugin drift).
 
 /** Unowned font rows — theme_id NULL. Two sources feed this set:
  * fonts-catalog uploads (variants.family set) and theme_assets
@@ -604,7 +502,7 @@ export const insertCatalogFontAsset = async (
 		typeof input.unicodeRange === "string" && input.unicodeRange.trim() !== ""
 			? input.unicodeRange.trim()
 			: undefined;
-	const axes = sanitizeFontAxes(input.axes);
+	const axes = normalizeFontAxes(input.axes);
 	const axisFaces = axes.length === 0 ? {} : { axes };
 	const format = input.format === undefined ? {} : { format: input.format };
 	// Real-subset siblings (font-subset.ts): sanitize like the other
@@ -668,7 +566,9 @@ export const insertCatalogFontAsset = async (
 			: weights.length === 0
 				? sources.map((s) => ({ ...s, ...axisFaces }))
 				: weights.flatMap((weight) => sources.map((s) => ({ ...s, weight, ...axisFaces })));
-	const variants = {
+	// Canonical contract shape (@ktb/media CatalogFontVariants) — the
+	// fonts plugin's catalog adapter reads these same fields back.
+	const variants: CatalogFontVariants = {
 		family: input.family,
 		...(weights.length === 0 ? {} : { weights }),
 		...(weightAxis === undefined && axes.length === 0 ? {} : { variable: true }),

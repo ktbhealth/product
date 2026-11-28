@@ -5210,31 +5210,6 @@ export const I18N_MANIFEST = {
 		},
 	},
 	notifications: {
-		label: {
-			params: [],
-		},
-		unreadCount: {
-			params: [
-				{
-					name: "n",
-				},
-			],
-			template: "{n} unread",
-		},
-		markAllRead: {
-			params: [],
-		},
-		empty: {
-			params: [],
-		},
-		markAsRead: {
-			params: [
-				{
-					name: "title",
-				},
-			],
-			template: 'Mark "{title}" as read',
-		},
 		"titles.patientCreated": {
 			params: [],
 		},
@@ -5265,6 +5240,31 @@ export const I18N_MANIFEST = {
 				},
 			],
 			template: "Starts at {time}",
+		},
+		label: {
+			params: [],
+		},
+		unreadCount: {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} unread",
+		},
+		markAllRead: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		markAsRead: {
+			params: [
+				{
+					name: "title",
+				},
+			],
+			template: 'Mark "{title}" as read',
 		},
 		"dashboard.consoleActivity": {
 			params: [],

@@ -18,6 +18,7 @@ import { makeTestD1 } from "@ktb/db-testing";
 
 import { insertNotification, NotificationsLive } from "./Notifications.ts";
 import { Route as NotificationsRoute } from "./api-routes/notifications.ts";
+import { makeNotificationIngestions, NotificationIngestions } from "@ktb/notifications-port";
 
 const handlersOf = (r: unknown) =>
 	(
@@ -60,7 +61,13 @@ const authStub = Auth.of({
 
 const db = makeDb(makeTestD1(DDL));
 
-const infra = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(Auth, authStub), makeEventBus());
+const infra = Layer.mergeAll(
+	Layer.succeed(Db, db),
+	Layer.succeed(Auth, authStub),
+	makeEventBus(),
+	// No producer plugins in this harness — empty ingestion registry.
+	Layer.succeed(NotificationIngestions, makeNotificationIngestions([])),
+);
 
 // The runtime must re-export the infra services too: getSessionUser
 // resolves Auth through `run`, not just the Notifications service.

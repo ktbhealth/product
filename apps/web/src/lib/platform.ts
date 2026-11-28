@@ -14,6 +14,7 @@ import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { makeJobHandlerRegistry, makeJobs, queueSend, type QueueSendBinding } from "@ktb/jobs-port";
 import { asQueueTransport, type QueueBindingLike } from "@ktb/queues-port";
+import { drainOutbox } from "@ktb/outbox";
 import { runSchedulerSweep } from "@ktb/scheduler-port";
 import { APP_CRON_JOBS } from "./cron-jobs.ts";
 import { AUDIO_QUEUE_NAME, THEME_ASSETS_QUEUE_NAME } from "./queue-names.ts";
@@ -39,6 +40,7 @@ import { resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { makeOrchestrationHost } from "./orchestration.ts";
+import { registerOutboxDeliverers } from "./outbox.ts";
 import { EVAL_RUN_JOB_KIND, evalRunJobRegistration } from "@ktb/eval-validator/run-job";
 import { portalInstances } from "./registry.ts";
 import { builtinMiddlewareStages } from "./middleware-stages.ts";
@@ -235,6 +237,12 @@ jobHandlerRegistry.register("jobs.ping", { handle: async () => {} });
 // value is wired here at the edge, same pattern as the audio consumer.
 jobHandlerRegistry.register(EVAL_RUN_JOB_KIND, evalRunJobRegistration());
 
+// Outbox drainer (@ktb/outbox): the "email" kind deliverer resolves the
+// configured Email sender per delivery — see lib/outbox.ts. Enqueue
+// paths (auth hooks, plugin invites) also kick a best-effort drain;
+// this registry + the outbox-drain cron sweep are the durable side.
+registerOutboxDeliverers(run);
+
 // Durable orchestration runner (P-120 phase 2): `orchestrator.step`
 // rides the same AUDIO_QUEUE transport — start() persists the run and
 // enqueues step 1; each step job advances one bounded batch and
@@ -381,6 +389,14 @@ const serverRuntime = makeServerRuntime({
 				ok: result.failed === 0,
 				summary: `${result.fired} scheduled job${result.fired === 1 ? "" : "s"} fired${result.failed > 0 ? `, ${result.failed} failed` : ""}`,
 				...(result.failed > 0 ? { error: `${result.failed} dispatch(es) failed` } : {}),
+			};
+		},
+		"outbox-drain": async () => {
+			const result = await drainOutbox(db);
+			return {
+				ok: result.failed === 0,
+				summary: `${result.delivered} outbox item${result.delivered === 1 ? "" : "s"} delivered${result.failed > 0 ? `, ${result.failed} failed` : ""}`,
+				...(result.failed > 0 ? { error: `${result.failed} deliverie(s) failed` } : {}),
 			};
 		},
 		"agenda-reminders": async () => {

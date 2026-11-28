@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import type { Driver } from "@ktb/driver-framework";
@@ -11,6 +12,27 @@ export interface EmailMessage {
 	readonly text: string;
 	readonly html?: string;
 }
+
+/**
+ * Wire schema for an {@link EmailMessage} stored as an outbox payload
+ * (kind {@link EMAIL_OUTBOX_KIND}) — the drainer's decode check at the
+ * delivery edge. `html` stays optional; JSON round-trips drop
+ * `undefined`, so absent is the only empty form producers write.
+ */
+export const EmailMessageSchema = Schema.Struct({
+	to: Schema.String,
+	subject: Schema.String,
+	text: Schema.String,
+	html: Schema.optionalKey(Schema.String),
+});
+
+/**
+ * Outbox kind under which rendered email messages are queued for
+ * reliable delivery (@ktb/outbox). Producers enqueue
+ * `{ kind: EMAIL_OUTBOX_KIND, payload: EmailMessage }`; the
+ * composition edge registers the matching deliverer.
+ */
+export const EMAIL_OUTBOX_KIND = "email";
 
 /** Delivery was refused or failed at the provider. */
 export class EmailSendError extends Error {

@@ -7,12 +7,15 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { Accounts } from "@ktb/auth";
-import { DoctorProfiles, PatientProfiles } from "@ktb/server-fns";
+import { EMAIL_OUTBOX_KIND, Email, type EmailMessage } from "@ktb/email";
+import { Outbox } from "@ktb/outbox";
+import { DoctorProfiles, PatientProfiles, run } from "@ktb/server-fns";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { routeContribution } from "@ktb/platform/routes";
 
+import { INVITE_DESTINATIONS } from "./kinds.ts";
 import { inviteTokens, type InviteKind, type InviteToken } from "./schema.ts";
 
 export { INVITE_KINDS, type InviteKind, type InviteToken } from "./schema.ts";
@@ -23,6 +26,10 @@ export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Emails are matched case-insensitively: stored and compared lowercased. */
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+/** The shape every invite sender applies before writing or comparing an
+ * address — applied to the normalized form. */
+export const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A fresh link token: 256 bits from the platform CSPRNG, URL-safe. */
 export const newInviteToken = (): string => {
@@ -103,6 +110,47 @@ export async function findInvite(
 /** Mark a link used. */
 export async function consumeInvite(db: DbClient, id: number, now: Date): Promise<void> {
 	await db.update(inviteTokens).set({ consumedAt: now }).where(eq(inviteTokens.id, id));
+}
+
+/** The account registered under `email` (already normalized), if any. */
+export async function accountByEmail(
+	db: DbClient,
+	email: string,
+): Promise<{ readonly id: string; readonly emailVerified: boolean } | undefined> {
+	const [account] = await db
+		.select({ id: user.id, emailVerified: user.emailVerified })
+		.from(user)
+		.where(eq(user.email, email));
+	return account;
+}
+
+/**
+ * What an access invite to `email` (already normalized) resolves to: a
+ * *verified* existing account is linked at once; anyone else — no
+ * account, or an unproven address — waits as "invited" until such an
+ * account appears. The state every invite sender shares.
+ */
+export async function inviteAccessTarget(
+	db: DbClient,
+	email: string,
+): Promise<{ readonly userId: string | null; readonly status: "active" | "invited" }> {
+	const account = await accountByEmail(db, email);
+	return account?.emailVerified
+		? { userId: account.id, status: "active" }
+		: { userId: null, status: "invited" };
+}
+
+/**
+ * The account's email — normalized — when it is verified, else null.
+ * Pending invites are only ever claimed for a proven address, so this
+ * is the lookup every claim-on-entry point shares.
+ */
+export async function verifiedAccountEmail(db: DbClient, userId: string): Promise<string | null> {
+	const [account] = await db
+		.select({ email: user.email, emailVerified: user.emailVerified })
+		.from(user)
+		.where(eq(user.id, userId));
+	return account?.emailVerified ? normalizeEmail(account.email) : null;
 }
 
 /** What the accept screen shows for a live link. */
@@ -228,6 +276,63 @@ export const inviteAcceptPath = (input: {
 		// In the fragment, never the path: see the accept route.
 		return token === null ? null : `/invite#${token}`;
 	});
+
+/**
+ * Deliver an invite email — the send half every invite plugin shares.
+ * Someone with no account yet gets a single-use accept link that
+ * creates it; an address that already has one (or a deployment without
+ * the invites plugin) is pointed at the kind's sign-in page. The
+ * rendered message is queued on the outbox (@ktb/outbox) when that
+ * service is bound so a provider outage retries instead of losing the
+ * invite, and sent inline otherwise; both paths are best-effort — the
+ * caller's grant already exists, so a deployment without email or a
+ * failed delivery reports `false` rather than failing. When no Email
+ * sender is bound at all, no accept link is even issued.
+ */
+export const sendInviteEmail = async (input: {
+	readonly to: string;
+	readonly kind: InviteKind;
+	readonly inviterName: string;
+	/** The rendered subject — invitee-facing copy stays with the caller. */
+	readonly subject: string;
+	/** The body once the accept URL is known: `(url, hasAcceptLink)`. */
+	readonly body: (acceptUrl: string, hasAcceptLink: boolean) => string;
+	/** console.error label on delivery failure, e.g. the plugin's name. */
+	readonly errorLabel?: string;
+}): Promise<boolean> => {
+	const { getRequestUrl } = await import("@tanstack/react-start/server");
+	const services = await run(
+		Effect.gen(function* () {
+			const email = yield* Effect.serviceOption(Email);
+			const outbox = yield* Effect.serviceOption(Outbox);
+			return { sender: Option.getOrNull(email), outbox: Option.getOrNull(outbox) };
+		}),
+	);
+	if (services.sender === null) return false;
+	const acceptPath = await run(
+		inviteAcceptPath({ email: input.to, kind: input.kind, inviterName: input.inviterName }),
+	);
+	const url = new URL(
+		acceptPath ?? INVITE_DESTINATIONS[input.kind].login,
+		getRequestUrl(),
+	).toString();
+	const message: EmailMessage = {
+		to: input.to,
+		subject: input.subject,
+		text: input.body(url, acceptPath !== null),
+	};
+	try {
+		if (services.outbox !== null) {
+			await services.outbox.enqueue({ kind: EMAIL_OUTBOX_KIND, payload: message });
+		} else {
+			await services.sender.send(message);
+		}
+		return true;
+	} catch (error) {
+		console.error(input.errorLabel ?? "invite email failed", error);
+		return false;
+	}
+};
 
 export const invitesTablesPlugin = definePlugin({
 	id: "invites.tables",

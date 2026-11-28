@@ -53,6 +53,7 @@ import { ApiExposures, makeApiExposures } from "@ktb/api";
 import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
 import { FlowDefinitions, makeFlowDefinitions } from "@ktb/flows";
 import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
+import { NotificationIngestions, makeNotificationIngestions } from "@ktb/notifications-port";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -67,6 +68,7 @@ import { builtinKinds } from "@ktb/orchestrator";
 import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
 import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
 import { Jobs, makeJobs, queueSend } from "@ktb/jobs-port";
+import { insertOutboxRecord, kickOutboxDrain, makeOutbox, Outbox } from "@ktb/outbox";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
 import {
@@ -88,7 +90,7 @@ import {
 	makeAuth,
 	makeAuthService,
 } from "@ktb/auth-better";
-import { Email, nullEmailDriver, type EmailMessage } from "@ktb/email";
+import { Email, EMAIL_OUTBOX_KIND, nullEmailDriver, type EmailMessage } from "@ktb/email";
 import { cloudflareEmailDriver } from "@ktb/email-cloudflare";
 import { smtpEmailDriver } from "@ktb/email-smtp";
 import { stubEmailDriver } from "@ktb/email-stub";
@@ -568,14 +570,22 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		...(emailSender === null
 			? {}
 			: {
-					// A failed delivery must not fail the sign-up itself — the
-					// account exists and the link can be requested again.
+					// Transactional email rides the outbox (@ktb/outbox):
+					// the rendered message is written as a pending row and
+					// the edge drainer delivers it with retry — a provider
+					// outage delays mail instead of losing it to a
+					// console.error. The sign-up itself never fails on
+					// delivery; only the row write can, and that error is
+					// logged honestly below. The kick is best-effort — the
+					// cron sweep is the durable backstop.
 					sendVerificationEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({
+							const message: EmailMessage = {
 								to: email,
 								...(await verificationEmail({ name, url })),
-							});
+							};
+							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("verification email failed", error);
 						}
@@ -584,10 +594,12 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 					// just request the link again.
 					sendPasswordResetEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({
+							const message: EmailMessage = {
 								to: email,
 								...(await passwordResetEmail({ name, url })),
-							});
+							};
+							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("password reset email failed", error);
 						}
@@ -658,6 +670,12 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		jobsQueue === undefined
 			? Layer.empty
 			: Layer.succeed(Jobs, makeJobs({ send: queueSend(jobsQueue), db }));
+	// Outbox port (@ktb/outbox): reliable-delivery writes — always bound
+	// (Db is unconditional); plugins enqueue via serviceOption and the
+	// edge's drain sweep + deliverer registry handle delivery. The auth
+	// email callbacks above write rows directly through the repo
+	// helpers (they are plain async hooks, not Effect code).
+	const OutboxLive = Layer.succeed(Outbox, makeOutbox({ db }));
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
@@ -752,6 +770,17 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 	// each contributed def's owner against PluginStates.enabledIds()
 	// at startRun, so toggles apply without a layer rebuild.
 	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
+	// Notification-ingestion registry (notificationIngestions manifest
+	// field): same composition-time collection — the @ktb/notifications
+	// service layer consumes it via `NotificationIngestions` and
+	// subscribes each `{ event, project }` entry on the app-wide
+	// EventBus. Enablement is NOT filtered here (same contract as the
+	// other registries): a disabled producer's entries stay subscribed
+	// but its events are never dispatched.
+	const NotificationIngestionsLive = Layer.succeed(
+		NotificationIngestions,
+		makeNotificationIngestions(plugins),
+	);
 	const RoutesLive = Layer.succeed(Routes, makeRoutes(collectRouteDefinitions(plugins)));
 	// Request-middleware registry (PL-015/P-110): the serializable view
 	// behind /platform/middleware — collected stage metadata (handlers
@@ -819,6 +848,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		EvalRunnerLive,
 		EvalArtifactsLive,
 		JobsLive,
+		OutboxLive,
 		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,
@@ -831,6 +861,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		TriggerDefinitionsLive,
 		FlowDefinitionsLive,
 		WizardDefinitionsLive,
+		NotificationIngestionsLive,
 		RoutesLive,
 		MiddlewareStagesLive,
 		PipelineRegistryLive,

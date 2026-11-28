@@ -10,7 +10,13 @@ import { PatientProfiles, type PatientProfile } from "@ktb/server-fns";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { patients, user } from "@ktb/db/schema";
-import { invitesServicesPlugin } from "@ktb/invites";
+import {
+	EMAIL_SHAPE,
+	inviteAccessTarget,
+	invitesServicesPlugin,
+	normalizeEmail,
+	verifiedAccountEmail,
+} from "@ktb/invites";
 import { patientsServicesPlugin } from "@ktb/patients";
 import { vaultServicesPlugin } from "@ktb/vault";
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -32,10 +38,9 @@ export type {
 	PatientAccessStatus,
 } from "./schema.ts";
 
-/** Emails are matched case-insensitively: stored and compared lowercased. */
-export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
-
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Canonical home is the invites kit — re-exported so existing imports
+// (tests) keep working.
+export { normalizeEmail } from "@ktb/invites";
 
 /**
  * Every patient record `userId` may open in the portal: the ones they
@@ -76,17 +81,12 @@ const accountOf = async (db: DbClient, userId: string) => {
  * claimed.
  */
 export async function claimPatientInvites(db: DbClient, userId: string): Promise<number> {
-	const account = await accountOf(db, userId);
-	if (!account?.emailVerified) return 0;
+	const email = await verifiedAccountEmail(db, userId);
+	if (email === null) return 0;
 	const invites = await db
 		.select()
 		.from(patientAccess)
-		.where(
-			and(
-				eq(patientAccess.email, normalizeEmail(account.email)),
-				eq(patientAccess.status, "invited"),
-			),
-		);
+		.where(and(eq(patientAccess.email, email), eq(patientAccess.status, "invited")));
 	for (const invite of invites) {
 		const [existing] = await db
 			.select({ id: patientAccess.id })
@@ -230,16 +230,12 @@ export async function invitePatientAccess(
 		readonly grantedBy: string;
 	},
 ): Promise<PatientAccess> {
-	const [account] = await db
-		.select({ id: user.id, emailVerified: user.emailVerified })
-		.from(user)
-		.where(eq(user.email, input.email));
-	const userId = account?.emailVerified ? account.id : null;
+	const target = await inviteAccessTarget(db, input.email);
 	const link = {
-		userId,
+		userId: target.userId,
 		email: input.email,
 		relation: input.relation,
-		status: userId === null ? "invited" : "active",
+		status: target.status,
 		source: "invite",
 		grantedBy: input.grantedBy,
 	};
@@ -249,9 +245,9 @@ export async function invitePatientAccess(
 		.where(
 			and(
 				eq(patientAccess.patientId, input.patientId),
-				userId === null
+				target.userId === null
 					? eq(patientAccess.email, input.email)
-					: or(eq(patientAccess.userId, userId), eq(patientAccess.email, input.email)),
+					: or(eq(patientAccess.userId, target.userId), eq(patientAccess.email, input.email)),
 			),
 		);
 	const [row] =

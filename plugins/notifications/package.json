@@ -11,13 +11,11 @@
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
-		"@ktb/agenda": "workspace:*",
 		"@ktb/authz": "workspace:*",
-		"@ktb/consultations": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
-		"@ktb/patients": "workspace:*",
+		"@ktb/notifications-port": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/platform-header": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
@@ -30,8 +28,11 @@
 		"lucide-react": "0.544.0"
 	},
 	"devDependencies": {
+		"@ktb/agenda": "workspace:*",
 		"@ktb/auth": "workspace:*",
+		"@ktb/consultations": "workspace:*",
 		"@ktb/db-testing": "workspace:*",
+		"@ktb/patients": "workspace:*",
 		"@tanstack/react-start": "1.169.5",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
