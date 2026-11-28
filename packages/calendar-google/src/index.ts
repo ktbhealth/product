@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import {
 	CalendarSyncError,
 	Calendars,
+	evaluateEventFilter,
 	makeCalendarsRegistry,
 	type CalendarCredentials,
 	type CalendarListQuery,
@@ -13,6 +14,7 @@ import {
 	type ExternalEventDraft,
 } from "@ktb/calendar";
 import type { Driver } from "@ktb/driver-framework";
+import { partitionFilter, type FilterExpr } from "@ktb/filters";
 
 export const GOOGLE_PROVIDER_ID = "google";
 export const GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE =
@@ -177,6 +179,18 @@ interface GoogleEventResource {
 	readonly updated?: string;
 	readonly start?: GoogleDateTime;
 	readonly end?: GoogleDateTime;
+	readonly location?: string;
+	readonly eventType?: string;
+	readonly transparency?: string;
+	readonly organizer?: { readonly email?: string; readonly displayName?: string };
+	readonly attendees?: readonly {
+		readonly email?: string;
+		readonly displayName?: string;
+	}[];
+	readonly extendedProperties?: {
+		readonly private?: Record<string, string>;
+		readonly shared?: Record<string, string>;
+	};
 }
 
 interface GoogleEventsPage {
@@ -231,7 +245,121 @@ const toExternalEvent = (
 		...(resource.updated === undefined || Number.isNaN(new Date(resource.updated).getTime())
 			? {}
 			: { updatedAt: new Date(resource.updated) }),
+		...(resource.location === undefined ? {} : { location: resource.location }),
+		...(resource.eventType === undefined ? {} : { eventType: resource.eventType }),
+		...(resource.transparency === undefined ? {} : { transparency: resource.transparency }),
+		...(resource.organizer === undefined
+			? {}
+			: { organizer: resource.organizer.email ?? resource.organizer.displayName }),
+		...(resource.attendees === undefined
+			? {}
+			: {
+					attendees: resource.attendees.flatMap((a) =>
+						[a.email, a.displayName].filter((v): v is string => typeof v === "string"),
+					),
+				}),
+		...(resource.extendedProperties === undefined
+			? {}
+			: {
+					properties: {
+						...(resource.extendedProperties.shared ?? {}),
+						...(resource.extendedProperties.private ?? {}),
+					},
+				}),
 	};
+};
+
+// ---------------------------------------------------------------------------
+// Filter pushdown — what events.list honors natively. Everything else
+// evaluates locally over the same canonical field vocabulary, so the
+// caller-visible semantics don't depend on which side answered.
+//
+// Mapping notes:
+// - `endsAt gt X` → timeMin=X and `startsAt lt X` → timeMax=X are exact:
+//   both API bounds are exclusive, matching gt/lt. gte/lte deliberately
+//   do NOT push — the boundary inclusivity would silently mismatch.
+// - `text contains X` → q=X is semantic-approximate: q is token-based
+//   full text over the same surfaces, not a substring match. Pushing it
+//   is still correct behaviorally for users (it is what Google's own
+//   UI does) and avoids downloading entire calendars for a search.
+// - `eventType in [...]` / `eq` → repeated eventTypes params.
+// - `property.<key> eq value` → privateExtendedProperty=key=value.
+// - Disjunctions/negations never push: repeating params is AND, so an
+//   or-tree cannot be expressed in the query string.
+// ---------------------------------------------------------------------------
+
+const pushableLeaf = (expr: FilterExpr): boolean => {
+	if (expr.op === "gt" && expr.field === "endsAt") return true;
+	if (expr.op === "lt" && expr.field === "startsAt") return true;
+	if (expr.op === "contains" && expr.field === "text") return true;
+	if ((expr.op === "in" || expr.op === "eq") && expr.field === "eventType") return true;
+	if (expr.op === "eq" && expr.field.startsWith("property.")) return true;
+	return false;
+};
+
+/** Google's pushdown capability: the leaf rules above, conjunctively
+ * composable only — repeating query parameters intersects, so `or`/`not`
+ * trees are never expressible. */
+export const googleCanPushTree = (expr: FilterExpr): boolean => {
+	if (expr.op === "and") return expr.args.length > 0 && expr.args.every(googleCanPushTree);
+	if (expr.op === "or" || expr.op === "not") return false;
+	return pushableLeaf(expr);
+};
+
+/** Compile a pushable subtree (guaranteed by {@link googleCanPushTree})
+ * into events.list query params. Contradictory window bounds collapse
+ * honestly: multiple `endsAt gt` keep the tightest (max) bound, multiple
+ * `startsAt lt` the earliest (min). */
+export const compileGooglePushdown = (push: FilterExpr, params: URLSearchParams): void => {
+	const leaves: FilterExpr[] = [];
+	const collect = (expr: FilterExpr): void => {
+		if (expr.op === "and") {
+			for (const arg of expr.args) collect(arg);
+			return;
+		}
+		leaves.push(expr);
+	};
+	collect(push);
+
+	const textTerms: string[] = [];
+	let timeMin: string | undefined;
+	let timeMax: string | undefined;
+	for (const leaf of leaves) {
+		if (leaf.op === "gt" && leaf.field === "endsAt") {
+			const iso = new Date(leaf.value).toISOString();
+			if (timeMin === undefined || iso > timeMin) timeMin = iso;
+			continue;
+		}
+		if (leaf.op === "lt" && leaf.field === "startsAt") {
+			const iso = new Date(leaf.value).toISOString();
+			if (timeMax === undefined || iso < timeMax) timeMax = iso;
+			continue;
+		}
+		if (leaf.op === "contains" && leaf.field === "text") {
+			textTerms.push(leaf.value);
+			continue;
+		}
+		if (leaf.op === "eq" && leaf.field === "eventType" && typeof leaf.value === "string") {
+			params.append("eventTypes", leaf.value);
+			continue;
+		}
+		if (leaf.op === "in" && leaf.field === "eventType") {
+			for (const value of leaf.values) {
+				if (typeof value === "string") params.append("eventTypes", value);
+			}
+			continue;
+		}
+		if (leaf.op === "eq" && leaf.field.startsWith("property.") && typeof leaf.value === "string") {
+			params.append(
+				"privateExtendedProperty",
+				`${leaf.field.slice("property.".length)}=${leaf.value}`,
+			);
+			continue;
+		}
+	}
+	if (timeMin !== undefined) params.set("timeMin", timeMin);
+	if (timeMax !== undefined) params.set("timeMax", timeMax);
+	if (textTerms.length > 0) params.set("q", textTerms.join(" "));
 };
 
 const eventBody = (draft: ExternalEventDraft) => ({
@@ -301,12 +429,20 @@ export class GoogleExternalCalendar implements ExternalCalendar {
 		calendarId: string,
 		query: CalendarListQuery = {},
 	): Promise<readonly ExternalCalendarEvent[]> {
+		// Filter partitioning: the push side compiles into query params,
+		// the residual evaluates locally over the same field vocabulary —
+		// the caller-visible result is the full filter either way.
+		const partition =
+			query.filter === undefined
+				? { push: null, residual: null }
+				: partitionFilter(query.filter, googleCanPushTree);
 		const events: ExternalCalendarEvent[] = [];
 		let pageToken: string | undefined;
 		do {
 			const params = new URLSearchParams({ maxResults: "2500" });
 			if (query.from !== undefined) params.set("timeMin", query.from.toISOString());
 			if (query.to !== undefined) params.set("timeMax", query.to.toISOString());
+			if (partition.push !== null) compileGooglePushdown(partition.push, params);
 			if (query.expandRecurring === true) {
 				params.set("singleEvents", "true");
 				params.set("orderBy", "startTime");
@@ -315,7 +451,10 @@ export class GoogleExternalCalendar implements ExternalCalendar {
 			const page = await this.request<GoogleEventsPage>(this.eventsPath(calendarId, params));
 			for (const item of page.items ?? []) {
 				const event = toExternalEvent(calendarId, item);
-				if (event !== null) events.push(event);
+				if (event === null) continue;
+				if (partition.residual !== null && !evaluateEventFilter(partition.residual, event))
+					continue;
+				events.push(event);
 			}
 			pageToken = page.nextPageToken;
 		} while (pageToken !== undefined);

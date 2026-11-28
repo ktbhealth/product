@@ -195,6 +195,110 @@ describe("google external calendar", () => {
 		expect(urls).toHaveLength(2);
 	});
 
+	it("pushes date range, text, event types and properties into query params", async () => {
+		const urls: string[] = [];
+		const fetchFn = fetcher((url) => {
+			urls.push(url);
+			return json({ items: [event] });
+		});
+		const cal = await connect(fetchFn);
+		const events = await cal.listEvents("primary", {
+			filter: {
+				op: "and",
+				args: [
+					{ op: "gt", field: "endsAt", value: "2026-11-01T00:00:00.000Z" },
+					{ op: "lt", field: "startsAt", value: "2026-12-01T00:00:00.000Z" },
+					{ op: "contains", field: "text", value: "consulta" },
+					{ op: "in", field: "eventType", values: ["default", "outOfOffice"] },
+					{ op: "eq", field: "property.workspace", value: "ktb" },
+				],
+			},
+		});
+		expect(events).toHaveLength(1);
+		const url = new URL(urls[0]!);
+		expect(url.searchParams.get("timeMin")).toBe("2026-11-01T00:00:00.000Z");
+		expect(url.searchParams.get("timeMax")).toBe("2026-12-01T00:00:00.000Z");
+		expect(url.searchParams.get("q")).toBe("consulta");
+		expect(url.searchParams.getAll("eventTypes")).toEqual(["default", "outOfOffice"]);
+		expect(url.searchParams.get("privateExtendedProperty")).toBe("workspace=ktb");
+	});
+
+	it("evaluates non-pushable conditions locally over rich event fields", async () => {
+		const rich = {
+			...event,
+			location: "Clínica Central",
+			attendees: [{ email: "maria@example.com", displayName: "Maria" }],
+			eventType: "default",
+		};
+		const other = { ...event, id: "evt-2", location: "Outro endereço" };
+		const urls: string[] = [];
+		const fetchFn = fetcher((url) => {
+			urls.push(url);
+			return json({ items: [rich, other] });
+		});
+		const cal = await connect(fetchFn);
+		const events = await cal.listEvents("primary", {
+			filter: {
+				op: "and",
+				args: [
+					{ op: "contains", field: "location", value: "clínica" },
+					{ op: "contains", field: "attendee", value: "maria@" },
+				],
+			},
+		});
+		expect(events.map((e) => e.id)).toEqual(["evt-1"]);
+		const url = new URL(urls[0]!);
+		expect(url.searchParams.get("q")).toBeNull();
+	});
+
+	it("never pushes disjunctions — they evaluate entirely client-side", async () => {
+		const urls: string[] = [];
+		const fetchFn = fetcher((url) => {
+			urls.push(url);
+			return json({ items: [event] });
+		});
+		const cal = await connect(fetchFn);
+		const events = await cal.listEvents("primary", {
+			filter: {
+				op: "and",
+				args: [
+					{ op: "gt", field: "endsAt", value: "2026-11-01T00:00:00.000Z" },
+					{
+						op: "or",
+						args: [
+							{ op: "contains", field: "text", value: "consulta" },
+							{ op: "contains", field: "text", value: "retorno" },
+						],
+					},
+				],
+			},
+		});
+		expect(events).toHaveLength(1);
+		const url = new URL(urls[0]!);
+		expect(url.searchParams.get("timeMin")).toBe("2026-11-01T00:00:00.000Z");
+		expect(url.searchParams.get("q")).toBeNull();
+	});
+
+	it("drops events the residual rejects even when some pushdown applied", async () => {
+		const urls: string[] = [];
+		const fetchFn = fetcher((url) => {
+			urls.push(url);
+			return json({ items: [event] });
+		});
+		const cal = await connect(fetchFn);
+		const events = await cal.listEvents("primary", {
+			filter: {
+				op: "and",
+				args: [
+					{ op: "contains", field: "text", value: "consulta" },
+					{ op: "contains", field: "location", value: "não-existe" },
+				],
+			},
+		});
+		expect(events).toHaveLength(0);
+		expect(new URL(urls[0]!).searchParams.get("q")).toBe("consulta");
+	});
+
 	it("creates, updates and cancels events", async () => {
 		const calls: { url: string; init?: RequestInit }[] = [];
 		const fetchFn = fetcher((url, init) => {

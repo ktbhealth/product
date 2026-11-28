@@ -11,6 +11,7 @@
 	"dependencies": {
 		"@ktb/calendar": "workspace:*",
 		"@ktb/driver-framework": "workspace:*",
+		"@ktb/filters": "workspace:*",
 		"effect": "4.1.2"
 	}
 }
