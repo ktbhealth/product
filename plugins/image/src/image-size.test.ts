@@ -240,9 +240,10 @@ describe("sniffImageSize", () => {
 	});
 
 	it("accepts explicit px units but rejects other units", () => {
-		expect(
-			sniffImageSize(bytes('<svg width="100px" height="50PX"></svg>')),
-		).toEqual({ width: 100, height: 50 });
+		expect(sniffImageSize(bytes('<svg width="100px" height="50PX"></svg>'))).toEqual({
+			width: 100,
+			height: 50,
+		});
 		expect(sniffImageSize(bytes('<svg width="100pt" height="50"></svg>'))).toBeNull();
 		expect(sniffImageSize(bytes('<svg width="10em" height="50"></svg>'))).toBeNull();
 	});
