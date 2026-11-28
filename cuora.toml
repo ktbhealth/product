@@ -9,6 +9,8 @@ kind = "cf"
 url = "https://cuora.ktbhealth.workers.dev"
 token_env = "CUORA_CF_TOKEN" # bearer fallback; scoped HMAC below
 cache = ["dev", "preview"] # prod reads live — no stale-prod footgun
+# Team decryption recipients — secrets are re-sealed to these on put.
+recipients = ["age1tfrsv6q9u7l8kda63ulylkwc4wc03ykkllkdxetukh6syqwu7ajsyfz8mp"] # vini
 
 # Scoped token refs in the local vault — the ref path is the
 # token_id the worker's CUORA_VAULT_TOKENS map keys on.
@@ -40,6 +42,10 @@ VITE_TURNSTILE_SITE_KEY = "cuora://ktb/turnstile-site-key"
 # (endpoint, service name, sample rates, KTB_*) is plain env, not cuora.
 # OTEL_EXPORTER_OTLP_HEADERS = "cuora://ktb/otel-exporter-otlp-headers"
 METRICS_SCRAPE_TOKEN = "cuora://ktb/metrics-scrape-token"
+# Google OAuth client for Calendar API (GCP project ktbhealth-dev).
+# Dev-only for now — add preview/prod puts before `cuora run` there.
+GOOGLE_CLIENT_ID = "cuora://ktb/google-oauth-client-id"
+GOOGLE_CLIENT_SECRET = "cuora://ktb/google-oauth-client-secret"
 # GitHub org webhook receiver (infra/ci-hook → ci.ktbhealth.workers.dev).
 # Prod-only refs — kept commented so `cuora run` in dev/preview still
 # resolves; set worker secrets with `wrangler secret bulk` from prod.
