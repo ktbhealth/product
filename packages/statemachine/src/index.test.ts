@@ -41,6 +41,9 @@ describe("defineStateMachine", () => {
 		expect(jobMachine.can("done", "begin")).toBe(false);
 		expect(jobMachine.can("queued", "complete")).toBe(false);
 		expect(jobMachine.events("processing")).toEqual(["complete", "fail", "retry"]);
+		// @ts-expect-error -- runtime foreign state
+		expect(jobMachine.events("bogus")).toEqual([]);
+		expect(jobMachine.events("done")).toEqual([]);
 		expect(jobMachine.isTerminal("done")).toBe(true);
 		expect(jobMachine.isTerminal("failed")).toBe(false);
 		expect(jobMachine.isState("queued")).toBe(true);
@@ -71,6 +74,25 @@ describe("defineStateMachine", () => {
 				initial: "a",
 				// @ts-expect-error -- deliberately undeclared target
 				states: { a: { on: { go: "zzz" } } },
+			}),
+		).toThrow("targets an undeclared state");
+		expect(() =>
+			defineStateMachine({
+				id: "bad3",
+				initial: "zzz" as never, // deliberately undeclared initial state
+				states: { a: {} },
+			}),
+		).toThrow('initial state "zzz" is not declared');
+		expect(() =>
+			defineStateMachine({
+				id: "bad4",
+				initial: "a",
+				states: {
+					a: {
+						// @ts-expect-error -- deliberately missing `to`
+						on: { go: { guard: () => true } },
+					},
+				},
 			}),
 		).toThrow("targets an undeclared state");
 	});
@@ -128,6 +150,31 @@ describe("step", () => {
 		const cause = (error as TransitionRejectedError).cause;
 		expect(cause).toBeInstanceOf(Error);
 		expect((cause as Error).message).toBe("db down");
+	});
+
+	it("rejects with cause when the guard throws synchronously", async () => {
+		const guarded = defineStateMachine({
+			id: "throwing-guard",
+			initial: "a",
+			states: {
+				a: {
+					on: {
+						go: {
+							to: "b",
+							guard: () => {
+								throw new Error("guard boom");
+							},
+						},
+					},
+				},
+				b: {},
+			},
+		});
+		const error = await Effect.runPromise(Effect.flip(guarded.step("a", "go")));
+		expect(error).toBeInstanceOf(TransitionRejectedError);
+		const cause = (error as TransitionRejectedError).cause;
+		expect(cause).toBeInstanceOf(Error);
+		expect((cause as Error).message).toBe("guard boom");
 	});
 
 	it("passes context to guards", async () => {

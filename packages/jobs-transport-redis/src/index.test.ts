@@ -131,6 +131,15 @@ describe("createRedisJobsTransport", () => {
 		await t.close();
 	});
 
+	it("send accepts non-record bodies — the runAt probe is defensive", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send("raw-string");
+		const [msg] = await t.receive();
+		expect(msg?.body).toBe("raw-string");
+		await t.close();
+	});
+
 	it("receive returns [] when the list is empty", async () => {
 		const { client } = fakeRedis();
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
@@ -457,6 +466,69 @@ describe("createRedisJobsTransport", () => {
 		await t.send({ ...envelope("early"), runAt: Date.now() + 60_000 });
 		const [msg] = await t.receive();
 		expect(msg?.body).toMatchObject({ id: "early" });
+		await t.close();
+	});
+
+	it("no-ops the delayed sweep when the client lacks eval", async () => {
+		const { client, delayed } = fakeRedis();
+		const noEval: RedisLike = { ...client };
+		delete noEval.eval;
+		const t = await createRedisJobsTransport({ client: noEval, blockSeconds: 0, sweepMs: 5 });
+		await t.send({ ...envelope("stuck"), runAt: Date.now() + 60_000 });
+		await t.send(envelope("plain"));
+		// Several sweep ticks fire against a client without eval — the
+		// sweep must no-op, not throw, and normal delivery is unaffected.
+		await new Promise((r) => setTimeout(r, 25));
+		const [msg] = await t.receive();
+		expect(msg?.body).toEqual(envelope("plain"));
+		// The future-runAt envelope stays parked — nothing sweeps it.
+		expect(delayed.size).toBe(1);
+		await t.close();
+	});
+
+	it("swallows delayed-sweep eval failures", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({
+			client: {
+				...client,
+				eval: async () => {
+					throw new Error("redis down");
+				},
+			},
+			blockSeconds: 0,
+			sweepMs: 5,
+		});
+		// Let a sweep tick hit the rejecting eval — the warn is the
+		// contract; the transport stays usable.
+		await new Promise((r) => setTimeout(r, 25));
+		await t.send(envelope("still-alive"));
+		const [msg] = await t.receive();
+		expect(msg?.body).toEqual(envelope("still-alive"));
+		await t.close();
+	});
+
+	it("stats() works when the client lacks zset support", async () => {
+		const entries: string[] = [];
+		const client: RedisLike = {
+			lPush: async (_key, value) => {
+				entries.unshift(value);
+				return 1;
+			},
+			rPush: async () => 0,
+			blMove: async () => entries.pop() ?? null,
+			lMove: async () => null,
+			lRem: async () => 0,
+			lLen: async (key) => (key.endsWith(":pending") ? 0 : entries.length),
+			quit: async () => "OK",
+		};
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("s"));
+		expect(await t.stats()).toEqual({
+			pending: 1,
+			processing: 0,
+			done: 0,
+			failed: 0,
+		});
 		await t.close();
 	});
 
