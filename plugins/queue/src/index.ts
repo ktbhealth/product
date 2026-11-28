@@ -25,6 +25,12 @@ export const queueServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region under the Concurrency group; the dep
 // edge orders it after the shell like the other panel entries.
 export const queueChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/queue": "panel_nav_queue",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "queue.chrome",
 	meta: { keywords: ["queue", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

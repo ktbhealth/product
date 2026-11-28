@@ -25,6 +25,12 @@ export const cronServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region under the Concurrency group; the dep
 // edge orders it after the shell like the other panel entries.
 export const cronChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/cron": "panel_nav_cron",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "cron.chrome",
 	meta: { keywords: ["cron", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

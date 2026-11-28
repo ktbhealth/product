@@ -1038,6 +1038,9 @@ export const evalPersonaServicesPlugin = definePlugin({
 
 export const evalPersonaChromePlugin = definePlugin({
 	id: "eval.persona.chrome",
+	i18nKeys: {
+		groups: { Evaluation: "panel_group_evaluation" },
+	},
 	meta: { keywords: ["eval", "persona", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

@@ -15,6 +15,12 @@ import { LayoutsAdminConsolePage } from "./platform-page.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const layoutsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/layouts": "panel_nav_layouts",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "layouts.chrome",
 	meta: { keywords: ["layouts", "ui"] },
 	requiredDeps: ["platform.panel"],

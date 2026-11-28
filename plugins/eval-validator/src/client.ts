@@ -16,6 +16,9 @@ import { EvalValidatorPage } from "./platform-page.tsx";
  * apps/web/src/plugins.test.ts.
  */
 export const evalValidatorChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Evaluation: "panel_group_evaluation" },
+	},
 	id: "eval.validator.chrome",
 	meta: { keywords: ["eval", "validator", "ui"] },
 	requiredDeps: ["platform.panel"],

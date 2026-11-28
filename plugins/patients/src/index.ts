@@ -726,6 +726,13 @@ export const patientsRoutesPlugin = definePlugin({
 // `chrome` region; the dep edge orders it after the platform shell
 // like the retired panel entry.
 export const patientsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/patients": "nav_patients",
+			"/platform/patients": "nav_patients",
+		},
+		groups: { "Domain data": "panel_group_domain_data" },
+	},
 	id: "patients.chrome",
 	meta: { keywords: ["patients", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

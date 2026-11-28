@@ -15,6 +15,12 @@ import { managerConfig } from "./config.tsx";
  * by apps/web/src/plugins.test.ts.
  */
 export const managerChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/plugins": "panel_nav_plugins",
+		},
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "manager.chrome",
 	system: true,
 	requiredDeps: ["platform.panel"],

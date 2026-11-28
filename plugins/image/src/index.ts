@@ -67,6 +67,9 @@ export const imageServicesPlugin = definePlugin({
  * (Site group).
  */
 export const imageChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "image.chrome",
 	meta: { keywords: ["image", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

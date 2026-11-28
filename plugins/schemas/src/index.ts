@@ -39,6 +39,12 @@ export const schemasServicesPlugin = definePlugin({
  * (Site group).
  */
 export const schemasChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/schemas": "panel_nav_schemas",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "schemas.chrome",
 	meta: { keywords: ["schemas", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

@@ -16,6 +16,9 @@ import { KvAdminConsolePage } from "./platform-page.tsx";
  * apps/web/src/plugins.test.ts.
  */
 export const kvChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Storage: "panel_group_storage" },
+	},
 	id: "kv.chrome",
 	meta: { keywords: ["kv", "ui"] },
 	requiredDeps: ["platform.panel"],

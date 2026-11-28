@@ -28,6 +28,12 @@ export const queueServicesPlugin = definePlugin({
  * in the `portal.sidebar` chrome region under the Concurrency group.
  */
 export const queueChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/queue": "panel_nav_queue",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "queue.chrome",
 	meta: { keywords: ["queue", "ui"] },
 	requiredDeps: ["platform.panel"],

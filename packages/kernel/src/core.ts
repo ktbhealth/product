@@ -74,6 +74,22 @@ export interface PluginContribution {
 	readonly meta?: JsonObject;
 }
 
+/** Plugin-declared chrome i18n keys: the `app.*` message keys the host
+ * resolves for this plugin's chrome labels, sidebar group headers and
+ * footer notes — the manifest-side replacement for host path/name→key
+ * maps. Values are `app.`-namespace key suffixes, the same contract
+ * `loginTile.labelKey` uses; the declared English `label`/`group`/
+ * `fallback` literals stay the fallback when the key is absent. Pure
+ * data — safe on BOTH registries (client mirrors carry it too). */
+export interface PluginI18nKeys {
+	/** `to` → app message key for `link`/`sidebarItem` chrome labels. */
+	readonly labels?: Readonly<Record<string, string>>;
+	/** Sidebar group label → app message key for group headers. */
+	readonly groups?: Readonly<Record<string, string>>;
+	/** Footer note `key` → app message key. */
+	readonly notes?: Readonly<Record<string, string>>;
+}
+
 export interface PluginBase {
 	readonly id: string;
 	/** Deployable package this plugin belongs to — the `plugins/<pkg>`
@@ -142,6 +158,9 @@ export interface PluginBase {
 	 * server-manifest data — client stubs reject it
 	 * ({@link ClientStubPlugin}). */
 	readonly orchestrations?: readonly OrchestrationPack[];
+	/** Chrome i18n keys this plugin's contributions resolve against the
+	 * host's `app.*` catalog (see {@link PluginI18nKeys}). */
+	readonly i18nKeys?: PluginI18nKeys;
 }
 
 type ContributionField =

@@ -34,6 +34,9 @@ export const aiModelServicesPlugin = definePlugin({
 
 export const aiModelChromePlugin = definePlugin({
 	id: "ai.model.chrome",
+	i18nKeys: {
+		groups: { Intelligence: "panel_group_intelligence" },
+	},
 	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

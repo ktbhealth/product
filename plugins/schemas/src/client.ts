@@ -15,6 +15,12 @@ import { SchemasAdminConsolePage } from "./platform-page.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const schemasChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/schemas": "panel_nav_schemas",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "schemas.chrome",
 	meta: { keywords: ["schemas", "ui"] },
 	requiredDeps: ["platform.panel"],

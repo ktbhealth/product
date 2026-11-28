@@ -19,6 +19,13 @@ import { PatientsDashboardStats } from "./views/PatientsDashboard.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const patientsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/patients": "nav_patients",
+			"/platform/patients": "nav_patients",
+		},
+		groups: { "Domain data": "panel_group_domain_data" },
+	},
 	id: "patients.chrome",
 	meta: { keywords: ["patients", "ui"] },
 	requiredDeps: ["platform.panel"],

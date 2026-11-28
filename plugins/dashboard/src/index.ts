@@ -29,6 +29,12 @@ const dashboardLoader = () =>
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // platform shell like the retired panel entry.
 export const dashboardChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform": "panel_nav_dashboard",
+		},
+		groups: { Console: "panel_group_console" },
+	},
 	id: "dashboard.chrome",
 	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

@@ -217,6 +217,13 @@ const switchDoctorChrome = (portal: (typeof CLINICAL_PORTALS)[number]): ChromeCo
 // in-portal chooser above. The dep edge orders them after the portal
 // shell anchor.
 export const doctorsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/portal/doctor/switch-doctor": "nav_switch_doctor",
+			"/portal/secretary/switch-doctor": "nav_switch_doctor",
+		},
+		groups: { Account: "panel_group_account" },
+	},
 	id: "doctors.chrome",
 	meta: { keywords: ["doctors", "ui", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],

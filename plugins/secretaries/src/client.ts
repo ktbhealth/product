@@ -43,6 +43,12 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "secretaries.chrome",
+		i18nKeys: {
+			labels: {
+				"/portal/doctor/secretaries": "nav_secretaries",
+			},
+			groups: { Account: "panel_group_account" },
+		},
 		meta: { keywords: ["secretaries", "ui", "doctor"] },
 		requiredDeps: ["portal.shell"],
 		chrome: [

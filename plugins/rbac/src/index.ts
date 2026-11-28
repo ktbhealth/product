@@ -911,6 +911,9 @@ export const rbacTablesPlugin = definePlugin({
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const rbacChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "rbac.chrome",
 	meta: { keywords: ["rbac", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

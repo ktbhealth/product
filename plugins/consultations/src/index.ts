@@ -178,6 +178,13 @@ export const consultationsRoutesPlugin = definePlugin({
 // `chrome` region; the dep edge orders it after the platform shell
 // like the retired panel entry.
 export const consultationsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/consultations": "nav_consultations",
+			"/platform/consultations": "nav_consultations",
+		},
+		groups: { "Domain data": "panel_group_domain_data" },
+	},
 	id: "consultations.chrome",
 	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

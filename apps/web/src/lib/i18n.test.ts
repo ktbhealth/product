@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PATIENT_LOCALES } from "@ktb/patients/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import type { ChromeI18nKeys } from "@ktb/app-host/client";
 
 import {
 	appMessage,
@@ -11,9 +12,8 @@ import {
 	localeFromSearch,
 	localeName,
 	pluginFooterNote,
-	pluginNavLabel,
-	pluginPanelGroup,
-	pluginPanelLabel,
+	pluginGroupLabel,
+	pluginItemLabel,
 	requestLocale,
 } from "./i18n.ts";
 
@@ -47,6 +47,21 @@ const FULL = slice({
 	"app.panel_group_storage": "Storage",
 	"app.footer_disclaimer": "Medical disclaimer",
 });
+
+/** Merged plugin-declared keys (what `collectI18nKeys` produces). */
+const KEYS: ChromeI18nKeys = {
+	labels: {
+		"/consultations": "nav_consultations",
+		"/patients": "nav_patients",
+		"/platform": "panel_nav_dashboard",
+		"/portal/doctor/activity": "panel_nav_activity",
+	},
+	groups: {
+		Account: "panel_group_account",
+		"Domain data": "panel_group_domain_data",
+	},
+	notes: { disclaimer: "footer_disclaimer" },
+};
 
 describe("localeFromCookieHeader", () => {
 	it("returns undefined for a missing header", () => {
@@ -179,79 +194,39 @@ describe("changeLocale", () => {
 	});
 });
 
-describe("pluginNavLabel", () => {
-	it("localizes known plugin destinations", () => {
-		expect(pluginNavLabel("/consultations", "Consultations", FULL)).toBe("Consultations");
-		expect(pluginNavLabel("/patients", "Patients", FULL)).toBe("Patients");
+describe("pluginItemLabel", () => {
+	it("localizes destinations whose plugin declared a key", () => {
+		expect(pluginItemLabel("/consultations", "Consultations", FULL, KEYS)).toBe("Consultations");
+		expect(pluginItemLabel("/patients", "Patients", FULL, KEYS)).toBe("Patients");
+		expect(pluginItemLabel("/platform", "fallback", FULL, KEYS)).toBe("Dashboard");
 	});
 
 	it("falls back to the plugin-provided label", () => {
-		expect(pluginNavLabel("/other", "Other", FULL)).toBe("Other");
-		expect(pluginNavLabel("/consultations", "Consultations")).toBe("Consultations");
+		expect(pluginItemLabel("/other", "Other", FULL, KEYS)).toBe("Other");
+		expect(pluginItemLabel("/consultations", "Consultations", undefined, KEYS)).toBe(
+			"Consultations",
+		);
 	});
 });
 
-describe("pluginPanelLabel", () => {
-	it("localizes known sidebar destinations", () => {
-		for (const to of [
-			"/platform",
-			"/platform/consultations",
-			"/platform/patients",
-			"/platform/users",
-			"/platform/groups",
-			"/portal/doctor/activity",
-		]) {
-			expect(pluginPanelLabel(to, "fallback", FULL)).not.toBe("fallback");
-		}
+describe("pluginGroupLabel", () => {
+	it("localizes groups whose plugin declared a key", () => {
+		expect(pluginGroupLabel("Account", FULL, KEYS)).toBe("Account");
+		expect(pluginGroupLabel("Domain data", FULL, KEYS)).toBe("Domain data");
 	});
 
-	it("localizes the clinical Account sidebar destinations", () => {
-		for (const to of [
-			"/portal/doctor/switch-doctor",
-			"/portal/secretary/switch-doctor",
-			"/portal/doctor/secretaries",
-		]) {
-			expect(pluginPanelLabel(to, "fallback")).not.toBe("fallback");
-		}
-	});
-
-	it("falls back to the plugin-provided label for unknown paths", () => {
-		expect(pluginPanelLabel("/platform/unknown", "Custom", FULL)).toBe("Custom");
-	});
-});
-
-describe("pluginPanelGroup", () => {
-	it("localizes known sidebar groups", () => {
-		for (const group of [
-			"Account",
-			"Assurance",
-			"Console",
-			"Domain data",
-			"Evaluation",
-			"Governance",
-			"Identity",
-			"Intelligence",
-			"Presentation",
-			"Runtime",
-			"Site",
-			"Storage",
-		]) {
-			expect(pluginPanelGroup(group, FULL)).toBe(group);
-		}
-	});
-
-	it("passes unknown groups through unchanged", () => {
-		expect(pluginPanelGroup("Other", FULL)).toBe("Other");
+	it("passes undeclared groups through unchanged", () => {
+		expect(pluginGroupLabel("Other", FULL, KEYS)).toBe("Other");
 	});
 });
 
 describe("pluginFooterNote", () => {
-	it("localizes known footer note keys", () => {
-		expect(pluginFooterNote("disclaimer", "fallback", FULL)).toBe("Medical disclaimer");
+	it("localizes note keys whose plugin declared a key", () => {
+		expect(pluginFooterNote("disclaimer", "fallback", FULL, KEYS)).toBe("Medical disclaimer");
 	});
 
-	it("falls back to the plugin-provided text for unknown keys", () => {
-		expect(pluginFooterNote("unknown", "Custom note", FULL)).toBe("Custom note");
+	it("falls back to the plugin-provided text for undeclared keys", () => {
+		expect(pluginFooterNote("unknown", "Custom note", FULL, KEYS)).toBe("Custom note");
 	});
 });
 

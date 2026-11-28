@@ -23,6 +23,9 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "credentials.chrome",
+		i18nKeys: {
+			groups: { Identity: "panel_group_identity" },
+		},
 		meta: { keywords: ["eval", "credentials", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [

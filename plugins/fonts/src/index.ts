@@ -77,6 +77,9 @@ export const fontsPanelPlugin = definePlugin({
 
 /** Sidebar entries under the Site group (same mechanism as theme.chrome). */
 export const fontsChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "fonts.chrome",
 	meta: { keywords: ["fonts", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, fontsServicesPlugin.id],

@@ -514,6 +514,12 @@ export const groupsServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const groupsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/groups": "panel_nav_groups",
+		},
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "groups.chrome",
 	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

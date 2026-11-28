@@ -29,6 +29,9 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "eval.persona.chrome",
+		i18nKeys: {
+			groups: { Evaluation: "panel_group_evaluation" },
+		},
 		meta: { keywords: ["eval", "persona", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [

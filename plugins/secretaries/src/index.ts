@@ -316,6 +316,12 @@ export const secretariesPagesPlugin = definePlugin({
 // in-portal page above. The dep edge orders it after the portal
 // shell anchor.
 export const secretariesChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/portal/doctor/secretaries": "nav_secretaries",
+		},
+		groups: { Account: "panel_group_account" },
+	},
 	id: "secretaries.chrome",
 	meta: { keywords: ["secretaries", "ui", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],

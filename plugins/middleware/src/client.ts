@@ -27,6 +27,9 @@ export const middlewarePanelPlugin = definePlugin({
 /** Client mirror of middlewareChromePlugin — the console sidebar
  * entry in the `portal.sidebar` chrome region. */
 export const middlewareChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "middleware.chrome",
 	meta: { keywords: ["platform", "ui"] },
 	requiredDeps: ["platform.panel"],

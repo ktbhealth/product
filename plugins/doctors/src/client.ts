@@ -51,6 +51,13 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "doctors.chrome",
+		i18nKeys: {
+			labels: {
+				"/portal/doctor/switch-doctor": "nav_switch_doctor",
+				"/portal/secretary/switch-doctor": "nav_switch_doctor",
+			},
+			groups: { Account: "panel_group_account" },
+		},
 		meta: { keywords: ["doctors", "ui", "doctor"] },
 		requiredDeps: ["portal.shell"],
 		chrome: CLINICAL_PORTALS.map(switchDoctorChrome),

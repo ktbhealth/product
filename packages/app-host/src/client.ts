@@ -33,6 +33,7 @@ export const plugins: readonly Plugin[] = orderPlugins(
 // maps are computed once here — the registry is static.
 export * from "./boundaries.ts";
 export * from "./chrome.ts";
+export * from "./i18n-keys.ts";
 export * from "./login-tiles.ts";
 export * from "./namespaces.ts";
 export * from "./pages.ts";

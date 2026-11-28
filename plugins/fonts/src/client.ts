@@ -36,6 +36,9 @@ export const fontsPanelPlugin = definePlugin({
 });
 
 export const fontsChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "fonts.chrome",
 	meta: { keywords: ["fonts", "ui"] },
 	requiredDeps: ["platform.panel", "fonts.services"],

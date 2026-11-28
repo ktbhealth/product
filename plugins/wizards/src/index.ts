@@ -73,6 +73,9 @@ export const wizardsServicesPlugin = definePlugin({
  * Console chrome: the /platform/wizards sidebar entry (Presentation group).
  */
 export const wizardsChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Presentation: "panel_group_presentation" },
+	},
 	id: "wizards.chrome",
 	meta: { keywords: ["wizards", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

@@ -8,6 +8,7 @@ export {
 	appPages,
 	boundaryEntries,
 	collectChrome,
+	collectI18nKeys,
 	collectPortals,
 	defaultPageContext,
 	enabledIdSet,
@@ -27,4 +28,5 @@ export {
 	visibleLoginTiles,
 	warnUnknownChromeRegions,
 } from "@ktb/app-host/client";
+export type { ChromeI18nKeys } from "@ktb/app-host/client";
 export type { PageShell, PluginStatesResult } from "@ktb/app-host/client";

@@ -24,6 +24,12 @@ export const pubsubServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region under the Concurrency group; the dep
 // edge orders it after the shell like the other panel entries.
 export const pubsubChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/pubsub": "panel_nav_pubsub",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "pubsub.chrome",
 	meta: { keywords: ["pubsub", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
