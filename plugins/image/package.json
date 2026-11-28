@@ -11,6 +11,7 @@
 		"./delete-hooks": "./src/delete-hooks.ts"
 	},
 	"dependencies": {
+		"@ktb/admin-store": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",

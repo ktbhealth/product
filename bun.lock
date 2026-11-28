@@ -205,6 +205,22 @@
         "effect": "4.1.2",
       },
     },
+    "packages/admin-store": {
+      "name": "@ktb/admin-store",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
     "packages/ai-adapter-acp": {
       "name": "@ktb/ai-adapter-acp",
       "dependencies": {
@@ -1592,6 +1608,7 @@
     "plugins/image": {
       "name": "@ktb/image",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1738,6 +1755,7 @@
     "plugins/layouts": {
       "name": "@ktb/layouts",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/builder": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1903,6 +1921,7 @@
     "plugins/pages": {
       "name": "@ktb/pages",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/builder": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -2196,6 +2215,7 @@
     "plugins/rich-text": {
       "name": "@ktb/rich-text",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -2224,6 +2244,7 @@
     "plugins/schemas": {
       "name": "@ktb/schemas",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -2364,6 +2385,7 @@
     "plugins/templates": {
       "name": "@ktb/templates",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -3038,6 +3060,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@juggle/resize-observer": ["@juggle/resize-observer@3.4.0", "", {}, "sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA=="],
+
+    "@ktb/admin-store": ["@ktb/admin-store@workspace:packages/admin-store"],
 
     "@ktb/agenda": ["@ktb/agenda@workspace:plugins/agenda"],
 

@@ -4,8 +4,8 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 import type { Json } from "effect/Schema";
 
-import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
-import { PlatformAdmin } from "@ktb/platform";
+import { asAdmin, orHandled } from "@ktb/admin-store";
+import { pluginHandler, run, sessionHandler } from "@ktb/server-fns";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
 import { RichTexts, type RichTextDoc, type RichTextMeta } from "./service.ts";
@@ -59,20 +59,6 @@ const toMetaWire = (row: RichTextMeta): RichTextMetaWire => ({
 	updatedAt: row.updatedAt.toISOString(),
 });
 
-/** Run `eff` as the session user after the PlatformAdmin gate. */
-const asAdmin = <A, E>(
-	user: { readonly id: string; readonly email?: string },
-	eff: Effect.Effect<A, E, unknown>,
-): Promise<A> =>
-	runAs(
-		user,
-		Effect.gen(function* () {
-			const platformAdmin = yield* PlatformAdmin;
-			yield* platformAdmin.requireAdmin();
-			return yield* eff;
-		}),
-	);
-
 const CreateInput = Schema.Struct({ title: Schema.optionalKey(Schema.String) });
 const UpdateInput = Schema.Struct({
 	id: Schema.Number,
@@ -94,12 +80,6 @@ const decodeDelete = Schema.decodeUnknownSync(DeleteInput);
 
 const HANDLED_TAGS = ["Forbidden", "RichTextNotFound", "InvalidRichTextValue"] as const;
 
-const isHandled = (error: unknown): boolean =>
-	typeof error === "object" &&
-	error !== null &&
-	"_tag" in error &&
-	(HANDLED_TAGS as readonly string[]).includes(String((error as { _tag?: unknown })._tag));
-
 /** Create a document (empty value, optional title); `null` for
  * non-admins and handled domain failures. */
 export const createRichTextFn = createServerFn({ method: "POST" })
@@ -115,10 +95,7 @@ export const createRichTextFn = createServerFn({ method: "POST" })
 						const row = yield* richTexts.adminCreate(data);
 						return row === null ? null : toDocWire(row);
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return null;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, null));
 			}),
 		),
 	);
@@ -138,10 +115,7 @@ export const updateRichTextFn = createServerFn({ method: "POST" })
 						const { id, ...input } = data;
 						return toDocWire(yield* richTexts.adminUpdate(id, input));
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return null;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, null));
 			}),
 		),
 	);
@@ -161,10 +135,7 @@ export const richTextUsageFn = createServerFn({ method: "POST" })
 						const hooks = yield* RichTextDeleteHooks;
 						return yield* hooks.usage(data.id);
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return [] as RichTextUsageWire;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, [] as RichTextUsageWire));
 			}),
 		),
 	);
@@ -190,10 +161,7 @@ export const deleteRichTextFn = createServerFn({ method: "POST" })
 						yield* richTexts.adminRemove(data.id);
 						return true;
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return false;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, false));
 			}),
 		),
 	);
@@ -234,10 +202,7 @@ export const listRichTextDocsFn = createServerFn({ method: "GET" }).handler(
 					const rows = yield* richTexts.adminList();
 					return rows.map(toMetaWire);
 				}),
-			).catch((error: unknown) => {
-				if (isHandled(error)) return [] as readonly RichTextMetaWire[];
-				throw error;
-			});
+			).catch(orHandled(HANDLED_TAGS, [] as readonly RichTextMetaWire[]));
 		}),
 	),
 );
