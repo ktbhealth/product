@@ -2,11 +2,9 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { desc, eq } from "drizzle-orm";
 
 import { Forbidden } from "@ktb/authz";
-import { Db } from "@ktb/db";
-import { PlatformAdmin } from "@ktb/platform";
+import { defineAdminStore } from "@ktb/admin-store";
 
 import { richText, type RichText } from "./schema.ts";
 import { parseRichTextValue } from "./value.ts";
@@ -21,17 +19,26 @@ export type { RichText } from "./schema.ts";
  * `getById` is the public read used by consumers that render or pick
  * documents (e.g. the pages plugin doc picker) — it needs no principal
  * so anonymous app pages can embed stored content.
+ *
+ * The list/get/remove/getById core comes from `@ktb/admin-store`'s
+ * `defineAdminStore`; the write contract is plugin-owned (`title`
+ * instead of `name`, optional title defaulting to "Untitled", `value`
+ * seeded with the canonical empty document and validated as Plate
+ * JSON), so `writes.create`/`writes.update` carry it — still behind
+ * the factory's admin gate and span naming.
  */
-
-/** `adminUpdate`/`adminRemove` targeted a missing row. */
-export class RichTextNotFound extends Data.TaggedError("RichTextNotFound")<{
-	readonly id: number;
-}> {}
 
 /** `adminUpdate` received a `value` that is not a non-empty JSON array —
  * the rejected input is carried for debugging. */
 export class InvalidRichTextValue extends Data.TaggedError("InvalidRichTextValue")<{
 	readonly value: string;
+}> {}
+
+/** `adminUpdate`/`adminRemove` targeted a missing row. Injected into
+ * the store as `errors.notFound` so the generated `adminRemove` throws
+ * this exact class. */
+export class RichTextNotFound extends Data.TaggedError("RichTextNotFound")<{
+	readonly id: number;
 }> {}
 
 export type RichTextError = Forbidden | RichTextNotFound | InvalidRichTextValue;
@@ -64,6 +71,72 @@ const toMeta = (row: RichText): RichTextMeta => ({
 const toDoc = (row: RichText): RichTextDoc => ({
 	...toMeta(row),
 	content: parseRichTextValue(row.value),
+});
+
+const store = defineAdminStore({
+	serviceName: "RichTexts",
+	table: richText,
+	columns: { id: richText.id, updatedAt: richText.updatedAt },
+	// `value` is the payload column for error-tag purposes; the
+	// generated writes never run (both are custom), so
+	// payloadField/defaultPayload/naturalKey stay unset. The
+	// invalidName/nameTaken/invalidPayload slots are unused decoys.
+	payloadField: "value",
+	errors: {
+		notFound: RichTextNotFound,
+		invalidName: "InvalidRichTextName",
+		nameTaken: "RichTextNameTaken",
+		invalidPayload: "InvalidRichTextValue",
+	},
+	toMeta,
+	toDoc,
+	writes: {
+		// Annotated (though infallible) so the method's error channel is
+		// the plugin union, not the generated-write fallback.
+		create: (
+			input: { readonly title?: string },
+			ctx,
+		): Effect.Effect<RichTextDoc | null, RichTextError> =>
+			Effect.gen(function* () {
+				const rows = yield* Effect.promise(() =>
+					ctx.db
+						.insert(richText)
+						.values({
+							title: input.title?.trim() || "Untitled",
+							value: JSON.stringify(EMPTY_DOC),
+							createdAt: new Date(),
+							updatedAt: new Date(),
+						})
+						.returning(),
+				);
+				const row = rows[0];
+				/* v8 ignore next -- sqlite insert .returning() always yields the row */
+				return row === undefined ? null : toDoc(row);
+			}),
+		update: (id: number, input: { readonly title?: string; readonly value?: string }, ctx) =>
+			Effect.gen(function* () {
+				let valueJson: string | undefined;
+				if (input.value !== undefined) {
+					if (parseRichTextValue(input.value) === null) {
+						return yield* new InvalidRichTextValue({ value: input.value });
+					}
+					valueJson = input.value;
+				}
+				const set: {
+					title?: string;
+					value?: string;
+					updatedAt: Date;
+				} = { updatedAt: new Date() };
+				if (input.title !== undefined) set.title = input.title;
+				if (valueJson !== undefined) set.value = valueJson;
+				const rows = yield* Effect.promise(() =>
+					ctx.db.update(richText).set(set).where(ctx.byId(id)).returning(),
+				);
+				const row = rows[0];
+				if (row === undefined) return yield* new RichTextNotFound({ id });
+				return toDoc(row);
+			}),
+	},
 });
 
 /** The service shape — exported so the element-kind declaration
@@ -100,94 +173,7 @@ export class RichTexts extends Context.Service<RichTexts, RichTextsShape>()(
 export const RichTextsLive = Layer.effect(
 	RichTexts,
 	Effect.gen(function* () {
-		const db = yield* Db;
-		const platformAdmin = yield* PlatformAdmin;
-
-		const requireAdmin = platformAdmin.requireAdmin();
-
-		const byId = (id: number) => eq(richText.id, id);
-
-		return RichTexts.of({
-			adminList: Effect.fn("RichTexts.adminList")(function* () {
-				yield* requireAdmin;
-				return yield* Effect.promise(() =>
-					db
-						.select({
-							id: richText.id,
-							title: richText.title,
-							createdAt: richText.createdAt,
-							updatedAt: richText.updatedAt,
-						})
-						.from(richText)
-						.orderBy(desc(richText.updatedAt)),
-				);
-			}),
-			adminGet: Effect.fn("RichTexts.adminGet")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(richText).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminCreate: Effect.fn("RichTexts.adminCreate")(function* (input: {
-				readonly title?: string;
-			}) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db
-						.insert(richText)
-						.values({
-							title: input.title?.trim() || "Untitled",
-							value: JSON.stringify(EMPTY_DOC),
-							createdAt: new Date(),
-							updatedAt: new Date(),
-						})
-						.returning(),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminUpdate: Effect.fn("RichTexts.adminUpdate")(function* (
-				id: number,
-				input: { readonly title?: string; readonly value?: string },
-			) {
-				yield* requireAdmin;
-				let valueJson: string | undefined;
-				if (input.value !== undefined) {
-					if (parseRichTextValue(input.value) === null) {
-						return yield* new InvalidRichTextValue({ value: input.value });
-					}
-					valueJson = input.value;
-				}
-				const set: {
-					title?: string;
-					value?: string;
-					updatedAt: Date;
-				} = { updatedAt: new Date() };
-				if (input.title !== undefined) set.title = input.title;
-				if (valueJson !== undefined) set.value = valueJson;
-				const rows = yield* Effect.promise(() =>
-					db.update(richText).set(set).where(byId(id)).returning(),
-				);
-				const row = rows[0];
-				if (row === undefined) return yield* new RichTextNotFound({ id });
-				return toDoc(row);
-			}),
-			adminRemove: Effect.fn("RichTexts.adminRemove")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.delete(richText).where(byId(id)).returning({ id: richText.id }),
-				);
-				if (rows.length === 0) return yield* new RichTextNotFound({ id });
-			}),
-			getById: Effect.fn("RichTexts.getById")(function* (id: number) {
-				const rows = yield* Effect.promise(() =>
-					db.select().from(richText).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-		});
+		const { methods } = yield* store.build;
+		return RichTexts.of({ ...methods });
 	}),
 );

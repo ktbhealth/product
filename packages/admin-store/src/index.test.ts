@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { asAdmin, defineAdminStore, isHandledError, orHandled } from "./index.ts";
+import * as Data from "effect/Data";
 
 /**
  * Fixture-only table — no drizzle definition ships with the package,
@@ -296,6 +297,101 @@ describe("asAdmin", () => {
 		// A non-admin principal fails the in-service gate.
 		await expect(
 			asAdmin({ id: "user-1", email: "user@x.com" }, built.methods.adminList()),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+});
+
+/** Custom-write store: exercises `writes`, `orderBy`, `names` and
+ * error-class injection — the shape plugins like rich-text/pages/
+ * templates/image migrate to. */
+class GadgetMissing extends Data.TaggedError("GadgetMissing")<{ readonly id: number }> {}
+
+const customStore = defineAdminStore({
+	serviceName: "Gadgets",
+	table: widgets,
+	columns: { id: widgets.id },
+	orderBy: [widgets.name],
+	errors: {
+		notFound: GadgetMissing,
+		invalidName: "GadgetInvalidName",
+		nameTaken: "GadgetNameTaken",
+		invalidPayload: "GadgetInvalid",
+	},
+	toMeta,
+	toDoc,
+	writes: {
+		create: (input: { readonly label?: string }, ctx) =>
+			Effect.gen(function* () {
+				const now = new Date();
+				const rows = yield* Effect.promise(() =>
+					ctx.db
+						.insert(widgets)
+						.values({
+							name: input.label?.trim() || "unlabeled",
+							description: null,
+							payload: "{}",
+							createdAt: now,
+							updatedAt: now,
+						})
+						.returning(),
+				);
+				const row = rows[0];
+				return row === undefined ? null : toDoc(row);
+			}),
+		update: (id: number, input: { readonly note?: string }, ctx) =>
+			Effect.gen(function* () {
+				const rows = yield* Effect.promise(() =>
+					ctx.db
+						.update(widgets)
+						.set({ description: input.note ?? null, updatedAt: new Date() })
+						.where(ctx.byId(id))
+						.returning(),
+				);
+				const row = rows[0];
+				if (row === undefined) return yield* new GadgetMissing({ id });
+				return toDoc(row);
+			}),
+	},
+	names: { create: "register" },
+});
+
+describe("defineAdminStore custom writes", () => {
+	let methods: (typeof customStore.build extends Effect.Effect<infer B, unknown, unknown>
+		? B
+		: never)["methods"];
+
+	beforeAll(async () => {
+		const built = await Effect.runPromise(customStore.build.pipe(Effect.provide(deps)));
+		methods = built.methods;
+	});
+
+	const admin = <A, E>(eff: Effect.Effect<A, E>) =>
+		Effect.runPromise(eff.pipe(Effect.provideService(Principal, ADMIN)));
+
+	it("writes.create/update run behind the admin gate with plugin contracts", async () => {
+		const doc = await admin(methods.adminCreate({ label: "  contraption  " }));
+		expect(doc).toMatchObject({ name: "contraption", payload: "{}" });
+		const blank = await admin(methods.adminCreate({ label: "   " }));
+		expect(blank).toMatchObject({ name: "unlabeled" });
+		const updated = await admin(methods.adminUpdate(doc!.id, { note: "hi" }));
+		expect(updated).toMatchObject({ name: "contraption", description: "hi" });
+		await expect(admin(methods.adminUpdate(9999, {}))).rejects.toBeInstanceOf(GadgetMissing);
+		// The injected not-found class is what generated adminRemove throws.
+		await admin(methods.adminRemove(doc!.id));
+		await expect(admin(methods.adminRemove(doc!.id))).rejects.toBeInstanceOf(GadgetMissing);
+	});
+
+	it("orderBy drives adminList ordering", async () => {
+		await admin(methods.adminCreate({ label: "zeta" }));
+		await admin(methods.adminCreate({ label: "alpha" }));
+		const list = await admin(methods.adminList());
+		const names = list.map((m) => m.name);
+		expect(names.indexOf("alpha")).toBeLessThan(names.indexOf("zeta"));
+	});
+
+	it("custom writes are Forbidden for non-admins", async () => {
+		await expect(
+			Effect.runPromise(methods.adminCreate({}).pipe(Effect.provideService(Principal, USER))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 });

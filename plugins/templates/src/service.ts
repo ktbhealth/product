@@ -5,8 +5,8 @@ import * as Layer from "effect/Layer";
 import { and, desc, eq, ne } from "drizzle-orm";
 
 import { Forbidden, Principal } from "@ktb/authz";
+import { defineAdminStore } from "@ktb/admin-store";
 import { Db } from "@ktb/db";
-import { PlatformAdmin } from "@ktb/platform";
 
 import { TemplateKinds, type TemplateKind } from "./kinds.ts";
 import { templates, type TemplateRow } from "./schema.ts";
@@ -31,9 +31,21 @@ export type { TemplateKind, TemplateKindsShape } from "./kinds.ts";
  * the caller (an admin surface in the owning plugin) feeds it through
  * that plugin's own create path, so template rows never dangle when
  * sources are deleted and no delete-hook cleanup is needed.
+ *
+ * The list/get/remove/getById core comes from `@ktb/admin-store`'s
+ * `defineAdminStore`; the write contract is plugin-owned — templates
+ * key on `(kind, name)` with a kind-validated `unknown` payload and
+ * `save` records `createdBy` — so `writes.create`/`writes.update`
+ * carry it behind the factory's admin gate and span naming (the
+ * create keeps its historical `Templates.save` span via
+ * `names.create`). Because the writes close over the layer-scoped
+ * `TemplateKinds` registry, `defineAdminStore` runs inside the
+ * `Layer.effect`. `listByKind` and `instantiate` stay hand-written.
  */
 
-/** `adminUpdate`/`adminRemove`/`instantiate` targeted a missing row. */
+/** `adminUpdate`/`adminRemove`/`instantiate` targeted a missing row.
+ * Injected into the store as `errors.notFound` so the generated
+ * `adminRemove` throws this exact class. */
 export class TemplateNotFound extends Data.TaggedError("TemplateNotFound")<{
 	readonly id: number;
 }> {}
@@ -65,6 +77,40 @@ export class InvalidTemplatePayload extends Data.TaggedError("InvalidTemplatePay
 
 export type TemplateError =
 	| Forbidden
+	| TemplateNotFound
+	| InvalidTemplateName
+	| TemplateNameTaken
+	| UnknownTemplateKind
+	| InvalidTemplatePayload;
+
+/** `save` input — `source` is serialized through the kind's
+ * `serialize`; `payload` is stored as-is after `validate` (payload
+ * wins when both are supplied). */
+export interface TemplateSaveInput {
+	readonly kind: string;
+	readonly name: string;
+	readonly description?: string;
+	readonly source?: unknown;
+	readonly payload?: unknown;
+}
+
+/** `adminUpdate` input — every field optional (absent = unchanged). */
+export interface TemplateUpdateInput {
+	readonly name?: string;
+	readonly description?: string;
+	readonly payload?: unknown;
+}
+
+/** Errors the custom `save` write fails with — the factory's admin
+ * gate adds `Forbidden` on top. */
+type TemplateSaveWriteError =
+	| InvalidTemplateName
+	| TemplateNameTaken
+	| UnknownTemplateKind
+	| InvalidTemplatePayload;
+
+/** Errors the custom `adminUpdate` write fails with. */
+type TemplateUpdateWriteError =
 	| TemplateNotFound
 	| InvalidTemplateName
 	| TemplateNameTaken
@@ -151,13 +197,7 @@ export class Templates extends Context.Service<
 		 * `InvalidTemplateName` on a blank name, `TemplateNameTaken` on
 		 * a duplicate within the kind. `null` when the insert
 		 * returning comes back empty. */
-		readonly save: (input: {
-			readonly kind: string;
-			readonly name: string;
-			readonly description?: string;
-			readonly source?: unknown;
-			readonly payload?: unknown;
-		}) => Effect.Effect<TemplateDoc | null, TemplateError>;
+		readonly save: (input: TemplateSaveInput) => Effect.Effect<TemplateDoc | null, TemplateError>;
 		/** Update name/description/payload by id; `payload` re-validates
 		 * against the row's kind (`UnknownTemplateKind` when that kind
 		 * is no longer registered and a payload is supplied),
@@ -165,11 +205,7 @@ export class Templates extends Context.Service<
 		 * a duplicate, `TemplateNotFound` when the row is missing. */
 		readonly adminUpdate: (
 			id: number,
-			input: {
-				readonly name?: string;
-				readonly description?: string;
-				readonly payload?: unknown;
-			},
+			input: TemplateUpdateInput,
 		) => Effect.Effect<TemplateDoc, TemplateError>;
 		/** Delete a template by id; `TemplateNotFound` when missing. */
 		readonly adminRemove: (id: number) => Effect.Effect<void, TemplateError>;
@@ -187,12 +223,7 @@ export const TemplatesLive = Layer.effect(
 	Templates,
 	Effect.gen(function* () {
 		const db = yield* Db;
-		const platformAdmin = yield* PlatformAdmin;
 		const kinds = yield* TemplateKinds;
-
-		const requireAdmin = platformAdmin.requireAdmin();
-
-		const byId = (id: number) => eq(templates.id, id);
 
 		/** Resolve the kind descriptor or fail `UnknownTemplateKind`. */
 		const requireKind = (kind: string) => {
@@ -251,19 +282,124 @@ export const TemplatesLive = Layer.effect(
 				)
 				.limit(1);
 
+		// The store is defined here (not at module level) because the
+		// custom writes close over `kinds`/`requireKind`/`checkedPayload`/
+		// `findByName`, which are layer-scoped — `TemplateNotFound` is
+		// injected as a class so generated `adminRemove` throws the
+		// exported class itself.
+		const store = defineAdminStore({
+			serviceName: "Templates",
+			table: templates,
+			columns: { id: templates.id, updatedAt: templates.updatedAt },
+			// Templates key on `(kind, name)` with a kind-validated
+			// `unknown` payload — both writes are custom, so
+			// payloadField/defaultPayload/naturalKey stay unset; the
+			// invalidName/nameTaken/invalidPayload slots are unused
+			// decoys (the real errors are plugin-owned).
+			errors: {
+				notFound: TemplateNotFound,
+				invalidName: "InvalidTemplateName",
+				nameTaken: "TemplateNameTaken",
+				invalidPayload: "InvalidTemplatePayload",
+			},
+			toMeta,
+			toDoc,
+			names: { create: "save" },
+			writes: {
+				create: (
+					input: TemplateSaveInput,
+					ctx,
+				): Effect.Effect<TemplateDoc | null, TemplateSaveWriteError> =>
+					Effect.gen(function* () {
+						const name = input.name.trim();
+						if (name === "") return yield* new InvalidTemplateName({ name: input.name });
+						const descriptor = yield* requireKind(input.kind);
+						const payload = yield* checkedPayload(descriptor, input);
+						const taken = yield* Effect.promise(() => findByName(input.kind, name));
+						if (taken.length > 0) {
+							return yield* new TemplateNameTaken({ kind: input.kind, name });
+						}
+						const principal = yield* Principal;
+						const now = new Date();
+						const rows = yield* Effect.promise(() =>
+							ctx.db
+								.insert(templates)
+								.values({
+									kind: input.kind,
+									name,
+									description: toDescription(input.description) ?? null,
+									payload,
+									createdBy: principal?.email ?? null,
+									createdAt: now,
+									updatedAt: now,
+								})
+								.returning(),
+						);
+						const row = rows[0];
+						/* v8 ignore next -- insert().returning() always yields the row */
+						return row === undefined ? null : toDoc(row);
+					}),
+				update: (
+					id: number,
+					input: TemplateUpdateInput,
+					ctx,
+				): Effect.Effect<TemplateDoc, TemplateUpdateWriteError> =>
+					Effect.gen(function* () {
+						const rows = yield* Effect.promise(() =>
+							ctx.db.select().from(templates).where(ctx.byId(id)).limit(1),
+						);
+						const row = rows[0];
+						if (row === undefined) return yield* new TemplateNotFound({ id });
+						let name: string | undefined;
+						if (input.name !== undefined) {
+							const trimmed = input.name.trim();
+							if (trimmed === "") return yield* new InvalidTemplateName({ name: input.name });
+							const taken = yield* Effect.promise(() => findByName(row.kind, trimmed, id));
+							if (taken.length > 0) {
+								return yield* new TemplateNameTaken({ kind: row.kind, name: trimmed });
+							}
+							name = trimmed;
+						}
+						let payload: unknown;
+						let payloadSet = false;
+						if (input.payload !== undefined) {
+							const descriptor = yield* requireKind(row.kind);
+							payload = yield* checkedPayload(descriptor, { payload: input.payload });
+							payloadSet = true;
+						}
+						const description = toDescription(input.description);
+						const set: {
+							name?: string;
+							description?: string | null;
+							payload?: unknown;
+							updatedAt: Date;
+						} = { updatedAt: new Date() };
+						if (name !== undefined) set.name = name;
+						if (description !== undefined) set.description = description;
+						if (payloadSet) set.payload = payload;
+						const updated = yield* Effect.promise(() =>
+							ctx.db.update(templates).set(set).where(ctx.byId(id)).returning(),
+						);
+						const updatedRow = updated[0];
+						/* v8 ignore next -- the row was just read and the update is
+						 * keyed by the same id; an empty returning means a
+						 * concurrent delete between select and update */
+						if (updatedRow === undefined) return yield* new TemplateNotFound({ id });
+						return toDoc(updatedRow);
+					}),
+			},
+		});
+
+		const { methods, helpers } = yield* store.build;
+		const { db: storeDb, requireAdmin, byId } = helpers;
+
 		return Templates.of({
-			adminList: Effect.fn("Templates.adminList")(function* () {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(templates).orderBy(desc(templates.updatedAt)),
-				);
-				return rows.map(toMeta);
-			}),
+			adminList: methods.adminList,
 			listByKind: Effect.fn("Templates.listByKind")(function* (kind: string) {
 				yield* requireAdmin;
 				yield* requireKind(kind);
 				const rows = yield* Effect.promise(() =>
-					db
+					storeDb
 						.select()
 						.from(templates)
 						.where(eq(templates.kind, kind))
@@ -271,119 +407,17 @@ export const TemplatesLive = Layer.effect(
 				);
 				return rows.map(toMeta);
 			}),
-			adminGet: Effect.fn("Templates.adminGet")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(templates).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			getById: Effect.fn("Templates.getById")(function* (id: number) {
-				const rows = yield* Effect.promise(() =>
-					db.select().from(templates).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				return row === undefined ? null : toDoc(row);
-			}),
-			save: Effect.fn("Templates.save")(function* (input: {
-				readonly kind: string;
-				readonly name: string;
-				readonly description?: string;
-				readonly source?: unknown;
-				readonly payload?: unknown;
-			}) {
-				yield* requireAdmin;
-				const name = input.name.trim();
-				if (name === "") return yield* new InvalidTemplateName({ name: input.name });
-				const descriptor = yield* requireKind(input.kind);
-				const payload = yield* checkedPayload(descriptor, input);
-				const taken = yield* Effect.promise(() => findByName(input.kind, name));
-				if (taken.length > 0) {
-					return yield* new TemplateNameTaken({ kind: input.kind, name });
-				}
-				const principal = yield* Principal;
-				const now = new Date();
-				const rows = yield* Effect.promise(() =>
-					db
-						.insert(templates)
-						.values({
-							kind: input.kind,
-							name,
-							description: toDescription(input.description) ?? null,
-							payload,
-							createdBy: principal?.email ?? null,
-							createdAt: now,
-							updatedAt: now,
-						})
-						.returning(),
-				);
-				const row = rows[0];
-				/* v8 ignore next -- insert().returning() always yields the row */
-				return row === undefined ? null : toDoc(row);
-			}),
-			adminUpdate: Effect.fn("Templates.adminUpdate")(function* (
-				id: number,
-				input: {
-					readonly name?: string;
-					readonly description?: string;
-					readonly payload?: unknown;
-				},
-			) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.select().from(templates).where(byId(id)).limit(1),
-				);
-				const row = rows[0];
-				if (row === undefined) return yield* new TemplateNotFound({ id });
-				let name: string | undefined;
-				if (input.name !== undefined) {
-					const trimmed = input.name.trim();
-					if (trimmed === "") return yield* new InvalidTemplateName({ name: input.name });
-					const taken = yield* Effect.promise(() => findByName(row.kind, trimmed, id));
-					if (taken.length > 0) {
-						return yield* new TemplateNameTaken({ kind: row.kind, name: trimmed });
-					}
-					name = trimmed;
-				}
-				let payload: unknown;
-				let payloadSet = false;
-				if (input.payload !== undefined) {
-					const descriptor = yield* requireKind(row.kind);
-					payload = yield* checkedPayload(descriptor, { payload: input.payload });
-					payloadSet = true;
-				}
-				const description = toDescription(input.description);
-				const set: {
-					name?: string;
-					description?: string | null;
-					payload?: unknown;
-					updatedAt: Date;
-				} = { updatedAt: new Date() };
-				if (name !== undefined) set.name = name;
-				if (description !== undefined) set.description = description;
-				if (payloadSet) set.payload = payload;
-				const updated = yield* Effect.promise(() =>
-					db.update(templates).set(set).where(byId(id)).returning(),
-				);
-				const updatedRow = updated[0];
-				/* v8 ignore next -- the row was just read and the update is
-				 * keyed by the same id; an empty returning means a
-				 * concurrent delete between select and update */
-				if (updatedRow === undefined) return yield* new TemplateNotFound({ id });
-				return toDoc(updatedRow);
-			}),
-			adminRemove: Effect.fn("Templates.adminRemove")(function* (id: number) {
-				yield* requireAdmin;
-				const rows = yield* Effect.promise(() =>
-					db.delete(templates).where(byId(id)).returning({ id: templates.id }),
-				);
-				if (rows.length === 0) return yield* new TemplateNotFound({ id });
-			}),
+			adminGet: methods.adminGet,
+			getById: methods.getById,
+			// `save` is the store's `adminCreate` under its historical
+			// name/span (`names.create: "save"`).
+			save: methods.adminCreate,
+			adminUpdate: methods.adminUpdate,
+			adminRemove: methods.adminRemove,
 			instantiate: Effect.fn("Templates.instantiate")(function* (id: number) {
 				yield* requireAdmin;
 				const rows = yield* Effect.promise(() =>
-					db.select().from(templates).where(byId(id)).limit(1),
+					storeDb.select().from(templates).where(byId(id)).limit(1),
 				);
 				const row = rows[0];
 				if (row === undefined) return null;
