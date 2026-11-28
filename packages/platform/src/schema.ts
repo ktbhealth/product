@@ -1,7 +1,7 @@
-import { integer, sqliteTable, text } from "./table.ts";
+import { integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
- * Runtime plugin state (P-058): host/platform-owned, NOT a plugin table —
+ * Runtime plugin state (P-058): platform-owned, NOT a plugin table —
  * the plugin manager itself is a plugin, so the state it administers
  * cannot live inside one. One row per toggled/configured plugin; the
  * ABSENCE of a row means "enabled with default config" (opt-out default,
@@ -11,9 +11,9 @@ import { integer, sqliteTable, text } from "./table.ts";
  * Per-tenant scoping lands with P-053 — the table is deliberately
  * deployment-global for now.
  *
- * Host-owned by @ktb/db (not a plugin slice): @ktb/platform's
- * PluginStates service writes here, so defining it in the platform
- * plugin would create a @ktb/db ↔ @ktb/platform workspace cycle.
+ * Owned by @ktb/platform: its PluginStates service writes here. The
+ * table is aggregated into `@ktb/db/schema` by tools/gen-db-schema.mjs
+ * so host/platform consumers keep a single import path.
  */
 export const pluginState = sqliteTable("plugin_state", {
 	pluginId: text("plugin_id").primaryKey(),

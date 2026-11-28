@@ -18,7 +18,7 @@ import {
 	session as sessionTable,
 	user as userTable,
 	verification as verificationTable,
-} from "@ktb/db/schema";
+} from "@ktb/auth/schema";
 
 /** What the host needs to compose and deliver a verification email. */
 export interface VerificationEmailInput {

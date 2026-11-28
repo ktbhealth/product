@@ -130,7 +130,7 @@ const DOMAINS = [
 	{
 		id: "auth",
 		title: "Auth",
-		owner: "`packages/db/src/auth.ts` (better-auth)",
+		owner: "`packages/auth` (better-auth via `@ktb/auth-better`)",
 		description:
 			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (AI credentials).",
 		tables: ["account", "apikey", "session", "user", "verification"],
@@ -146,14 +146,14 @@ const DOMAINS = [
 	{
 		id: "platform",
 		title: "Platform",
-		owner: "`packages/db/src/plugin-state.ts`",
+		owner: "`packages/platform`",
 		description: "Kernel-owned state: per-plugin persisted configuration.",
 		tables: ["plugin_state"],
 	},
 	{
 		id: "jobs",
 		title: "Jobs",
-		owner: "`packages/db/src/job-runs.ts` + `packages/jobs-port` + `plugins/jobs`",
+		owner: "`packages/jobs-port` + `plugins/jobs`",
 		description:
 			"Generic jobs backbone status projection — one row per enqueued job (queued/processing/done/failed), read by the /platform jobs console.",
 		tables: ["job_runs"],
@@ -161,7 +161,7 @@ const DOMAINS = [
 	{
 		id: "orchestrator",
 		title: "Orchestrator",
-		owner: "`packages/db/src/orchestration.ts` + `packages/orchestrator`",
+		owner: "`packages/orchestrator`",
 		description:
 			"Durable orchestration runs — persisted run state, the pending-event queue, per-node run trace, and stored orchestration definitions.",
 		tables: [
@@ -174,7 +174,7 @@ const DOMAINS = [
 	{
 		id: "scheduler",
 		title: "Scheduler",
-		owner: "`packages/db/src/scheduled-jobs.ts` + `packages/scheduler-port`",
+		owner: "`packages/scheduler-port`",
 		description:
 			"Runtime schedule definitions — recurring (cron_expr) and one-off (run_at) rows claimed by the scheduler-heartbeat sweep and dispatched through the jobs backbone.",
 		tables: ["scheduled_jobs"],

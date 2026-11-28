@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "./table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
  * Scheduled jobs (runtime scheduler): DB-backed schedule definitions the
@@ -12,11 +12,11 @@ import { index, integer, sqliteTable, text } from "./table.ts";
  * isolates: a sweeper only fires rows whose lease expired, and the
  * conditional UPDATE is the lock (no in-memory coordination).
  *
- * Host-owned by @ktb/db (like job_runs): the scheduler port writes
- * here and the /platform/cron console reads it, so the table cannot
- * live inside a plugin without recreating the workspace cycle.
- * `tenant_id` NULL = global scope; `params` is the JSON payload the
- * consumer receives — never PHI or secrets inline.
+ * Owned by @ktb/scheduler-port: the port writes here and the
+ * /platform/cron console reads it. `tenant_id` NULL = global scope;
+ * `params` is the JSON payload the consumer receives — never PHI or
+ * secrets inline. Aggregated into `@ktb/db/schema` by
+ * tools/gen-db-schema.mjs.
  */
 export const scheduledJobs = sqliteTable(
 	"scheduled_jobs",

@@ -360,12 +360,12 @@
     "packages/auth": {
       "name": "@ktb/auth",
       "dependencies": {
+        "@ktb/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
       },
       "devDependencies": {
-        "@ktb/db": "workspace:*",
         "@ktb/db-testing": "workspace:*",
-        "drizzle-orm": "^0.45.1",
       },
     },
     "packages/auth-better": {
@@ -1324,6 +1324,7 @@
     "plugins/doctors": {
       "name": "@ktb/doctors",
       "dependencies": {
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1958,6 +1959,7 @@
       "name": "@ktb/patient-access",
       "dependencies": {
         "@ktb/audit": "workspace:*",
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -2277,6 +2279,7 @@
     "plugins/secretaries": {
       "name": "@ktb/secretaries",
       "dependencies": {
+        "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/auth-plugin": "workspace:*",
         "@ktb/authz": "workspace:*",
@@ -2544,6 +2547,7 @@
       "name": "@ktb/vault",
       "dependencies": {
         "@ktb/audit": "workspace:*",
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",

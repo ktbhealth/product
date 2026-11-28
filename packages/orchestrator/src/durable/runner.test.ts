@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
-import { orchestrationRuns } from "@ktb/db/schema";
+import { orchestrationRuns } from "../schema.ts";
 
 import { eq } from "drizzle-orm";
 import type { JobEnvelope, JobsEnqueuer } from "@ktb/jobs-port";

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
 
-import { apikey as apikeyTable } from "@ktb/db/schema";
+import { apikey as apikeyTable } from "@ktb/auth/schema";
 
 import { makeApiKeysAdapter, makeAuth } from "./index.ts";
 

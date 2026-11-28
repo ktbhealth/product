@@ -1,6 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-import { user } from "@ktb/db/auth";
+import { user } from "@ktb/auth/schema";
 import { patients } from "@ktb/patients/schema";
 
 /** self = the user is the patient; guardian = acts for the patient

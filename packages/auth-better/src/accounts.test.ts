@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
-import { account, user } from "@ktb/db/schema";
+import { account, user } from "@ktb/auth/schema";
 
 import { makeAccountsService, makeAuth } from "./index.ts";
 

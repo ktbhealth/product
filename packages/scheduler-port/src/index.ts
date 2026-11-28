@@ -2,8 +2,9 @@ import { Cron } from "croner";
 import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
-import { scheduledJobs } from "@ktb/db/schema";
 import { tenantStorageId, type TenantId } from "@ktb/tenant";
+
+import { scheduledJobs } from "./schema.ts";
 
 /**
  * @ktb/scheduler-port — the runtime scheduler: DB-backed schedule

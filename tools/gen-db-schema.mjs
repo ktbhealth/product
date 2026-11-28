@@ -1,24 +1,25 @@
 #!/usr/bin/env bun
 /**
  * Generates packages/db/src/schema.gen.ts — the aggregated drizzle
- * schema entry point. Plugin-owned table definitions live in
- * plugins/<pkg>/src/schema.ts (P-061); this script re-exports them so
- * `@ktb/db/schema` stays the single import path WITHOUT @ktb/db
- * depending on plugin packages (which would recreate the workspace
- * cycle the host-owned layout was built to avoid). The generated file
- * therefore reaches into plugin sources by RELATIVE path — it is a
- * source file inside packages/db, not a package.json dependency edge.
+ * schema entry point. Table definitions are owned next to their
+ * concept: plugins/<pkg>/src/schema.ts for plugin-owned tables and
+ * packages/<pkg>/src/schema.ts for port/infra-owned tables (auth,
+ * platform, jobs-port, scheduler-port, orchestrator, …). This script
+ * re-exports them so `@ktb/db/schema` stays the single import path
+ * WITHOUT @ktb/db depending on any owning package (which would
+ * recreate the workspace cycle the host-owned layout was built to
+ * avoid). The generated file therefore reaches into owner sources by
+ * RELATIVE path — it is a source file inside packages/db, not a
+ * package.json dependency edge.
  *
- * A plugin schema module (plugins/<pkg>/src/schema.ts) is included only
- * when it actually declares tables (sqliteTable/tenantTable/pgTable
- * call) — re-export shims and non-table schema modules are skipped.
- * Packages are NOT
- * scanned: packages/tenant and packages/anamnesis have schema.ts
- * modules that are helpers/contracts, not table definitions, and the
- * remaining host-owned tables (auth, plugin_state) live in
- * packages/db/src as hand-written slices.
+ * A schema module (<root>/<pkg>/src/schema.ts) is included only when
+ * it actually declares tables (sqliteTable/tenantTable/pgTable call
+ * outside comments) — helper/contract schema modules (e.g.
+ * packages/tenant's tenantTable alias, packages/anamnesis) are
+ * skipped. packages/db itself is never scanned: its schema.ts IS the
+ * aggregate.
  *
- * Run after adding/moving a plugin schema module:
+ * Run after adding/moving a schema module:
  *
  *   bun run gen:db-schema
  *
@@ -26,43 +27,60 @@
  * (ci:db-schema task).
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const pluginsDir = join(root, "plugins");
-const outPath = join(root, "packages/db/src/schema.gen.ts");
+const outDir = join(root, "packages/db/src");
+const outPath = join(outDir, "schema.gen.ts");
 
 // Matches a table declaration call: sqliteTable("name", ...),
 // tenantTable("name", ...), pgTable("name", ...). Whitespace/newlines
 // between the paren and the name are allowed.
 const TABLE_DECL_RE = /\b(?:sqliteTable|tenantTable|pgTable)\s*\(\s*["'`]/;
 
-const owners = readdirSync(pluginsDir, { withFileTypes: true })
-	.filter((d) => d.isDirectory())
-	.map((d) => d.name)
-	.sort()
-	.filter((name) => {
-		const file = join(pluginsDir, name, "src/schema.ts");
+// Strip comments so doc examples (e.g. packages/tenant's
+// `tenantTable("notes", …)` snippet) don't read as declarations.
+const stripComments = (src) =>
+	src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+
+const SCAN_ROOTS = [
+	{ dir: join(root, "packages"), skip: new Set(["db"]) },
+	{ dir: join(root, "plugins"), skip: new Set() },
+];
+
+const owners = [];
+for (const { dir, skip } of SCAN_ROOTS) {
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (!entry.isDirectory() || skip.has(entry.name)) continue;
+		const schemaFile = join(dir, entry.name, "src/schema.ts");
 		try {
-			return TABLE_DECL_RE.test(readFileSync(file, "utf8"));
+			if (TABLE_DECL_RE.test(stripComments(readFileSync(schemaFile, "utf8")))) {
+				owners.push(schemaFile);
+			}
 		} catch {
-			return false;
+			// No schema.ts — not a schema owner.
 		}
-	});
+	}
+}
+owners.sort();
 
 const lines = [
 	"// GENERATED FILE — do not edit.",
 	"// Regenerate with `bun run gen:db-schema` (tools/gen-db-schema.mjs).",
-	"// Aggregates plugin-owned drizzle table definitions for",
-	"// `@ktb/db/schema` and drizzle-kit (drizzle.config.ts points here).",
-	"// Relative paths are deliberate: @ktb/db must not depend on plugin",
-	"// packages — see tools/gen-db-schema.mjs.",
-	...owners.map((name) => `export * from "../../../plugins/${name}/src/schema.ts";`),
+	"// Aggregates owner-declared drizzle table definitions (plugins/*",
+	"// and packages/* src/schema.ts modules) for `@ktb/db/schema` and",
+	"// drizzle-kit (drizzle.config.ts points here).",
+	"// Relative paths are deliberate: @ktb/db must not depend on the",
+	"// owning packages — see tools/gen-db-schema.mjs.",
+	...owners.map((file) => {
+		const spec = relative(outDir, file).split("\\").join("/");
+		return `export * from "${spec.startsWith(".") ? spec : `./${spec}`}";`;
+	}),
 	"",
 ];
 
 writeFileSync(outPath, lines.join("\n"));
 console.log(
-	`gen-db-schema: wrote ${outPath} (${owners.length} plugin schema module(s): ${owners.join(", ") || "none"})`,
+	`gen-db-schema: wrote ${outPath} (${owners.length} schema module(s): ${owners.map((f) => f.slice(root.length)).join(", ") || "none"})`,
 );

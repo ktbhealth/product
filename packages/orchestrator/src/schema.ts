@@ -1,11 +1,11 @@
-import { index, integer, primaryKey, sqliteTable, text } from "./table.ts";
+import { index, integer, primaryKey, sqliteTable, text } from "@ktb/db/table";
 
 /**
- * Orchestration persistence (phase 2, @ktb/orchestrator): host-owned
- * tables for durable runs, written only by the orchestrator package's
- * durable runner and read by its step-job consumer — same host-owned
- * pattern as job_runs/plugin_state (the tables cannot live in a plugin
- * without recreating the workspace cycle).
+ * Orchestration persistence (phase 2, @ktb/orchestrator): tables for
+ * durable runs, written only by the durable runner and read by its
+ * step-job consumer. Owned by this package — the tables cannot live in
+ * a plugin without recreating the workspace cycle; aggregated into
+ * `@ktb/db/schema` by tools/gen-db-schema.mjs.
  *
  * - `orchestration_defs` — persisted orchestration defs (data-only;
  *   defs with inline `handler` kinds are rejected at upsert because
@@ -63,8 +63,8 @@ export const orchestrationRuns = sqliteTable(
 		error: text("error"),
 		/** Tenant scope (`groups.id`) the run was started under; NULL =
 		 * platform/personal scope. Plain integer, no FK — same convention
-		 * as `job_runs.tenant_id` (host-owned table, `groups` is not
-		 * reachable from @ktb/db). */
+		 * as `job_runs.tenant_id` (orchestrator-owned table, `groups` is
+		 * not reachable from here). */
 		tenantId: integer("tenant_id"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),

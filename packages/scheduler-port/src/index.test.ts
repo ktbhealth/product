@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { makeDb, type DbClient } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
-import { scheduledJobs } from "@ktb/db/schema";
+import { scheduledJobs } from "./schema.ts";
 
 import {
 	claimDueScheduledJobs,
