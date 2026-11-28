@@ -3,6 +3,8 @@ import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { EventBus, makeEventBus } from "@effect-server-utils/cqrs";
 import { PatientCreated } from "@ktb/patients/api";
+import { patientsServicesPlugin } from "@ktb/patients";
+import { makeNotificationIngestions, NotificationIngestions } from "@ktb/notifications-port";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -37,7 +39,13 @@ const fakeDb = (settle: () => Promise<unknown>): DbClient =>
 	}) as unknown as DbClient;
 
 const runtimeFor = (db: DbClient) => {
-	const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus());
+	// The ingestion registry mirrors app-host composition: collected
+	// from the producer plugins' `notificationIngestions` manifests.
+	const infra = Layer.mergeAll(
+		Layer.succeed(Db, db),
+		makeEventBus(),
+		Layer.succeed(NotificationIngestions, makeNotificationIngestions([patientsServicesPlugin])),
+	);
 	return ManagedRuntime.make(
 		NotificationsLive.pipe(Layer.provideMerge(infra)) as Layer.Layer<
 			Notifications | EventBus,

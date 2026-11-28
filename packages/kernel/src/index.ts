@@ -165,6 +165,9 @@ export type ClientStubPlugin = Omit<MarkerPlugin, "contributions" | "configSchem
 	/** `cqrs` groups carry handler metadata (Effects) — server-manifest
 	 * data that must never ride the client bundle. */
 	readonly cqrs?: never;
+	/** `notificationIngestions` carry projector functions —
+	 * server-manifest data that must never ride the client bundle. */
+	readonly notificationIngestions?: never;
 };
 
 export const clientStub = <const P extends ClientStubPlugin>(plugin: P): P => plugin;

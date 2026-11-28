@@ -11,6 +11,7 @@
 	"devDependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@ktb/json-schema": "workspace:*",
+		"@ktb/notifications-port": "workspace:*",
 		"@ktb/orchestrator": "workspace:*",
 		"@ktb/pipeline": "workspace:*",
 		"@tanstack/virtual-file-routes": "1.162.0",
