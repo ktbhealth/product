@@ -29,4 +29,3 @@ export const appBeforeLoad = dispatch.appBeforeLoad;
 export const appLoader = dispatch.appLoader;
 export const appHead = dispatch.appHead;
 export const AppPage = dispatch.AppPage;
-export type { AppLoaderData } from "@ktb/app-host/client";

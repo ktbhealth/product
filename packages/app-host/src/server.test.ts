@@ -152,6 +152,24 @@ describe("makePageMiddlewareRunner", () => {
 		expect(bound).toEqual(["u1"]);
 	});
 
+	it("runs with omitted builtinStages and memoizes the collected chain", async () => {
+		calls.length = 0;
+		const plugins = [
+			{ id: "mw.memo", middleware: [stage("mw.memo.stage")] },
+		] as unknown as Plugin[];
+		const deps: PageMiddlewareRunnerDeps = {
+			plugins,
+			enabledIds: Effect.succeed(new Set(["mw.memo"])),
+			...makeRun(new Set(["mw.memo"])),
+		};
+		const run = makePageMiddlewareRunner(deps);
+		expect(await run(ctx(plugins))).toEqual({ type: "continue" });
+		// Second dispatch reuses the memoized entries (and the `?? []`
+		// builtinStages fallback ran on the first collect).
+		expect(await run(ctx(plugins))).toEqual({ type: "continue" });
+		expect(calls).toEqual(["mw.memo.stage", "mw.memo.stage"]);
+	});
+
 	it("maps a deny verdict through unchanged", async () => {
 		const plugins = [
 			{
