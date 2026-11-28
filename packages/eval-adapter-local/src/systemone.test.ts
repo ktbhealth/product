@@ -359,6 +359,69 @@ describe("makeSystemOneEval", () => {
 		expect(wrongKey.message).toContain('lacks probabilities["justified_fix"]');
 	});
 
+	it("rejects a choice pick outside the offered options", async () => {
+		const err = await runErr(
+			okFetch({
+				answers: {
+					q1: { type: "noul", noul: 0.9 },
+					q2: {
+						type: "choice",
+						choice: "invented",
+						probabilities: { invented: 1 },
+					},
+					q3: { type: "score", score: 1, confidence: 0.5 },
+				},
+			}),
+		);
+		expect(err.message).toContain('choice answer "q2" picked "invented" — not in options');
+	});
+
+	it("accepts any choice pick when the question declares no options", async () => {
+		// options: [] is the degenerate rubric — same as absent: the
+		// pick is not constrained (criteria decode to {}).
+		const r = await run(
+			okFetch({
+				answers: {
+					c: { type: "choice", choice: "free", probabilities: { free: 0.7 } },
+				},
+			}),
+			{},
+			[{ id: "c", kind: "choice", text: "pick?", options: [] }],
+		);
+		expect(r.answers[0]).toEqual({ id: "c", kind: "choice", value: "free", probability: 0.7 });
+	});
+
+	it("rejects a score outside the rubric [0, maxScore]", async () => {
+		const body = (score: unknown) =>
+			okFetch({
+				answers: {
+					q1: { type: "noul", noul: 0.9 },
+					q2: {
+						type: "choice",
+						choice: "justified_fix",
+						probabilities: { justified_fix: 0.8, harmful: 0.2 },
+					},
+					q3: { type: "score", score, confidence: 0.5 },
+				},
+			});
+		// q3 declares maxScore: 4 — above and below the rubric both fail.
+		const tooHigh = await runErr(body(4.5));
+		expect(tooHigh.message).toContain('score answer "q3" value 4.5 outside rubric [0, 4]');
+		const negative = await runErr(body(-0.5));
+		expect(negative.message).toContain('score answer "q3" value -0.5 outside rubric [0, 4]');
+		// JSON can carry a non-finite literal (1e999 → Infinity) — the
+		// rubric check must reject it even though it parses.
+		const inf = (() =>
+			Promise.resolve(
+				new Response(
+					'{"answers":{"q1":{"type":"noul","noul":0.9},"q2":{"type":"choice","choice":"justified_fix","probabilities":{"justified_fix":0.8,"harmful":0.2}},"q3":{"type":"score","score":1e999,"confidence":0.5}}}',
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				),
+			)) as typeof fetch;
+		const nonFinite = await runErr(inf);
+		expect(nonFinite.message).toContain("outside rubric");
+	});
+
 	it("rejects a score answer without score", async () => {
 		const err = await runErr(
 			okFetch({

@@ -413,6 +413,36 @@ describe("runScheduledJobNow", () => {
 		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
 	});
 
+	it("logs and still returns the fired job when the claim release fails", async () => {
+		// Same fault injection as the sweep test: the release UPDATE is
+		// the only scheduled_jobs write whose SET clause is
+		// claimed_until alone — fail just that statement.
+		const inner = makeTestD1();
+		const db = makeDb({
+			...inner,
+			prepare: (q: string) => {
+				if (/set "claimed_until" = \? where/.test(q)) throw new Error("release boom");
+				return inner.prepare(q);
+			},
+		});
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		const fired: string[] = [];
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const result = await runScheduledJobNow(db, job.id, async (j) => void fired.push(j.id), {
+				now: T0,
+			});
+			expect(result?.error).toBeNull();
+			expect(fired).toEqual([job.id]);
+			expect(warn).toHaveBeenCalledWith(
+				"scheduled job claim release failed",
+				expect.objectContaining({ id: job.id, error: expect.stringContaining("release boom") }),
+			);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
 	it("returns null for missing, paused or mid-claim rows", async () => {
 		const db = makeTestDb();
 		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);

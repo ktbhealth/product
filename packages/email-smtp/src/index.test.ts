@@ -338,6 +338,28 @@ describe("sendSmtpMessage", () => {
 		);
 	});
 
+	it("rejects addresses that could inject SMTP commands or headers", async () => {
+		// Sanitized BEFORE the socket opens — an unroutable port proves
+		// no connection was attempted.
+		const url = "smtp://127.0.0.1:1";
+		// Empty and whitespace/control chars.
+		await expect(send(url, { ...TEXT, to: "" })).rejects.toThrow(/invalid to address: ""/);
+		await expect(send(url, { ...TEXT, to: "a b@ktb.test" })).rejects.toThrow(/invalid to address/);
+		// CR/LF would forge envelope commands + DATA headers.
+		await expect(send(url, { ...TEXT, to: "a@ktb.test\r\nRCPT TO:<x@y>" })).rejects.toThrow(
+			/invalid to address/,
+		);
+		// Quotes/brackets break the <addr> wrapping; the from side is
+		// checked with the same rule (sendSmtpMessage takes `from`
+		// directly — the sender helper fixes it from config).
+		await expect(
+			sendSmtpMessage(connect, parseSmtpUrl(url), {
+				from: '"quoted"@ktb.test',
+				...TEXT,
+			}),
+		).rejects.toThrow(/invalid from address/);
+	});
+
 	it("fails on a rejected recipient with the server reply", async () => {
 		const server = await fake({ starttls: false, overrides: { RCPT: "550 no such user" } });
 		await expect(send(`smtp://127.0.0.1:${server.port}`, TEXT)).rejects.toThrow(

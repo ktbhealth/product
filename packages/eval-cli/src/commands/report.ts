@@ -123,12 +123,14 @@ export const makeReportCommand = (ctx: CmdContext) =>
 				// a result without correctedMetrics (transcribe-only
 				// selection, failed cleanup) is not a perfect score and
 				// must not be zero-filled into the denominator.
-				const corrected = forRun.filter((r) => r.correctedMetrics !== undefined);
+				const corrected = forRun.filter(
+					(r): r is typeof r & { correctedMetrics: NonNullable<typeof r.correctedMetrics> } =>
+						r.correctedMetrics !== undefined,
+				);
 				const meanWer =
 					corrected.length === 0
 						? null
-						: corrected.reduce((acc, r) => acc + (r.correctedMetrics?.wer ?? 0), 0) /
-							corrected.length;
+						: corrected.reduce((acc, r) => acc + r.correctedMetrics.wer, 0) / corrected.length;
 				yield* Console.log(markdown);
 				yield* Console.log(
 					`run ${runId}: ${forRun.length} result(s)` +
