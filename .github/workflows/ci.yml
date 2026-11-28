@@ -353,19 +353,58 @@ jobs:
       # matching docs change. A docs branch with the same name as the pull
       # request's branch carries those pages until both merge; without
       # one — and on main — compare against the docs default branch.
+      #
+      # That docs branch is produced asynchronously by the erd-docs
+      # campaign (fresh clone → bun install → bun run db:erd → push),
+      # which races this job: on the run that first exposed a schema
+      # change the branch did not exist yet at clone time and the check
+      # fell back to the default branch, reporting the new tables as
+      # missing. When the PR can change the generated docs, poll for
+      # the same-named branch (bounded by DOCS_WAIT_SECONDS) before
+      # falling back. PRs that cannot change the output — and fork
+      # heads the campaign skips — take the fast path immediately.
       - &erd-clone-docs
         name: Clone docs repo (sibling of this checkout)
         env:
           DOCS_URL: https://github.com/ktbhealth/docs.git
           DOCS_BRANCH: ${{ github.head_ref }}
+          DOCS_WAIT_SECONDS: "300"
+          PR_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ -n "$DOCS_BRANCH" ] && git ls-remote --exit-code --heads "$DOCS_URL" "refs/heads/$DOCS_BRANCH" >/dev/null 2>&1; then
-            echo "Using docs branch $DOCS_BRANCH"
-            git clone --depth 1 --branch "$DOCS_BRANCH" "$DOCS_URL" "$GITHUB_WORKSPACE/../docs"
-          else
+          clone_default() {
             echo "Using the docs default branch"
             git clone --depth 1 "$DOCS_URL" "$GITHUB_WORKSPACE/../docs"
+          }
+          if [ -z "$DOCS_BRANCH" ] || [ "$PR_FORK" = "true" ] || [ -z "$BASE_REF" ]; then
+            clone_default
+            exit 0
           fi
+          # ERD inputs: drizzle migrations + generator (packages/db),
+          # and the plugin manifests the reference pass scans
+          # (plugins/*/src/index.ts, packages/*/src/index.ts).
+          git fetch --quiet --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          # Two-dot tree diff — the checkout is shallow, so no merge-base.
+          # If the base moved since the merge ref was built, unrelated
+          # main-side files can appear here; that only means we poll
+          # when we didn't need to, never the reverse.
+          if ! git diff --name-only "origin/${BASE_REF}" HEAD |
+            grep -Eq '^(packages/db/|plugins/[^/]+/src/index\.ts$|packages/[^/]+/src/index\.ts$)'; then
+            clone_default
+            exit 0
+          fi
+          deadline=$(( $(date +%s) + DOCS_WAIT_SECONDS ))
+          until git ls-remote --exit-code --heads "$DOCS_URL" "refs/heads/$DOCS_BRANCH" >/dev/null 2>&1; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "no docs branch ${DOCS_BRANCH} after ${DOCS_WAIT_SECONDS}s — using the docs default branch"
+              clone_default
+              exit 0
+            fi
+            echo "waiting for the erd-docs campaign to push docs branch ${DOCS_BRANCH}…"
+            sleep 20
+          done
+          echo "Using docs branch $DOCS_BRANCH"
+          git clone --depth 1 --branch "$DOCS_BRANCH" "$DOCS_URL" "$GITHUB_WORKSPACE/../docs"
       - &erd-setup-bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -384,4 +423,28 @@ jobs:
           curl -fsSL "https://github.com/k1LoW/tbls/releases/download/${TBLS_VERSION}/tbls_${TBLS_VERSION}_linux_amd64.tar.gz" -o /tmp/tbls.tar.gz
           tar -xzf /tmp/tbls.tar.gz -C /tmp tbls
           sudo install -m 0755 /tmp/tbls /usr/local/bin/tbls
-      - run: bun run db:erd:check
+      # The docs branch can also exist-but-stale: a same-named branch
+      # from an earlier head of this PR is cloned while the campaign is
+      # still regenerating for the new head (its regen is not
+      # cancellable). On drift, refresh the sibling clone and retry —
+      # the campaign's force-push lands within a minute or two.
+      - name: Check ERD docs are up to date
+        env:
+          DOCS_BRANCH: ${{ github.head_ref }}
+        run: |
+          for attempt in 1 2 3; do
+            if bun run db:erd:check; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "drift detected — refreshing docs clone, retry $((attempt + 1))/3 in 60s"
+            sleep 60
+            if [ -n "$DOCS_BRANCH" ]; then
+              git -C ../docs fetch --quiet --depth=1 origin "+refs/heads/${DOCS_BRANCH}:refs/remotes/origin/${DOCS_BRANCH}" || true
+              git -C ../docs reset --hard --quiet "origin/${DOCS_BRANCH}" || true
+            else
+              git -C ../docs pull --quiet --ff-only || true
+            fi
+          done
