@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -324,6 +324,24 @@ describe("CronPage unified schedules", () => {
 		expect(screen.getAllByRole("button", { name: "Pause" })).toHaveLength(1);
 		expect(screen.getAllByRole("button", { name: "Resume" })).toHaveLength(1);
 		expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(4);
+	});
+
+	it("renders dash placeholders for triggerless schedules and missing next run", () => {
+		renderEntries([
+			entry({
+				id: "cron:bare",
+				refId: "bare",
+				name: "bare",
+				cronExprs: [],
+				runAt: null,
+				nextRunAt: null,
+			}),
+		]);
+		const row = screen.getByText("bare").closest("tr");
+		expect(row).not.toBeNull();
+		// No cron exprs and no runAt → "—" in the triggers cell; null
+		// nextRunAt → "—" in the next-run cell. Description stays text.
+		expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
 	});
 
 	it("creates a recurring schedule and reports success", async () => {
