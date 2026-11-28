@@ -9,6 +9,8 @@ kind = "cf"
 url = "https://cuora.ktbhealth.workers.dev"
 token_env = "CUORA_CF_TOKEN" # bearer fallback; scoped HMAC below
 cache = ["dev", "preview"] # prod reads live — no stale-prod footgun
+# Team decryption recipients — secrets are re-sealed to these on put.
+recipients = ["age1tfrsv6q9u7l8kda63ulylkwc4wc03ykkllkdxetukh6syqwu7ajsyfz8mp"] # vini
 
 # Scoped token refs in the local vault — the ref path is the
 # token_id the worker's CUORA_VAULT_TOKENS map keys on.
@@ -44,7 +46,8 @@ VITE_TURNSTILE_SITE_KEY = "cuora://ktb/turnstile-site-key"
 # without storing breaks `cuora run` for the whole surface. Redirect URI
 # is config, not secret, but lives here per-env like better-auth-url:
 # dev = http://localhost:3000/api/calendar/google/callback, prod = the
-# deployed origin. Client must be type "Web application" in Google Cloud.
+# deployed origin. Client must be type "Web application" in Google Cloud
+# (GCP project ktbhealth-dev).
 GOOGLE_CLIENT_ID = "cuora://ktb/google-oauth-client-id"
 GOOGLE_CLIENT_SECRET = "cuora://ktb/google-oauth-client-secret"
 GOOGLE_OAUTH_REDIRECT_URI = "cuora://ktb/google-oauth-redirect-uri"

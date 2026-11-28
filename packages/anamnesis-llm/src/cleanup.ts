@@ -1,14 +1,9 @@
 import * as Effect from "effect/Effect";
-import type * as Layer from "effect/Layer";
-import { LanguageModel, Prompt } from "effect/ai";
 
-import { anthropicLanguageModelLive, openAiLanguageModelLive, type LlmConfig } from "./llm.ts";
-import {
-	DEFAULT_WORKERS_AI_MODEL,
-	responseText,
-	runChat,
-	type WorkersAiBinding,
-} from "./workers-ai.ts";
+import { LlmPort } from "@ktb/eval-core";
+
+import { envLlmPort } from "./llm-port.ts";
+import type { LlmConfig } from "./llm.ts";
 
 export interface CorrectedTranscript {
 	readonly corrected: string;
@@ -20,6 +15,9 @@ export interface CorrectedTranscript {
  * Prompt contract (P-017): surface correction only — fix ASR errors,
  * punctuation and speaker-flow artifacts. Never summarize, reorder, or
  * invent clinical content; clinical terms stay verbatim; PT-BR output.
+ * Delivered through the env LlmPort's `generate` — the TaskEnvelope is
+ * text-in/text-out, so the system contract is inlined ahead of the
+ * transcript (same single-input shape the platform path uses).
  */
 export const CLEANUP_SYSTEM_PROMPT = `You are a transcription post-processor for Brazilian Portuguese (PT-BR) clinical consultations.
 
@@ -32,60 +30,16 @@ Rules:
 - Keep the original language (PT-BR); do not translate.
 - If the transcript is already clean, return it unchanged.`;
 
-const userPrompt = (transcript: string) => [
-	Prompt.systemMessage({ content: CLEANUP_SYSTEM_PROMPT }),
-	Prompt.userMessage({ content: [Prompt.textPart({ text: transcript })] }),
-];
-
-const viaLanguageModel = (
-	engine: string,
-	layer: Layer.Layer<LanguageModel.LanguageModel>,
-	transcript: string,
-): Effect.Effect<CorrectedTranscript | null> =>
-	Effect.gen(function* () {
-		const model = yield* LanguageModel.LanguageModel;
-		const response = yield* model.generateText({ prompt: userPrompt(transcript) });
-		const corrected = response.text.trim();
-		return corrected ? { corrected, engine } : null;
-	}).pipe(
-		// Transport-boundary span: the engine tag is a bounded provider
-		// name, never transcript content.
-		Effect.withSpan("transcript.cleanup", {
-			attributes: { "transcript.engine": engine },
-		}),
-		Effect.provide(layer),
-		Effect.catch((error) =>
-			Effect.logWarning("transcript cleanup failed", { engine, error: String(error) }).pipe(
-				Effect.as(null),
-			),
-		),
-	);
-
-const viaWorkersAi = (
-	ai: WorkersAiBinding,
-	model: string,
-	transcript: string,
-): Effect.Effect<CorrectedTranscript | null> => {
-	const engine = `workers-ai:${model}`;
-	return runChat(ai, model, CLEANUP_SYSTEM_PROMPT, transcript).pipe(
-		Effect.map((raw) => {
-			const corrected = responseText(raw).trim();
-			return corrected ? { corrected, engine } : null;
-		}),
-		Effect.catch((error) =>
-			Effect.logWarning("transcript cleanup failed", { engine, error: String(error) }).pipe(
-				Effect.as(null),
-			),
-		),
-	);
-};
-
 /**
  * LLM transcript cleanup (P-017): produces a corrected PT-BR transcript
- * alongside the raw server transcript. Provider precedence mirrors
- * AnamnesisEngineLive (anthropic > openai > workers-ai). Never fails —
- * returns null when unconfigured, empty input, or on any provider error,
- * so callers keep correctedTranscript null and the status stays "done".
+ * alongside the raw server transcript through the env-derived
+ * {@link LlmPort} — provider precedence mirrors AnamnesisEngineLive
+ * (anthropic > openai > workers-ai). This is the ENV corrector only:
+ * platform-endpoint correction is the pipeline's llm-cleanup stage,
+ * a separate port contract — callers never chain providers outside
+ * the def. Never fails — returns null when unconfigured, empty input,
+ * or on any provider error, so callers keep correctedTranscript null
+ * and the status stays "done".
  */
 export const correctTranscript = (
 	cfg: LlmConfig,
@@ -93,29 +47,36 @@ export const correctTranscript = (
 ): Effect.Effect<CorrectedTranscript | null> => {
 	const trimmed = transcript.trim();
 	if (!trimmed) return Effect.succeed(null);
-	if (cfg.anthropicApiKey) {
-		return viaLanguageModel(
-			"anthropic",
-			anthropicLanguageModelLive({
-				apiKey: cfg.anthropicApiKey,
-				model: cfg.anthropicModel ?? "claude-haiku-4-5",
-			}),
-			trimmed,
-		);
-	}
-	if (cfg.openAiApiKey) {
-		return viaLanguageModel(
-			"openai",
-			openAiLanguageModelLive({
-				apiKey: cfg.openAiApiKey,
-				baseUrl: cfg.openAiBaseUrl,
-				model: cfg.openAiModel ?? "gpt-4o-mini",
-			}),
-			trimmed,
-		);
-	}
-	if (cfg.workersAi) {
-		return viaWorkersAi(cfg.workersAi, cfg.workersAiModel ?? DEFAULT_WORKERS_AI_MODEL, trimmed);
-	}
-	return Effect.succeed(null);
+	const env = envLlmPort(cfg);
+	if (env === null) return Effect.succeed(null);
+	return Effect.gen(function* () {
+		const llm = yield* LlmPort;
+		const res = yield* llm.generate({
+			taskId: "transcript-cleanup",
+			role: "generator",
+			input: `${CLEANUP_SYSTEM_PROMPT}\n\nTRANSCRIPT:\n${trimmed}`,
+			outputSchema: "Text",
+		});
+		const corrected = res.text.trim();
+		return corrected ? { corrected, engine: res.record.engine } : null;
+	}).pipe(
+		// Transport-boundary span: the engine tag is a bounded provider
+		// name, never transcript content.
+		Effect.withSpan("transcript.cleanup", {
+			attributes: { "transcript.engine": env.engine },
+		}),
+		Effect.provide(env.layer),
+		Effect.catch((error) =>
+			Effect.logWarning("transcript cleanup failed", {
+				engine: env.engine,
+				error: String(error),
+			}).pipe(Effect.as(null)),
+		),
+		Effect.catchDefect((defect) =>
+			Effect.logWarning("transcript cleanup failed", {
+				engine: env.engine,
+				error: String(defect),
+			}).pipe(Effect.as(null)),
+		),
+	);
 };

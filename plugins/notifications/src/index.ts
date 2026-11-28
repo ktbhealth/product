@@ -6,8 +6,6 @@ import { Db } from "@ktb/db";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { platformHeaderPlugin } from "@ktb/platform-header";
-import { patientsServicesPlugin } from "@ktb/patients";
-import { consultationsServicesPlugin } from "@ktb/consultations";
 import { Command, Query } from "@effect-server-utils/cqrs";
 
 import {
@@ -108,15 +106,26 @@ export const NotificationsCommandsLive = Command.handlersOf(NotificationsCommand
 export const notificationsServicesPlugin = definePlugin({
 	id: "notifications.services",
 	meta: { keywords: ["notifications", "services"] },
-	// Subscribes to patient/consultation domain events — the dep edges
-	// order those plugins' layers (and their event producers) first.
-	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
+	// Event ingestion is contribution-driven: producer plugins declare
+	// `{ event, project }` entries on their `notificationIngestions`
+	// manifest field (@ktb/notifications-port) and the app host collects
+	// them into `NotificationIngestions`, which NotificationsLive
+	// subscribes here — no requiredDeps on the producers, so this
+	// plugin composes (and ships) without them.
 	// Commands now require the Notifications service — provideMerge wires
 	// the single NotificationsLive instance (one PubSub) into the command
 	// handlers while keeping its output in the merged layer.
 	services: Layer.mergeAll(NotificationsQueriesLive, NotificationsCommandsLive).pipe(
 		Layer.provideMerge(NotificationsLive),
 	),
+});
+
+/** CQRS surface (E.20): the query/command groups declared in
+ * ./api.ts, folded into the app-wide buses by the host. */
+export const notificationsCqrsPlugin = definePlugin({
+	id: "notifications.cqrs",
+	meta: { keywords: ["notifications", "cqrs"] },
+	cqrs: { queries: [NotificationsQueries], commands: [NotificationsCommands] },
 });
 
 // Route subtree composed into the host's virtualRouteConfig (P-033):
@@ -142,6 +151,7 @@ export const plugins: readonly Plugin[] = [
 	notificationsDashboardPlugin,
 	notificationsTablesPlugin,
 	notificationsServicesPlugin,
+	notificationsCqrsPlugin,
 	notificationsRoutesPlugin,
 ];
 
@@ -184,6 +194,7 @@ declare module "@ktb/kernel" {
 		"notifications.dashboard": true;
 		"notifications.tables": true;
 		"notifications.services": true;
+		"notifications.cqrs": true;
 		"notifications.routes": true;
 	}
 }

@@ -168,7 +168,7 @@ describe("pipeline admin fns", () => {
 		const kinds = await listOrchestrationKindsFn();
 		// builtinKinds grows as the engine ships kinds — assert the
 		// shipped floor and the sorted/deduped contract, not the exact set.
-		expect(kinds).toEqual(expect.arrayContaining(["ai", "emit", "gate"]));
+		expect(kinds).toEqual(expect.arrayContaining(["emit", "gate", "poll", "subworkflow"]));
 		expect([...new Set(kinds ?? [])].sort()).toEqual([...(kinds ?? [])]);
 	});
 });

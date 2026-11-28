@@ -8,6 +8,7 @@ import { makeTestD1 } from "@ktb/db-testing";
 
 import {
 	decodeJobEnvelope,
+	dispatchJobInline,
 	getJobRun,
 	insertJobRun,
 	JobEnvelopeSchema,
@@ -19,6 +20,8 @@ import {
 	makeJobConsumer,
 	makeJobHandlerRegistry,
 	makeJobs,
+	queueSend,
+	QUEUE_MAX_DELAY_SECONDS,
 	upsertJobRun,
 	type JobEnvelope,
 	type JobRecord,
@@ -236,6 +239,22 @@ describe("makeJobs (enqueue port)", () => {
 		const jobs = makeJobs({ send: async () => ({}) });
 		const envelope = await jobs.enqueue("k", null);
 		expect("tenantId" in envelope).toBe(false);
+	});
+
+	it("stamps a finite runAt on the envelope and omits it otherwise", async () => {
+		const sent: JobEnvelope[] = [];
+		const jobs = makeJobs({
+			send: async (e) => {
+				sent.push(e);
+			},
+		});
+		const delayed = await jobs.enqueue("k", null, { runAt: 1234.5 });
+		expect(delayed.runAt).toBe(1234.5);
+		// Non-finite runAt is dropped — the field is advisory, never a
+		// reason to emit a corrupt envelope.
+		const invalid = await jobs.enqueue("k", null, { runAt: Number.NaN });
+		expect("runAt" in invalid).toBe(false);
+		expect(sent.map((e) => e.runAt)).toEqual([1234.5, undefined]);
 	});
 
 	it("rejects empty kinds before touching transport or projection", async () => {
@@ -683,6 +702,171 @@ describe("makeJobConsumer", () => {
 	});
 });
 
+describe("dispatchJobInline", () => {
+	it("kind-dispatches with decode, envelope and processing→done projection", async () => {
+		const { db } = makeTestDb();
+		const calls: { payload: unknown; envelope: JobEnvelope }[] = [];
+		const seenDuring: JobRecord[] = [];
+		await dispatchJobInline(
+			{
+				handlers: {
+					"test.inline": {
+						decodePayload: (p) => ({ decoded: p }),
+						handle: async (payload, envelope) => {
+							calls.push({ payload, envelope });
+							const row = await getJobRun(db, "gen-id");
+							if (row !== null) seenDuring.push(row);
+						},
+					},
+				},
+				db,
+				newId: () => "gen-id",
+				now: () => 42,
+			},
+			{ kind: "test.inline", payload: { v: 1 }, tenantId: 7 },
+		);
+		expect(calls).toEqual([
+			{
+				payload: { decoded: { v: 1 } },
+				envelope: {
+					id: "gen-id",
+					kind: "test.inline",
+					payload: { decoded: { v: 1 } },
+					tenantId: 7,
+				},
+			},
+		]);
+		// The handler observed the in-flight "processing" mark.
+		expect(seenDuring[0]).toMatchObject({ status: "processing", kind: "test.inline" });
+		expect(await getJobRun(db, "gen-id")).toMatchObject({
+			kind: "test.inline",
+			status: "done",
+			error: null,
+			tenantId: 7,
+			createdAt: 42,
+			updatedAt: 42,
+		});
+	});
+
+	it("honors a caller-supplied id", async () => {
+		const { db } = makeTestDb();
+		await dispatchJobInline(
+			{ handlers: { "test.inline": { handle: async () => {} } }, db },
+			{ kind: "test.inline", payload: null, id: "caller-id" },
+		);
+		expect(await getJobRun(db, "caller-id")).toMatchObject({ status: "done" });
+	});
+
+	it("throws on unknown kinds before any projection write", async () => {
+		const { db } = makeTestDb();
+		await expect(
+			dispatchJobInline({ handlers: {}, db }, { kind: "test.missing", payload: null }),
+		).rejects.toThrow("unknown job kind: test.missing");
+		expect(await listJobRuns(db)).toEqual([]);
+	});
+
+	it("marks failed and rethrows on decode and handler failures", async () => {
+		const { db } = makeTestDb();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			await expect(
+				dispatchJobInline(
+					{
+						handlers: {
+							"test.baddecode": {
+								decodePayload: () => {
+									throw new Error("bad payload");
+								},
+								handle: async () => {},
+							},
+							"test.boom": {
+								handle: async () => {
+									throw "string failure";
+								},
+							},
+						},
+						db,
+						newId: (() => {
+							let n = 0;
+							return () => `id-${++n}`;
+						})(),
+					},
+					{ kind: "test.baddecode", payload: {} },
+				),
+			).rejects.toThrow("bad payload");
+			await expect(
+				dispatchJobInline(
+					{
+						handlers: {
+							"test.boom": {
+								handle: async () => {
+									throw "string failure";
+								},
+							},
+						},
+						db,
+					},
+					{ kind: "test.boom", payload: null, id: "boom-1" },
+				),
+			).rejects.toBe("string failure");
+			expect(await getJobRun(db, "id-1")).toMatchObject({
+				status: "failed",
+				error: "bad payload",
+			});
+			expect(await getJobRun(db, "boom-1")).toMatchObject({
+				status: "failed",
+				error: "string failure",
+			});
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("swallows projection failures and still dispatches", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const handled: string[] = [];
+		try {
+			await dispatchJobInline(
+				{
+					handlers: {
+						"test.inline": {
+							handle: async () => {
+								handled.push("ran");
+							},
+						},
+					},
+					db: {} as never,
+				},
+				{ kind: "test.inline", payload: null, id: "x" },
+			);
+			expect(handled).toEqual(["ran"]);
+			expect(warn).toHaveBeenCalledWith(
+				"job_runs projection write failed",
+				expect.objectContaining({ id: "x" }),
+			);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("runs without a db bound", async () => {
+		const seen: unknown[] = [];
+		await dispatchJobInline(
+			{
+				handlers: {
+					"test.inline": {
+						handle: async (payload) => {
+							seen.push(payload);
+						},
+					},
+				},
+			},
+			{ kind: "test.inline", payload: { a: 1 } },
+		);
+		expect(seen).toEqual([{ a: 1 }]);
+	});
+});
+
 describe("makeJobHandlerRegistry", () => {
 	it("registers, replaces and looks up kind handlers per instance", () => {
 		const registry = makeJobHandlerRegistry();
@@ -713,5 +897,39 @@ describe("makeJobHandlerRegistry", () => {
 		registry.register("test.late", { handle: async () => {} });
 		expect(before["test.late"]).toBeUndefined();
 		expect(registry.handlers()["test.late"]).toBeDefined();
+	});
+});
+
+describe("queueSend (Cloudflare delaySeconds adapter)", () => {
+	it("sends immediately when the envelope has no runAt", async () => {
+		const calls: { body: unknown; options?: { delaySeconds?: number } }[] = [];
+		const send = queueSend({
+			send: async (body, options) => {
+				calls.push({ body, options });
+			},
+		});
+		const envelope: JobEnvelope = { id: "j", kind: "k", payload: null };
+		await send(envelope);
+		expect(calls).toEqual([{ body: envelope, options: undefined }]);
+	});
+
+	it("maps a future runAt to rounded-up delaySeconds, clamped to the CF cap", async () => {
+		const calls: { options?: { delaySeconds?: number } }[] = [];
+		const send = queueSend({
+			send: async (_body, options) => {
+				calls.push({ options });
+			},
+		});
+		const now = Date.now();
+		await send({ id: "j", kind: "k", payload: null, runAt: now + 2_500 });
+		const delay = calls[0]?.options?.delaySeconds ?? 0;
+		expect(delay).toBeGreaterThanOrEqual(2);
+		expect(delay).toBeLessThanOrEqual(4);
+		// Far-future runAt clamps to the 12h Cloudflare cap.
+		await send({ id: "j", kind: "k", payload: null, runAt: now + 100 * 24 * 3600 * 1000 });
+		expect(calls[1]?.options?.delaySeconds).toBe(QUEUE_MAX_DELAY_SECONDS);
+		// Past runAt delivers immediately (delaySeconds 0).
+		await send({ id: "j", kind: "k", payload: null, runAt: now - 1000 });
+		expect(calls[2]?.options?.delaySeconds).toBe(0);
 	});
 });

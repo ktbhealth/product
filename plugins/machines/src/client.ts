@@ -24,6 +24,9 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "machines.chrome",
+		i18nKeys: {
+			groups: { Runtime: "panel_group_runtime" },
+		},
 		meta: { keywords: ["machines", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [

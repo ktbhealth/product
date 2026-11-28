@@ -17,6 +17,9 @@ import { WizardRunner } from "./views/WizardRunner.tsx";
  * asserted by apps/web/src/plugins.test.ts.
  */
 export const wizardsChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Presentation: "panel_group_presentation" },
+	},
 	id: "wizards.chrome",
 	meta: { keywords: ["wizards", "ui"] },
 	requiredDeps: ["platform.panel"],

@@ -40,6 +40,9 @@ export const aiPromptServicesPlugin = definePlugin({
 
 export const aiPromptChromePlugin = definePlugin({
 	id: "ai.prompt.chrome",
+	i18nKeys: {
+		groups: { Intelligence: "panel_group_intelligence" },
+	},
 	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

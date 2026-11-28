@@ -22,6 +22,13 @@ import {
  * apps/web/src/plugins.test.ts.
  */
 export const consultationsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/consultations": "nav_consultations",
+			"/platform/consultations": "nav_consultations",
+		},
+		groups: { "Domain data": "panel_group_domain_data" },
+	},
 	id: "consultations.chrome",
 	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: ["platform.panel"],
@@ -105,6 +112,7 @@ export const plugins: readonly Plugin[] = [
 			"vault.services",
 		],
 	}),
+	definePlugin({ id: "consultations.cqrs", meta: { keywords: ["consultations", "cqrs"] } }),
 	definePlugin({ id: "consultations.routes", meta: { keywords: ["consultations", "routes"] } }),
 	consultationsChromePlugin,
 	consultationsPanelPlugin,

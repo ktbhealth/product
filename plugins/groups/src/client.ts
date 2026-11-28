@@ -17,6 +17,12 @@ import { GroupsPlatformPage } from "./platform-page.tsx";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const groupsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/groups": "panel_nav_groups",
+		},
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "groups.chrome",
 	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: ["platform.panel"],
@@ -60,6 +66,7 @@ export const plugins: readonly Plugin[] = [
 		// graph into the client bundle.
 		optionalDeps: ["rbac.services", "audit.services"],
 	}),
+	definePlugin({ id: "groups.cqrs", meta: { keywords: ["groups", "cqrs"] } }),
 	groupsChromePlugin,
 	groupsPanelPlugin,
 ];

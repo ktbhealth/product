@@ -28,6 +28,12 @@ export const cronServicesPlugin = definePlugin({
  * in the `portal.sidebar` chrome region under the Concurrency group.
  */
 export const cronChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/cron": "panel_nav_cron",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "cron.chrome",
 	meta: { keywords: ["cron", "ui"] },
 	requiredDeps: ["platform.panel"],

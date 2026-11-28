@@ -49,21 +49,25 @@ export interface RichTextDeleteHook {
 	readonly cleanup: (docId: number, actionId: string) => Effect.Effect<void, unknown>;
 }
 
+/** The registry shape — exported so the element-kind declaration
+ * (./kind.tsx) can type its services record via `import type`. */
+export interface RichTextDeleteHooksShape {
+	/** Register a hook; re-registering the same `id` replaces the
+	 * previous entry (layer rebuilds stay idempotent). */
+	readonly register: (hook: RichTextDeleteHook) => Effect.Effect<void>;
+	/** Referencers grouped by hook id — owners with zero items are
+	 * omitted. Hook failures propagate (a hidden referencer is
+	 * worse than a failed dialog). */
+	readonly usage: (docId: number) => Effect.Effect<readonly RichTextUsageOwner[], unknown>;
+	/** Run every registered hook's `cleanup` for `actionId`,
+	 * sequentially; the first failure aborts so the caller never
+	 * deletes a half-cleaned document. */
+	readonly cleanup: (docId: number, actionId: string) => Effect.Effect<void, unknown>;
+}
+
 export class RichTextDeleteHooks extends Context.Service<
 	RichTextDeleteHooks,
-	{
-		/** Register a hook; re-registering the same `id` replaces the
-		 * previous entry (layer rebuilds stay idempotent). */
-		readonly register: (hook: RichTextDeleteHook) => Effect.Effect<void>;
-		/** Referencers grouped by hook id — owners with zero items are
-		 * omitted. Hook failures propagate (a hidden referencer is
-		 * worse than a failed dialog). */
-		readonly usage: (docId: number) => Effect.Effect<readonly RichTextUsageOwner[], unknown>;
-		/** Run every registered hook's `cleanup` for `actionId`,
-		 * sequentially; the first failure aborts so the caller never
-		 * deletes a half-cleaned document. */
-		readonly cleanup: (docId: number, actionId: string) => Effect.Effect<void, unknown>;
-	}
+	RichTextDeleteHooksShape
 >()("@ktb/rich-text/RichTextDeleteHooks") {}
 
 export const RichTextDeleteHooksLive = Layer.effect(

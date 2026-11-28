@@ -8,6 +8,10 @@ import { Db, makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
 
 import { PatientCreated, PatientDeleted } from "@ktb/patients/api";
+import { patientsServicesPlugin } from "@ktb/patients";
+import { consultationsServicesPlugin } from "@ktb/consultations";
+import { agendaServicesPlugin } from "@ktb/agenda";
+import { makeNotificationIngestions, NotificationIngestions } from "@ktb/notifications-port";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -95,8 +99,21 @@ describe("NotificationsLive", () => {
 	beforeAll(() => {
 		const db = makeDb(makeTestD1(DDL));
 		// Shared infra object → layer memoization → one EventBus instance
-		// for the service subscriptions and the test's dispatches.
-		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus());
+		// for the service subscriptions and the test's dispatches. The
+		// ingestion registry mirrors app-host composition: collected from
+		// the producer plugins' `notificationIngestions` manifests.
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			makeEventBus(),
+			Layer.succeed(
+				NotificationIngestions,
+				makeNotificationIngestions([
+					patientsServicesPlugin,
+					consultationsServicesPlugin,
+					agendaServicesPlugin,
+				]),
+			),
+		);
 		// Commands delegate to the Notifications service — mirror the
 		// plugin's provideMerge composition so they share the one PubSub.
 		const services = Layer.mergeAll(NotificationsQueriesLive, NotificationsCommandsLive).pipe(
@@ -497,10 +514,9 @@ describe("plugins", () => {
 		expect(notificationsTablesPlugin.id).toBe("notifications.tables");
 		expect(notificationsTablesPlugin.tables?.notifications).toBeDefined();
 		expect(notificationsServicesPlugin.id).toBe("notifications.services");
-		expect(notificationsServicesPlugin.requiredDeps).toEqual([
-			"patients.services",
-			"consultations.services",
-		]);
+		// Ingestion is contribution-driven (@ktb/notifications-port) —
+		// no requiredDeps on the producer plugins.
+		expect(notificationsServicesPlugin).not.toHaveProperty("requiredDeps");
 		expect(notificationsServicesPlugin.services).toBeDefined();
 	});
 
@@ -510,6 +526,7 @@ describe("plugins", () => {
 			"notifications.dashboard",
 			"notifications.tables",
 			"notifications.services",
+			"notifications.cqrs",
 			"notifications.routes",
 		]);
 	});

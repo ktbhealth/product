@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
 
+import type { QueueTransport } from "@ktb/queues-port";
 import type { QueueDepth } from "@ktb/server-fns";
 
 /**
@@ -65,15 +66,21 @@ export interface LocalQueueOptions {
 	readonly backoffBaseMs?: number;
 }
 
-/** Returned queue: the Cloudflare QueueProducer slice plus close()
- * (tests use close()+reopen on the same dbPath to simulate restarts)
- * and stats() — the dev-only depth probe behind ServerRuntime's
- * `audioQueueDepth` (prod workerd Queues expose no query API, so the
- * ops console reports them as externally managed). */
-export interface LocalQueue {
+/** Returned queue: a `QueueTransport` (@ktb/queues-port) — the
+ * Cloudflare QueueProducer slice (`send`) plus the dev-only extras:
+ * `stats()` (the depth probe behind ServerRuntime's `audioQueueDepth`
+ * and the /platform queue registry — prod workerd Queues expose no
+ * query API, so the ops console reports them as externally managed),
+ * `close()` (tests use close()+reopen on the same dbPath to simulate
+ * restarts) and `name` (the logical queue name stored per row).
+ * Push-delivered like the workerd binding: no `receive` — the poller
+ * pushes claimed batches to the consumer handler. */
+export interface LocalQueue extends QueueTransport {
 	send(body: unknown): Promise<unknown>;
 	stats(): Promise<QueueDepth>;
 	close(): void;
+	/** Logical queue name rows are stored under (the `queue` option). */
+	readonly name: string;
 }
 
 const DEFAULT_DB_PATH = "./data/queue.db";
@@ -243,10 +250,22 @@ export const makeLocalQueue = (options: LocalQueueOptions): LocalQueue => {
 	const countByStatus = db.prepare(`SELECT status, COUNT(*) AS n FROM jobs GROUP BY status`);
 
 	return {
+		name: queue,
 		send: (body: unknown): Promise<unknown> => {
 			const text = JSON.stringify(body) ?? "null";
 			const t = now();
-			insert.run(queue, text, maxAttempts, t, t, t);
+			// Delayed delivery: jobs-port envelopes may carry `runAt`
+			// (epoch ms) — the poller's `run_at <= now` claim already
+			// implements the hold, so a future runAt just parks the row
+			// until due. Non-envelope bodies (legacy producers) send now.
+			const runAt =
+				typeof body === "object" &&
+				body !== null &&
+				typeof (body as { runAt?: unknown }).runAt === "number" &&
+				Number.isFinite((body as { runAt: number }).runAt)
+					? Math.max(t, (body as { runAt: number }).runAt)
+					: t;
+			insert.run(queue, text, maxAttempts, runAt, t, t);
 			return Promise.resolve({});
 		},
 		stats: (): Promise<QueueDepth> => {

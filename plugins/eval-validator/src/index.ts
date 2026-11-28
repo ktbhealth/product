@@ -26,9 +26,18 @@ import { Permissions } from "@ktb/rbac";
 import { parseJson } from "./core-map.ts";
 import { EvalValidatorPage } from "./platform-page.tsx";
 import { EVAL_RUN_JOB_KIND, executeEvalRun } from "./run-job.ts";
+import { EVAL_RUN_FAIL_SOURCES } from "./status-machine.ts";
 import { evalRun, evalRunRecord, evalRunSample, type EvalRunSample } from "./schema.ts";
 
 export { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
+export {
+	evalRunMachine,
+	EVAL_RUN_FAIL_SOURCES,
+	EVAL_RUN_FINALIZE_SOURCES,
+	EVAL_RUN_START_SOURCES,
+	type EvalRunEvent,
+	type EvalRunStatus,
+} from "./status-machine.ts";
 export {
 	datasetPinFor,
 	runRecordFromRow,
@@ -500,7 +509,12 @@ export const EvalValidatorLive = Layer.effect(
 											error: `eval.run enqueue failed: ${String(error)}`,
 										}),
 									})
-									.where(eq(evalRun.id, run.id)),
+									.where(
+										and(
+											eq(evalRun.id, run.id),
+											inArray(evalRun.status, [...EVAL_RUN_FAIL_SOURCES]),
+										),
+									),
 							).pipe(Effect.andThen(Effect.die(error))),
 						),
 					);
@@ -628,6 +642,9 @@ export const evalValidatorServicesPlugin = definePlugin({
 });
 
 export const evalValidatorChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Evaluation: "panel_group_evaluation" },
+	},
 	id: "eval.validator.chrome",
 	meta: { keywords: ["eval", "validator", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

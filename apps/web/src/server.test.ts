@@ -25,6 +25,8 @@ vi.mock("#/lib/platform.ts", () => ({
 	runScheduledCron: mocks.runScheduledCron,
 }));
 
+import { AUDIO_QUEUE_NAME, THEME_ASSETS_QUEUE_NAME } from "#/lib/queue-names.ts";
+
 import entry, { createServerEntry } from "./server.ts";
 
 describe("worker entry", () => {
@@ -69,23 +71,25 @@ describe("worker entry", () => {
 		expect(mocks.flushTelemetry).toHaveBeenCalled();
 	});
 
-	it("dispatches ktb-theme-assets batches to the theme job handler", async () => {
+	it("dispatches theme-assets queue batches to the theme job handler", async () => {
 		mocks.handleAudioQueueBatch.mockClear();
 		mocks.handleThemeQueueBatch.mockClear();
 		const messages = [{ id: "t1" }];
 		mocks.handleThemeQueueBatch.mockResolvedValue("handled");
 		const waitUntil = vi.fn();
-		await entry.queue({ queue: "ktb-theme-assets", messages } as never, {}, { waitUntil } as never);
+		await entry.queue({ queue: THEME_ASSETS_QUEUE_NAME, messages } as never, {}, {
+			waitUntil,
+		} as never);
 		expect(mocks.handleThemeQueueBatch).toHaveBeenCalledWith(messages);
 		expect(mocks.handleAudioQueueBatch).not.toHaveBeenCalled();
 	});
 
-	it("routes unknown queue bindings to the audio job handler", async () => {
+	it("routes the audio queue name to the audio job handler", async () => {
 		const messages = [{ id: "a1" }];
 		mocks.handleAudioQueueBatch.mockClear();
 		mocks.handleThemeQueueBatch.mockClear();
 		mocks.handleAudioQueueBatch.mockResolvedValue("handled");
-		await entry.queue({ queue: "ktb-transcription", messages } as never, {}, {
+		await entry.queue({ queue: AUDIO_QUEUE_NAME, messages } as never, {}, {
 			waitUntil: vi.fn(),
 		} as never);
 		expect(mocks.handleAudioQueueBatch).toHaveBeenCalledWith(messages);

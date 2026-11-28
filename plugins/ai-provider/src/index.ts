@@ -25,6 +25,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 import { Machines, type MachineCard } from "@ktb/machines";
+import { aiOrchestrationPack } from "@ktb/orchestrator-ai";
 import { Secrets } from "@ktb/vault";
 
 import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
@@ -654,10 +655,20 @@ export const aiEndpointsServicesPlugin = definePlugin({
 	// just skips them.
 	optionalDeps: ["credentials.services", "vault.secrets", "machines.services"],
 	services: Layer.mergeAll(AiEndpointsLive, PlatformLlmLive, PlatformDecisionsLive),
+	// The `ai` orchestration kind (@ktb/orchestrator-ai) resolves its
+	// generative/decision calls through the PlatformLlm/PlatformDecisions
+	// services bound right here — the kinds-only pack registers the kind
+	// into the shared OrchestratorRegistry so admin-authored defs can use
+	// it. Kinds register for every discovered plugin regardless of
+	// enablement (same collect contract as pipeline.transcript's pack).
+	orchestrations: [aiOrchestrationPack],
 });
 
 export const aiEndpointsChromePlugin = definePlugin({
 	id: "ai.provider.chrome",
+	i18nKeys: {
+		groups: { Intelligence: "panel_group_intelligence" },
+	},
 	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

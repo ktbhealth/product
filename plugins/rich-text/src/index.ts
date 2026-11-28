@@ -9,9 +9,8 @@ import { RichTextAdminConsolePage } from "./platform-page.tsx";
 import { richText } from "./schema.ts";
 import { RichTextDeleteHooksLive } from "./delete-hooks.ts";
 import { RichTextElementKindLive } from "./element-kind.ts";
+import { richTextElement } from "./kind.tsx";
 import { RichTexts, RichTextsLive } from "./service.ts";
-import { RichTextView } from "./views/RichTextView.tsx";
-import { RichTextElementEditor } from "./views/RichTextElementEditor.tsx";
 
 /**
  * Rich-text plugin: admin-authored documents stored in the `rich_text`
@@ -50,6 +49,12 @@ export const richTextServicesPlugin = definePlugin({
  * (Content group).
  */
 export const richTextChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/rich-text": "panel_nav_rich_text",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "rich-text.chrome",
 	meta: { keywords: ["rich-text", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
@@ -110,23 +115,17 @@ export const richTextPanelPlugin = definePlugin({
  * Element-kind contribution (P-102): `"rich-text"` is the first
  * citizen of the managed-content registry — `RichTextView` renders
  * resolved payloads platejs-free, `RichTextElementEditor` adapts the
- * Plate editor to the kind's `{ value, onChange }` contract. The
- * server half (resolve/hooks) registers via `RichTextElementKindLive`
- * in rich-text.services — consumers never import this plugin's
- * internals, they go through `ElementKinds`.
+ * Plate editor to the kind's `{ value, onChange }` contract. The kind
+ * is declared once in ./kind.tsx via `defineElementKind`: this manifest
+ * entry IS `richTextElement.manifest` — the same object ./client.ts
+ * carries — and the server half (resolve/hooks) registers via
+ * `RichTextElementKindLive` in rich-text.services. Consumers never
+ * import this plugin's internals, they go through `ElementKinds`.
  */
 export const richTextElementsPlugin = definePlugin({
 	id: "rich-text.elements",
 	meta: { keywords: ["rich-text", "ui"] },
-	elementKinds: [
-		{
-			kind: "rich-text",
-			label: "Rich text",
-			icon: PenLineIcon,
-			renderer: RichTextView,
-			editor: RichTextElementEditor,
-		},
-	],
+	elementKinds: [richTextElement.manifest],
 });
 
 /** Single-concern plugins contributed by this module — the host

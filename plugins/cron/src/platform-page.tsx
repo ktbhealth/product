@@ -1,15 +1,16 @@
 import type { PanelPageContext } from "@ktb/kernel";
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo, ScheduledJobInfo, SchedulableKindInfo } from "@ktb/server-fns";
+import type { ScheduleEntryInfo, SchedulableKindInfo } from "@ktb/server-fns";
 
 import { CronPage } from "./views/CronPage.tsx";
 
 /** Loader payload for /platform/cron — each section is null when its
- * signal cannot be read (the view renders the unavailable state). */
+ * signal cannot be read (the view renders the unavailable state).
+ * `entries` is the unified schedules read model: deploy-time cron
+ * registry jobs + runtime scheduled_jobs rows in one list. */
 export interface CronPageData {
-	readonly jobs: readonly CronJobInfo[] | null;
 	readonly runs: readonly JobRecord[] | null;
-	readonly schedules: readonly ScheduledJobInfo[] | null;
+	readonly entries: readonly ScheduleEntryInfo[] | null;
 	readonly scheduleKinds: readonly string[] | null;
 	readonly schedulableKinds?: readonly SchedulableKindInfo[] | null;
 }
@@ -25,9 +26,8 @@ export function CronPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageC
 	const d = (data ?? {}) as Partial<CronPageData>;
 	return (
 		<CronPage
-			jobs={d.jobs ?? null}
 			runs={d.runs ?? null}
-			schedules={d.schedules ?? null}
+			entries={d.entries ?? null}
 			scheduleKinds={d.scheduleKinds ?? null}
 			schedulableKinds={d.schedulableKinds ?? null}
 			i18n={ctx.i18n}

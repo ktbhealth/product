@@ -41,6 +41,9 @@ export const machinesServicesPlugin = definePlugin({
 
 export const machinesChromePlugin = definePlugin({
 	id: "machines.chrome",
+	i18nKeys: {
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	meta: { keywords: ["machines", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [

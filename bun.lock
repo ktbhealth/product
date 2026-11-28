@@ -42,6 +42,8 @@
         "@ktb/jobs-port": "workspace:*",
         "@ktb/jobs-transport-redis": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
+        "@ktb/orchestrator-ai": "workspace:*",
+        "@ktb/plugin-pipeline-transcript": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -65,7 +67,6 @@
         "@ktb/auth-plugin": "workspace:*",
         "@ktb/consultations": "workspace:*",
         "@ktb/credentials": "workspace:*",
-        "@ktb/cron-port": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/db-sqlite": "workspace:*",
         "@ktb/dev-node": "workspace:*",
@@ -86,19 +87,18 @@
         "@ktb/jobs": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/jobs-transport-redis": "workspace:*",
-        "@ktb/json-schema": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/notifications": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-edge": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patient-portal": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/platform-header": "workspace:*",
         "@ktb/portal": "workspace:*",
-        "@ktb/pubsub-port": "workspace:*",
         "@ktb/pubsub-transport-redis": "workspace:*",
         "@ktb/queues-port": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -204,6 +204,22 @@
         "effect": "4.1.2",
       },
     },
+    "packages/admin-store": {
+      "name": "@ktb/admin-store",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
     "packages/ai-adapter-acp": {
       "name": "@ktb/ai-adapter-acp",
       "dependencies": {
@@ -282,6 +298,7 @@
         "@effect/ai-openai": "4.1.2",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -304,6 +321,7 @@
         "@ktb/captcha": "workspace:*",
         "@ktb/captcha-stub": "workspace:*",
         "@ktb/captcha-turnstile": "workspace:*",
+        "@ktb/cron-port": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/crypto-stub": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -317,36 +335,48 @@
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/flows": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
+        "@ktb/jobs-transport-redis": "workspace:*",
+        "@ktb/json-schema": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/plugin-pipeline": "workspace:*",
         "@ktb/plugin-pipeline-transcript": "workspace:*",
+        "@ktb/pubsub-port": "workspace:*",
+        "@ktb/queues-port": "workspace:*",
         "@ktb/rbac": "workspace:*",
+        "@ktb/scheduler-do": "workspace:*",
+        "@ktb/scheduler-port": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/triggers": "workspace:*",
         "@ktb/vault-keyring": "workspace:*",
         "@ktb/views": "workspace:*",
         "@ktb/wizards": "workspace:*",
+        "@tanstack/react-router": "1.170.46",
         "effect": "4.1.2",
+        "react": "^19.2.0",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20251014.0",
         "@ktb/db-testing": "workspace:*",
+        "@types/react": "^19.2.0",
       },
     },
     "packages/auth": {
       "name": "@ktb/auth",
       "dependencies": {
+        "@ktb/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
       },
       "devDependencies": {
-        "@ktb/db": "workspace:*",
         "@ktb/db-testing": "workspace:*",
-        "drizzle-orm": "^0.45.1",
       },
     },
     "packages/auth-better": {
@@ -501,6 +531,7 @@
     "packages/dev-node": {
       "name": "@ktb/dev-node",
       "dependencies": {
+        "@ktb/queues-port": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "better-sqlite3": "^13.0.3",
       },
@@ -668,6 +699,7 @@
       "name": "@ktb/jobs-port",
       "dependencies": {
         "@ktb/db": "workspace:*",
+        "@ktb/queues-port": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
@@ -693,7 +725,9 @@
     "packages/kernel": {
       "name": "@ktb/kernel",
       "devDependencies": {
+        "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/json-schema": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/orchestrator": "workspace:*",
         "@ktb/pipeline": "workspace:*",
         "@tanstack/virtual-file-routes": "1.162.0",
@@ -701,6 +735,24 @@
         "drizzle-orm": "^0.45.4",
         "effect": "4.1.2",
         "react": "^19.2.0",
+      },
+    },
+    "packages/media": {
+      "name": "@ktb/media",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
+    "packages/notifications-port": {
+      "name": "@ktb/notifications-port",
+      "dependencies": {
+        "@effect-server-utils/cqrs": "0.1.0-beta.10",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "vitest": "5.1.0",
       },
     },
     "packages/observability": {
@@ -739,11 +791,35 @@
         "@ktb/db-testing": "workspace:*",
       },
     },
+    "packages/orchestrator-ai": {
+      "name": "@ktb/orchestrator-ai",
+      "dependencies": {
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "packages/outbox": {
+      "name": "@ktb/outbox",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/db-testing": "workspace:*",
+      },
+    },
     "packages/pipeline": {
       "name": "@ktb/pipeline",
       "dependencies": {
         "@ktb/kernel": "workspace:*",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/orchestrator": "workspace:*",
       },
     },
     "packages/platform": {
@@ -831,6 +907,12 @@
         "effect": "4.1.2",
       },
     },
+    "packages/statemachine": {
+      "name": "@ktb/statemachine",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
     "packages/tenant": {
       "name": "@ktb/tenant",
       "dependencies": {
@@ -888,6 +970,7 @@
         "@ktb/groups": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -984,6 +1067,7 @@
         "@ktb/eval-validator": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/machines": "workspace:*",
+        "@ktb/orchestrator-ai": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -1173,12 +1257,14 @@
         "@ktb/interop": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/statemachine": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/transcription": "workspace:*",
         "@ktb/transcription-webspeech": "workspace:*",
@@ -1303,6 +1389,7 @@
     "plugins/doctors": {
       "name": "@ktb/doctors",
       "dependencies": {
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1401,6 +1488,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/statemachine": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -1433,6 +1521,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/statemachine": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -1480,6 +1569,7 @@
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
@@ -1590,11 +1680,13 @@
     "plugins/image": {
       "name": "@ktb/image",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/views": "workspace:*",
@@ -1646,8 +1738,10 @@
         "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/email": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
@@ -1736,6 +1830,7 @@
     "plugins/layouts": {
       "name": "@ktb/layouts",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/builder": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1867,13 +1962,11 @@
       "name": "@ktb/notifications",
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
-        "@ktb/agenda": "workspace:*",
         "@ktb/authz": "workspace:*",
-        "@ktb/consultations": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
-        "@ktb/patients": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/platform-header": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -1886,8 +1979,11 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@ktb/agenda": "workspace:*",
         "@ktb/auth": "workspace:*",
+        "@ktb/consultations": "workspace:*",
         "@ktb/db-testing": "workspace:*",
+        "@ktb/patients": "workspace:*",
         "@tanstack/react-start": "1.169.5",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1901,6 +1997,7 @@
     "plugins/pages": {
       "name": "@ktb/pages",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/builder": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1934,6 +2031,7 @@
       "name": "@ktb/patient-access",
       "dependencies": {
         "@ktb/audit": "workspace:*",
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -1941,6 +2039,7 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/invites": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -2014,6 +2113,7 @@
         "@ktb/groups": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/notifications-port": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
@@ -2194,6 +2294,7 @@
     "plugins/rich-text": {
       "name": "@ktb/rich-text",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -2222,6 +2323,7 @@
     "plugins/schemas": {
       "name": "@ktb/schemas",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -2251,6 +2353,7 @@
     "plugins/secretaries": {
       "name": "@ktb/secretaries",
       "dependencies": {
+        "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/auth-plugin": "workspace:*",
         "@ktb/authz": "workspace:*",
@@ -2260,6 +2363,7 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/invites": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/outbox": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/portal": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -2362,6 +2466,7 @@
     "plugins/templates": {
       "name": "@ktb/templates",
       "dependencies": {
+        "@ktb/admin-store": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -2426,6 +2531,7 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/media": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/platform-header": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -2517,6 +2623,7 @@
       "name": "@ktb/vault",
       "dependencies": {
         "@ktb/audit": "workspace:*",
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -3037,6 +3144,8 @@
 
     "@juggle/resize-observer": ["@juggle/resize-observer@3.4.0", "", {}, "sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA=="],
 
+    "@ktb/admin-store": ["@ktb/admin-store@workspace:packages/admin-store"],
+
     "@ktb/agenda": ["@ktb/agenda@workspace:plugins/agenda"],
 
     "@ktb/ai-adapter-acp": ["@ktb/ai-adapter-acp@workspace:packages/ai-adapter-acp"],
@@ -3213,11 +3322,15 @@
 
     "@ktb/manager": ["@ktb/manager@workspace:plugins/manager"],
 
+    "@ktb/media": ["@ktb/media@workspace:packages/media"],
+
     "@ktb/middleware": ["@ktb/middleware@workspace:plugins/middleware"],
 
     "@ktb/not-found-page": ["@ktb/not-found-page@workspace:plugins/not-found-page"],
 
     "@ktb/notifications": ["@ktb/notifications@workspace:plugins/notifications"],
+
+    "@ktb/notifications-port": ["@ktb/notifications-port@workspace:packages/notifications-port"],
 
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
 
@@ -3226,6 +3339,10 @@
     "@ktb/observability-otlp": ["@ktb/observability-otlp@workspace:packages/observability-otlp"],
 
     "@ktb/orchestrator": ["@ktb/orchestrator@workspace:packages/orchestrator"],
+
+    "@ktb/orchestrator-ai": ["@ktb/orchestrator-ai@workspace:packages/orchestrator-ai"],
+
+    "@ktb/outbox": ["@ktb/outbox@workspace:packages/outbox"],
 
     "@ktb/pages": ["@ktb/pages@workspace:plugins/pages"],
 
@@ -3280,6 +3397,8 @@
     "@ktb/site": ["@ktb/site@workspace:plugins/site"],
 
     "@ktb/site-builder": ["@ktb/site-builder@workspace:plugins/site-builder"],
+
+    "@ktb/statemachine": ["@ktb/statemachine@workspace:packages/statemachine"],
 
     "@ktb/storage-dataset": ["@ktb/storage-dataset@workspace:plugins/storage-dataset"],
 

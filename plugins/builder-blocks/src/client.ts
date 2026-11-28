@@ -18,6 +18,9 @@ import { BUILDER_BLOCK_KINDS } from "./kinds.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const builderBlocksChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "builder-blocks.chrome",
 	meta: { keywords: ["site", "ui"] },
 	requiredDeps: ["platform.panel"],

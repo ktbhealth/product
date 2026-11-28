@@ -1,19 +1,15 @@
 import { Option } from "effect";
 
 import { decryptText } from "@ktb/crypto/aead";
-import { decryptRow, encryptRow } from "@ktb/crypto/cipher";
+import { decryptRow } from "@ktb/crypto/cipher";
 import { contentHash } from "@ktb/crypto/digest";
 import type { KeyringService } from "@ktb/crypto/keyring";
+import { isEnvelope, makeEntityZk } from "@ktb/crypto/zk";
+import type { GrantInput } from "@ktb/crypto/zk";
 import type { Anamnesis, AnamnesisExtractor } from "@ktb/anamnesis";
 import { HeuristicExtractor } from "@ktb/anamnesis";
 import { decodeAnamnesisOption } from "@ktb/anamnesis/schema";
-import {
-	isEnvelope,
-	type DekEnvelopesApi,
-	type GrantInput,
-	type PatientZkApi,
-	PATIENT_ENTITY_TYPE,
-} from "@ktb/patients/zk";
+import { type DekEnvelopesApi, type PatientZkApi, PATIENT_ENTITY_TYPE } from "@ktb/patients/zk";
 
 import { consultationCipher } from "./cipher.ts";
 
@@ -26,9 +22,13 @@ import { consultationCipher } from "./cipher.ts";
  * wrapping, encryption, decryption and version signing happen in the
  * browser.
  *
- * The ZK api surface is deliberately identical to `PatientZkApi` —
+ * The shared machinery lives in `@ktb/crypto/zk` (`makeEntityZk`). The
+ * ZK api surface is deliberately identical to `PatientZkApi` —
  * `entityType` travels on every call — so both plugins wire the same
- * vault server fns.
+ * vault server fns. `decryptConsultations` stays entity-specific: it
+ * additionally unwraps the joined `patientName` envelopes under the
+ * PATIENT entity DEK — a second entity type the single-entity kit
+ * intentionally does not absorb.
  */
 export const CONSULTATION_ENTITY_TYPE = consultationCipher.entity;
 
@@ -82,6 +82,18 @@ const specKeys = (row: Record<string, unknown>): Record<string, unknown> => {
 	}
 	return out;
 };
+
+/**
+ * The client-writable ciphered columns: `transcript` and the serialized
+ * anamnesis on save/attach. The other spec fields (`review`,
+ * `serverTranscript`, `correctedTranscript`) are server-written and
+ * never client-encrypted.
+ */
+const consultationZk = makeEntityZk({
+	entityType: CONSULTATION_ENTITY_TYPE,
+	cipher: consultationCipher,
+	fields: ["transcript", "anamnesis"],
+});
 
 /**
  * Decrypt every ciphered row: one batched envelope lookup for the
@@ -151,7 +163,11 @@ export async function decryptConsultations<R extends { readonly id: number }>(
 					const dek = await keyring.unwrapKey(envelope);
 					next = {
 						...next,
-						...(await decryptRow(consultationCipher, dek, specKeys(next))),
+						...(await decryptRow(
+							consultationCipher,
+							dek,
+							specKeys(next as unknown as Record<string, unknown>),
+						)),
 					};
 				} catch {
 					// Undecryptable row stays ciphered → locked rendering.
@@ -206,7 +222,7 @@ export async function encryptConsultationDraft(
 	dek: CryptoKey,
 	draft: { readonly transcript: string; readonly anamnesis: Anamnesis },
 ): Promise<{ readonly transcript: string; readonly anamnesis: string }> {
-	const encrypted = await encryptRow(consultationCipher, dek, {
+	const encrypted = await consultationZk.encryptFields(dek, {
 		transcript: draft.transcript,
 		anamnesis: draft.anamnesis,
 	});
@@ -219,7 +235,7 @@ export async function encryptConsultationDraft(
 /** Encrypt only the anamnesis column — the attach/update path, which
  * never rewrites the stored transcript. */
 export async function encryptAnamnesis(dek: CryptoKey, anamnesis: Anamnesis): Promise<string> {
-	return (await encryptRow(consultationCipher, dek, { anamnesis })).anamnesis as string;
+	return (await consultationZk.encryptFields(dek, { anamnesis })).anamnesis as string;
 }
 
 /**
@@ -228,41 +244,18 @@ export async function encryptAnamnesis(dek: CryptoKey, anamnesis: Anamnesis): Pr
  * comes from `mintDek`, the rest from `wrapKeyFor`) — same topology
  * as newPatientDek (T-144).
  */
-export async function newConsultationDek(
+export const newConsultationDek = (
 	keyring: KeyringService,
 	api: ConsultationZkApi,
-): Promise<{ readonly dek: CryptoKey; readonly grants: GrantInput[] }> {
-	const { wrapPublicKey } = await keyring.deviceKeys();
-	const devices = await api.devices();
-	const approved = devices.filter((d) => d.status === "approved");
-	const readers = new Set<string>([wrapPublicKey, ...approved.map((d) => d.wrapPublicKey)]);
-	const { dek, envelope } = await keyring.mintDek(wrapPublicKey);
-	const grants: GrantInput[] = [];
-	for (const pubkey of readers) {
-		grants.push({
-			readerKind: "device",
-			readerPubkey: pubkey,
-			wrappedDek: pubkey === wrapPublicKey ? envelope : await keyring.wrapKeyFor(dek, pubkey),
-		});
-	}
-	return { dek, grants };
-}
+): Promise<{ readonly dek: CryptoKey; readonly grants: GrantInput[] }> =>
+	consultationZk.newDek(keyring, api);
 
 /** The caller's DEK for an existing consultation — null when not a reader. */
-export async function consultationDek(
+export const consultationDek = (
 	keyring: KeyringService,
 	api: ConsultationZkApi,
 	consultationId: number,
-): Promise<CryptoKey | null> {
-	const { wrapPublicKey } = await keyring.deviceKeys();
-	const envelopes = await api.dekEnvelopes({
-		entityType: CONSULTATION_ENTITY_TYPE,
-		entityIds: [consultationId],
-		wrapPublicKey,
-	});
-	const envelope = envelopes[String(consultationId)];
-	return envelope === undefined ? null : keyring.unwrapKey(envelope);
-}
+): Promise<CryptoKey | null> => consultationZk.dekFor(keyring, api, consultationId);
 
 /**
  * Client-signed version entry (T-145): the canonical-JSON content hash

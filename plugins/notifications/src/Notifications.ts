@@ -7,29 +7,24 @@ import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { Db, type DbClient } from "@ktb/db";
 import { requirePrincipalUser, type Forbidden } from "@ktb/authz";
-import { Event, EventBus } from "@effect-server-utils/cqrs";
+import { EventBus } from "@effect-server-utils/cqrs";
 import { getLocale } from "@ktb/server-fns";
-import { PatientCreated, PatientDeleted } from "@ktb/patients/api";
-import { ConsultationCreated } from "@ktb/consultations/api";
-import { AppointmentReminderDue } from "@ktb/agenda/api";
+import {
+	NotificationIngestions,
+	type NotificationDraft,
+	type NotificationIngestContext,
+} from "@ktb/notifications-port";
 // Plain db read (clinic_keys via tenantZkOrClosed) — no service edge on
 // vault.services: plugin deps order layers, and nothing here consumes
 // the Vault service.
 import { tenantZkOrClosed } from "@ktb/vault";
 
 import type { ConsoleNotification } from "./context.ts";
-import { notificationMessages } from "./i18n.ts";
 import { notifications } from "@ktb/db/schema";
 
-export type NotificationRow = typeof notifications.$inferSelect;
+export type { NotificationDraft } from "@ktb/notifications-port";
 
-export interface NotificationDraft {
-	readonly userId: string;
-	readonly kind: string;
-	readonly title: string;
-	readonly body?: string;
-	readonly payload?: string;
-}
+export type NotificationRow = typeof notifications.$inferSelect;
 
 // ---------- repo (plain async fns; authz lives in the service/handlers) ----------
 
@@ -134,19 +129,6 @@ export class Notifications extends Context.Service<
 
 // ---------- event ingestion ----------
 
-/** One entry per consumed domain event — adding a future event is a
- * single map entry here (def + projection to a notification draft).
- * The projection receives the tenant's resolved zk flag: under ZK the
- * server cannot read record content, so drafts must be metadata-only
- * (T-149) — no names, no record fields in title/body/payload. Rows are
- * metadata-only BY CONSTRUCTION under ZK, not ciphered: there is no PHI
- * left for an entity cipher to protect, and per-user notifications get
- * no DEK-grant ceremony. */
-const mapEvent = <E extends Event.Any>(
-	def: E,
-	project: (event: Event.Type<E>, zk: boolean) => NotificationDraft,
-) => ({ def, project }) as const;
-
 /** Titles are persisted in the actor's UI locale at ingest time; the
  * runtime may be uninitialized in non-request contexts (tests, queue
  * consumers), so fall back to the base locale. */
@@ -158,63 +140,23 @@ const ingestLocale = () => {
 	}
 };
 
-const NOTIFICATION_MAP = [
-	mapEvent(PatientCreated, (e, zk) => {
-		const t = notificationMessages(ingestLocale());
-		return {
-			userId: e.ownerId,
-			kind: "patient.created",
-			title: t.titles.patientCreated,
-			// Under ZK `e.name` is ciphertext the server cannot read —
-			// drop the body entirely rather than persist it.
-			body: zk ? undefined : e.name,
-		};
-	}),
-	mapEvent(PatientDeleted, (e) => {
-		const t = notificationMessages(ingestLocale());
-		return {
-			userId: e.ownerId,
-			kind: "patient.deleted",
-			title: t.titles.patientDeleted,
-		};
-	}),
-	mapEvent(ConsultationCreated, (e, zk) => {
-		const t = notificationMessages(ingestLocale());
-		return {
-			userId: e.userId,
-			kind: "consultation.created",
-			title: t.titles.consultationCreated,
-			body: zk ? undefined : e.source,
-		};
-	}),
-	mapEvent(AppointmentReminderDue, (e, zk) => {
-		const locale = ingestLocale();
-		const t = notificationMessages(locale);
-		const time = e.startsAt.toLocaleTimeString(locale, {
-			hour: "2-digit",
-			minute: "2-digit",
-		});
-		return {
-			userId: e.ownerId,
-			kind: "appointment.reminder",
-			title: t.titles.appointmentReminder,
-			// startsAt is a plaintext scheduling column — metadata the
-			// server may read under ZK. patientName is the stored `v1.`
-			// envelope there, so the ZK body carries only the time.
-			body:
-				zk || e.patientName === null
-					? t.bodies.appointmentReminderZk(time)
-					: t.bodies.appointmentReminder(e.patientName, time),
-			payload: JSON.stringify({ appointmentId: e.id }),
-		};
-	}),
-];
-
 export const NotificationsLive = Layer.effect(
 	Notifications,
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const events = yield* EventBus;
+		// Producer-declared `{ event, project }` entries collected by the
+		// app host from every plugin's `notificationIngestions` manifest
+		// field (@ktb/notifications-port) — this plugin subscribes them
+		// all, so adding a projected event is a manifest entry on the
+		// OWNING plugin, not an edit here. The projection receives the
+		// tenant's resolved zk flag: under ZK the server cannot read
+		// record content, so drafts must be metadata-only (T-149) — no
+		// names, no record fields in title/body/payload. Rows are
+		// metadata-only BY CONSTRUCTION under ZK, not ciphered: there is
+		// no PHI left for an entity cipher to protect, and per-user
+		// notifications get no DEK-grant ceremony.
+		const { ingestions } = yield* NotificationIngestions;
 		const live = yield* PubSub.unbounded<LiveNotification>();
 
 		/** Persist then fan out — failures are logged and isolated so a bad
@@ -237,7 +179,7 @@ export const NotificationsLive = Layer.effect(
 		// subscribeAfterCommit: runs after the publisher's boundary with
 		// failure isolated — the right contract for a DB write that must
 		// not roll back (or be rolled back by) the producing command.
-		for (const { def, project } of NOTIFICATION_MAP) {
+		for (const { event: def, project } of ingestions) {
 			yield* events.subscribeAfterCommit(def, (event) =>
 				Effect.gen(function* () {
 					// Every consumed event carries an optional tenantId; the
@@ -245,14 +187,8 @@ export const NotificationsLive = Layer.effect(
 					// metadata-only copy.
 					const tenantId = (event as { readonly tenantId?: number | null }).tenantId ?? null;
 					const zk = yield* Effect.promise(() => tenantZkOrClosed(db, tenantId));
-					yield* ingest(
-						// The map is heterogeneous by design; each entry's projector
-						// was typed against its own event at the mapEvent call site.
-						(project as (e: Event.Type<typeof def>, zk: boolean) => NotificationDraft)(
-							event as Event.Type<typeof def>,
-							zk,
-						),
-					);
+					const ctx: NotificationIngestContext = { zk, locale: ingestLocale() };
+					yield* ingest(project(event, ctx));
 				}),
 			);
 		}

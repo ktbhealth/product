@@ -4,7 +4,8 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./client": "./src/client.ts"
+		"./client": "./src/client.ts",
+		"./server": "./src/server.ts"
 	},
 	"scripts": {
 		"mutate": "stryker run"
@@ -26,6 +27,7 @@
 		"@ktb/captcha": "workspace:*",
 		"@ktb/captcha-stub": "workspace:*",
 		"@ktb/captcha-turnstile": "workspace:*",
+		"@ktb/cron-port": "workspace:*",
 		"@ktb/crypto": "workspace:*",
 		"@ktb/crypto-stub": "workspace:*",
 		"@ktb/db": "workspace:*",
@@ -39,24 +41,36 @@
 		"@ktb/eval-consultation": "workspace:*",
 		"@ktb/flows": "workspace:*",
 		"@ktb/jobs-port": "workspace:*",
+		"@ktb/jobs-transport-redis": "workspace:*",
+		"@ktb/json-schema": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/notifications-port": "workspace:*",
 		"@ktb/observability": "workspace:*",
 		"@ktb/observability-otlp": "workspace:*",
 		"@ktb/orchestrator": "workspace:*",
+		"@ktb/outbox": "workspace:*",
 		"@ktb/pipeline": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/plugin-pipeline": "workspace:*",
 		"@ktb/plugin-pipeline-transcript": "workspace:*",
+		"@ktb/pubsub-port": "workspace:*",
+		"@ktb/queues-port": "workspace:*",
 		"@ktb/rbac": "workspace:*",
+		"@ktb/scheduler-do": "workspace:*",
+		"@ktb/scheduler-port": "workspace:*",
+		"@ktb/server-fns": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktb/triggers": "workspace:*",
 		"@ktb/vault-keyring": "workspace:*",
 		"@ktb/views": "workspace:*",
 		"@ktb/wizards": "workspace:*",
-		"effect": "4.1.2"
+		"@tanstack/react-router": "1.170.46",
+		"effect": "4.1.2",
+		"react": "^19.2.0"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20251014.0",
-		"@ktb/db-testing": "workspace:*"
+		"@ktb/db-testing": "workspace:*",
+		"@types/react": "^19.2.0"
 	}
 }

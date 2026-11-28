@@ -14,11 +14,18 @@ import { PatientsDashboardStats } from "./views/PatientsDashboard.tsx";
  * client-consumed contributions are carried: chrome regions (console
  * sidebar) and panel pages. `panel.pages` keep id/path/component only — the
  * loader Effect runs server-side and stays in ./index.ts.
- * tables/services/routes degrade to markers. Dep ids are literals:
+ * tables/services/cqrs/routes degrade to markers. Dep ids are literals:
  * importing ./index.ts would pull the server graph into the client
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const patientsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/patients": "nav_patients",
+			"/platform/patients": "nav_patients",
+		},
+		groups: { "Domain data": "panel_group_domain_data" },
+	},
 	id: "patients.chrome",
 	meta: { keywords: ["patients", "ui"] },
 	requiredDeps: ["platform.panel"],
@@ -345,6 +352,7 @@ export const plugins: readonly Plugin[] = [
 		// Mirrors patientsServicesPlugin.optionalDeps (server index.ts).
 		optionalDeps: ["audit.services", "vault.services", "rbac.services"],
 	}),
+	definePlugin({ id: "patients.cqrs", meta: { keywords: ["patients", "cqrs"] } }),
 	definePlugin({ id: "patients.routes", meta: { keywords: ["patients", "routes"] } }),
 	patientsChromePlugin,
 	patientsPanelPlugin,

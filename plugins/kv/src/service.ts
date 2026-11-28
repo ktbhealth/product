@@ -9,7 +9,7 @@ import { and, asc, eq, gt, isNotNull, isNull, lte, or, sql, type SQL } from "dri
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { kvOpDuration, kvOps, kvRows, recordSafe, tagged } from "@ktb/observability";
-import { accessibleTenantIds, Tenant, tenantScopeId } from "@ktb/tenant";
+import { tenantIdAccessible, Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { kvEntries, type KvEntryRow } from "./schema.ts";
 
@@ -35,7 +35,7 @@ import { kvEntries, type KvEntryRow } from "./schema.ts";
  *
  * Fencing mirrors the patients plugin (P-053-B): a non-NULL resolved
  * `tenantId` must be in the caller's accessible tenant set
- * (`Tenant`/`TenantAccess` — `accessibleTenantIds`), otherwise the
+ * (`Tenant`/`TenantAccess` — `tenantIdAccessible`), otherwise the
  * call fails `Forbidden`; a personal-scope `ownerId` that differs from
  * the bound principal's userId also fails `Forbidden` (system flows
  * with no principal are trusted — plugins are the authz boundary).
@@ -327,8 +327,7 @@ const resolveScope = (scope?: KvScope): Effect.Effect<ResolvedScope, KvValidatio
 const assertScope = (scope: ResolvedScope): Effect.Effect<void, Forbidden> =>
 	Effect.gen(function* () {
 		if (scope.tenantId !== null) {
-			const ids = yield* accessibleTenantIds;
-			if (!ids.some((id) => Number(id) === scope.tenantId)) {
+			if (!(yield* tenantIdAccessible(scope.tenantId))) {
 				return yield* Effect.fail(new Forbidden({ path: "kv.scope" }));
 			}
 			return;

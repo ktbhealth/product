@@ -410,7 +410,12 @@ describe("plugins", () => {
 	});
 
 	it("exports the discovery plugins array", () => {
-		expect(plugins.map((p) => p.id)).toEqual(["users.services", "users.chrome", "users.panel"]);
+		expect(plugins.map((p) => p.id)).toEqual([
+			"users.services",
+			"users.cqrs",
+			"users.chrome",
+			"users.panel",
+		]);
 	});
 });
 

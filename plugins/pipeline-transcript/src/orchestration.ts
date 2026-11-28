@@ -1,19 +1,15 @@
-import * as Effect from "effect/Effect";
+import type { JsonObject } from "effect/Schema";
 
 import {
 	makeOrchestratorRegistry,
 	OrchestratorRegistryLive,
-	type JsonObject,
-	type KindResult,
-	type NodeContext,
 	type OrchestrationDef,
-	type OrchestrationEvent,
 	type OrchestrationKind,
 	type OrchestrationPack,
 	type OrchestratorRegistryService,
 	type RunOptions,
 } from "@ktb/orchestrator";
-import type { PipelineStage, StageContext, StageResult } from "@ktb/pipeline";
+import { pipelinePackToOrchestration } from "@ktb/pipeline";
 
 import {
 	CONSULTATION_TRANSCRIPT_PIPELINE,
@@ -25,38 +21,43 @@ import {
 /**
  * orchestration.ts — `consultation-transcript` expressed as an
  * {@link OrchestrationDef} on the @ktb/orchestrator event engine
- * (P-120 phase 5, first cut).
- *
- * PARITY-BY-CONSTRUCTION: the nodes do NOT re-implement the cleanup
- * chain — each kind is a thin adapter that invokes the SAME
- * {@link PipelineStage} the `transcriptPipelinePack` registers
- * (asr-gate → llm-cleanup → env-cleanup), so port probing, degrade-to-
+ * (P-120 phase 5). The def+kinds are DERIVED, not hand-written:
+ * {@link pipelinePackToOrchestration} (@ktb/pipeline) is the canonical
+ * PipelineDef → OrchestrationDef translation, so the orchestration
+ * invokes the SAME {@link PipelineStage} implementations the
+ * `transcriptPipelinePack` registers — port probing, degrade-to-
  * disabled paths, RunRecord audit and the env-corrector fallback are
- * literally the same code on both engines. What the orchestration adds
- * is the event wiring the editor/durable runner will consume:
+ * literally the same code on both engines, and there is no adapter
+ * layer here to drift.
  *
- *   input | start ──▶ asr-gate ──emit──▶ transcript.asr.gated
+ * Derived wiring (see @ktb/pipeline bridge.ts for the full contract):
+ *
+ *   input | start ──▶ asr-gate ──emit──▶ consultation-transcript.asr-gate.done
  *                                        │
- *                          llm-cleanup ◀─┘ ──emit──▶ transcript.llm.cleaned
- *                                                     │
- *                                          env-cleanup ◀─┘ ──emit──▶ transcript.env.cleaned
- *                                                                    │
- *                                              (queue drains → workflow.done)
+ *                          llm-cleanup ◀─┘ ──emit──▶ consultation-transcript.llm-cleanup.done
+ *                                                          │
+ *                                               env-cleanup ◀─┘ ──emit──▶ consultation-transcript.env-cleanup.done
+ *                                                                     │
+ *                                                 (queue drains → workflow.done)
  *
- * State parity: each kind returns the stage's `StageResult.state`
- * verbatim, so the run state accumulates the same `gate`/`cleanup`
- * fragments the pipeline registry produces, and `KindResult.output`
- * lands at `state[node.id]` with node ids equal to the stage ids —
- * the same aliasing `state[stageId]` the pipeline runner applies.
+ * State parity: each adapted kind returns the stage's `StageResult`
+ * with the pipeline's aliasing (`state[stageId] = output ?? state ??
+ * {}` — node ids equal stage ids), so the run state accumulates the
+ * same `gate`/`cleanup` fragments and per-stage aliases the pipeline
+ * registry produces.
  *
- * Failure parity: a stage that fails typed is the pipeline's
- * `onError: "skip"` — the kind catches it, logs, contributes no
- * state, and STILL emits the follow-up event so the chain continues
- * ungated exactly like the sequential pack. Defects propagate
- * identically on both engines (neither runner catches them). The
- * residual divergence: the node trace records "ok" for a degraded
- * stage where the pipeline trace says "skipped" — the disabled state
- * fragments are the honest observable either way.
+ * Failure parity: every def entry is `onError: "skip"`, which the
+ * adapter enforces INSIDE the kind — a typed stage failure logs,
+ * contributes no state, and STILL emits the follow-up event so the
+ * chain continues ungated exactly like the sequential pack (a failed
+ * orchestrator node would emit nothing and stall the chain). Defects
+ * propagate identically on both engines. Residual divergences are the
+ * documented bridge edges: the node trace records "ok" for a degraded
+ * stage where the pipeline trace says "skipped", `onNodeError` is
+ * "halt" (moot — skip-kind failures never reach node level), and the
+ * env-cleanup terminal event carries only the input + its own state
+ * fragment (the old hand-rolled payload also echoed the upstream
+ * `cleanup` fragment — cosmetic, the run state is authoritative).
  *
  * KNOWN GAPS (phase-5 honest edges):
  * - `envCorrect` is a FUNCTION injected via run config. Orchestration
@@ -70,227 +71,59 @@ import {
  *   never from serialized config. `transcriptOrchestrationConfig`
  *   keeps working for in-memory callers as the config-function
  *   fallback.
- * - The builtin `ai` kind is still a stub; llm-cleanup deliberately
- *   keeps using the stage's PlatformLlm port rather than the stub.
+ * - The `ai` orchestration kind lives in @ktb/orchestrator-ai (contributed
+ *   by ai.provider.services' pack); llm-cleanup deliberately keeps using
+ *   the stage's PlatformLlm port rather than routing through it.
  */
-
-/** The wire input for downstream nodes, carried on every emitted
- * event payload under `input` (the stage contract needs the ORIGINAL
- * pipeline input at every stage, not just the triggering event's
- * fragment). For the entry nodes (`input`/`start`) the payload IS the
- * wire input — `TranscriptPipelineInput` has no `input` key, so the
- * `??` fallback is unambiguous. */
-const wireInputOf = (event: OrchestrationEvent): unknown =>
-	(event.payload as Record<string, unknown>)["input"] ?? event.payload;
-
-/** Build the StageContext a pack stage expects from the node context:
- * `input` is the wire input recovered from the event, `state`/`config`
- * pass through (the orchestrator's merged config IS the pipeline's
- * run config), and `params` plays the role of the def entry's
- * `stageConfig`. */
-const asStageContext = (ctx: NodeContext, input: unknown): StageContext => ({
-	input,
-	state: ctx.state,
-	config: ctx.config as Readonly<Record<string, unknown>>,
-	stageConfig: ctx.params as Readonly<Record<string, unknown>>,
-});
-
-/** Invoke a pack stage with pipeline-`onError: "skip"` semantics: a
- * typed failure logs and yields null (no state contribution) instead
- * of failing the node — defects are NOT caught, matching the pipeline
- * runner which also lets them escape. */
-const runPackStage = (
-	stage: PipelineStage,
-	ctx: NodeContext,
-	input: unknown,
-): Effect.Effect<StageResult | null, never, unknown> =>
-	stage.run(asStageContext(ctx, input)).pipe(
-		/* v8 ignore next -- defensive parity arm: every pack stage
-		 * degrades internally (catch→disabled state), so a typed stage
-		 * failure is unreachable today; kept so a future stage failing
-		 * typed still gets the pipeline's onError:"skip" semantics. */
-		Effect.catch((error) =>
-			Effect.logWarning("transcript orchestration stage failed; continuing", {
-				stage: stage.id,
-				error: String(error),
-			}).pipe(Effect.as(null)),
-		),
-	);
-
-/** StageResult → KindResult with the pipeline's state aliasing: the
- * stage's `state` fragment merges into run state AND is stored at
- * `state[node.id]` (node ids equal stage ids). A skipped (null) stage
- * contributes nothing — `state[node.id]` stays absent, exactly like a
- * pipeline skip. */
-const toKindResult = (result: StageResult | null): KindResult => {
-	/* v8 ignore next -- result is null only via runPackStage's ignored
-	 * defensive catch; the pack stages never fail typed today. */
-	if (result === null) return {};
-	return {
-		state: result.state as JsonObject | undefined,
-		output: result.output ?? result.state ?? {},
-	};
-};
-
-/** Uniform follow-up payload: the wire input forwarded plus whatever
- * state fragment the stage produced (`{gate: …}` / `{cleanup: …}`)
- * spread at top level — the shape `eventSchemas` documents. */
-const stageEventPayload = (input: unknown, result: StageResult | null): JsonObject => {
-	/* v8 ignore next -- result?.state is nullish only on the ignored
-	 * defensive skip path; the emitting kinds (asr-gate, llm-cleanup)
-	 * always return a state fragment. */
-	const state = result?.state ?? {};
-	return {
-		input: input as JsonObject,
-		...(state as Record<string, unknown>),
-	} as JsonObject;
-};
-
-/** Terminal event payload for env-cleanup: forwards the input and the
- * FINAL `cleanup` fragment — the env stage's own result when it
- * corrected, otherwise whatever llm-cleanup left in run state. */
-const envEventPayload = (
-	input: unknown,
-	result: StageResult | null,
-	ctx: NodeContext,
-): JsonObject => {
-	const cleanup = result?.state?.["cleanup"] ?? ctx.state["cleanup"];
-	const payload: Record<string, unknown> = { input: input as JsonObject };
-	/* v8 ignore next -- the shipped def always runs llm-cleanup
-	 * upstream, which writes state.cleanup on every path; the arm is
-	 * defensive for custom defs reusing this kind without it. */
-	if (cleanup !== undefined) {
-		payload["cleanup"] = cleanup as JsonObject;
-	}
-	return payload as JsonObject;
-};
-
-interface StageKindSpec {
-	readonly kind: string;
-	readonly stage: PipelineStage;
-	readonly emit: {
-		readonly type: string;
-		readonly payload: (input: unknown, result: StageResult | null, ctx: NodeContext) => JsonObject;
-	};
-}
-
-/** Adapt a pack {@link PipelineStage} into an {@link OrchestrationKind}:
- * recover the wire input, run the stage, merge/alias its result like
- * the pipeline runner, and emit the follow-up event — even when the
- * stage skipped, so downstream nodes fire exactly as the sequential
- * pack's later stages would. */
-const stageKind = (spec: StageKindSpec): OrchestrationKind => ({
-	id: spec.kind,
-	run: (ctx) =>
-		Effect.gen(function* () {
-			const input = wireInputOf(ctx.event);
-			const result = yield* runPackStage(spec.stage, ctx, input);
-			const kindResult = toKindResult(result);
-			return {
-				...kindResult,
-				events: [
-					{
-						type: spec.emit.type,
-						payload: spec.emit.payload(input, result, ctx),
-					},
-				],
-			};
-		}),
-});
-
-/** The stage implementations — read straight off the pack so the two
- * engines can never drift (register() already proved every def entry
- * resolves). */
-const asrGateStage = transcriptPipelinePack.stages["asr-gate"];
-const llmCleanupStage = transcriptPipelinePack.stages["llm-cleanup"];
-const envCleanupStage = transcriptPipelinePack.stages["env-cleanup"];
-
-/** Kind ids are namespaced `transcript.*` — they are transcript-domain
- * handlers (fixed event types, fixed stage), not generic stage
- * runners. */
-export const transcriptOrchestrationKinds: readonly OrchestrationKind[] = [
-	stageKind({
-		kind: "transcript.asr-gate",
-		stage: asrGateStage,
-		emit: { type: "transcript.asr.gated", payload: stageEventPayload },
-	}),
-	stageKind({
-		kind: "transcript.llm-cleanup",
-		stage: llmCleanupStage,
-		emit: { type: "transcript.llm.cleaned", payload: stageEventPayload },
-	}),
-	stageKind({
-		kind: "transcript.env-cleanup",
-		stage: envCleanupStage,
-		emit: { type: "transcript.env.cleaned", payload: envEventPayload },
-	}),
-];
-
-/** The `consultation-transcript` orchestration def — same id as the
- * pipeline pack so cutover keeps the caller-facing name. `onNodeError:
- * "continue"` mirrors the pack's never-fail contract: a node failure
- * records `node.failed` and the run still ends "done" (the chain
- * stalls only in paths the stages' internal degrade already covers).
- * Nodes subscribe to `input` (what `runOrchestration` synthesizes for
- * a plain-object input) and `start` (bare `run(id)`), matching how the
- * pipeline accepts its input argument unconditionally. */
-export const transcriptOrchestrationDef: OrchestrationDef = {
-	id: CONSULTATION_TRANSCRIPT_PIPELINE,
-	version: "1",
-	description:
-		"Consultation transcript cleanup as an event orchestration — ASR-error gating, platform-endpoint LLM correction, env-provider fallback — the OrchestrationDef twin of the consultation-transcript PipelinePack.",
-	onNodeError: "continue",
-	eventSchemas: [
-		{
-			type: "input",
-			fields: { text: "string", segments: "array", taskId: "string" },
-		},
-		{
-			type: "transcript.asr.gated",
-			fields: { input: "object", gate: "object" },
-		},
-		{
-			type: "transcript.llm.cleaned",
-			fields: { input: "object", cleanup: "object" },
-		},
-		{
-			type: "transcript.env.cleaned",
-			fields: { input: "object", cleanup: "object" },
-		},
-	],
-	nodes: [
-		{
-			id: "asr-gate",
-			kind: "transcript.asr-gate",
-			on: ["input", "start"],
-			emits: ["transcript.asr.gated"],
-		},
-		{
-			id: "llm-cleanup",
-			kind: "transcript.llm-cleanup",
-			on: ["transcript.asr.gated"],
-			emits: ["transcript.llm.cleaned"],
-		},
-		{
-			id: "env-cleanup",
-			kind: "transcript.env-cleanup",
-			on: ["transcript.llm.cleaned"],
-			emits: ["transcript.env.cleaned"],
-		},
-	],
-};
 
 /** The orchestration analog of a {@link PipelinePack}: def (data) +
  * kind handlers (code) — the shared {@link OrchestrationPack} shape
  * the plugin manifest's `orchestrations` field carries (PluginBase,
- * @ktb/kernel). The alias keeps the transcript-local name for the
- * tests/docs that reference it. */
+ * @ktb/kernel). Derived by {@link pipelinePackToOrchestration} from
+ * `transcriptPipelinePack`, so def id/version/description and the
+ * stage order can never drift from the pipeline def. */
 export type TranscriptOrchestrationPack = OrchestrationPack;
 
-export const transcriptOrchestrationPack: TranscriptOrchestrationPack = {
-	def: transcriptOrchestrationDef,
-	kinds: transcriptOrchestrationKinds,
+/** Event-schema documentation layered onto the derived def — the
+ * bridge produces the wiring; the wire shapes are transcript-domain
+ * knowledge that stays here. Payloads follow the bridge convention:
+ * every chained event carries the original pipeline input under
+ * `input` plus the stage's state fragment (`gate`/`cleanup`) spread at
+ * top level. */
+const TRANSCRIPT_EVENT_SCHEMAS = [
+	{
+		type: "input",
+		fields: { text: "string", segments: "array", taskId: "string" },
+	},
+	{
+		type: "consultation-transcript.asr-gate.done",
+		fields: { input: "object", gate: "object" },
+	},
+	{
+		type: "consultation-transcript.llm-cleanup.done",
+		fields: { input: "object", cleanup: "object" },
+	},
+	{
+		type: "consultation-transcript.env-cleanup.done",
+		fields: { input: "object", cleanup: "object" },
+	},
+] as const;
+
+const derivedPack = pipelinePackToOrchestration(transcriptPipelinePack);
+const transcriptDef: OrchestrationDef = {
+	...derivedPack.def,
+	eventSchemas: [...TRANSCRIPT_EVENT_SCHEMAS],
 };
+
+export const transcriptOrchestrationPack: TranscriptOrchestrationPack = {
+	...derivedPack,
+	def: transcriptDef,
+};
+
+export const transcriptOrchestrationDef: OrchestrationDef = transcriptDef;
+
+export const transcriptOrchestrationKinds: readonly OrchestrationKind[] =
+	transcriptOrchestrationPack.kinds;
 
 /** Standalone registry with the transcript kinds pre-registered and
  * the def registered — the `makePipelineRegistry` + `register(pack)`

@@ -7,7 +7,7 @@ import * as Option from "effect/Option";
 import * as Clock from "effect/Clock";
 import * as Exit from "effect/Exit";
 import type { Json } from "effect/Schema";
-import { and, eq, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { EventBus } from "@effect-server-utils/cqrs";
 
@@ -21,7 +21,7 @@ import {
 	tagged,
 } from "@ktb/observability";
 import { Permissions, splitPermission } from "@ktb/rbac";
-import { tenantScopeCondition, tenantScopeId, Tenant } from "@ktb/tenant";
+import { tenantRowScope, tenantScopeId, Tenant } from "@ktb/tenant";
 
 import {
 	assertCollectionDef,
@@ -692,12 +692,8 @@ export const DocumentStoreLive = Layer.effect(
 		): Effect.Effect<SQL | undefined> =>
 			Effect.gen(function* () {
 				if (unscoped) return eq(documentRecords.collectionId, collectionId);
-				const fence = yield* tenantScopeCondition(documentRecords);
-				return and(
-					eq(documentRecords.collectionId, collectionId),
-					fence,
-					or(eq(documentRecords.ownerId, ownerId), isNotNull(documentRecords.tenantId)),
-				);
+				const rowScope = yield* tenantRowScope(documentRecords, documentRecords.ownerId, ownerId);
+				return and(eq(documentRecords.collectionId, collectionId), rowScope);
 			});
 
 		const scopedRows = (

@@ -16,6 +16,9 @@ import { auditConfig } from "./config.tsx";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const auditChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Assurance: "panel_group_assurance" },
+	},
 	id: "audit.chrome",
 	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: ["platform.panel"],

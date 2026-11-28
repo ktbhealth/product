@@ -94,9 +94,9 @@ export interface AudioStorageStats {
 }
 
 /** Transport family a bound queue belongs to — structural mirror of
- * `QueueTransport` in @ktb/queues-port (declared here so plugin code
+ * `QueueTransportKind` in @ktb/queues-port (declared here so plugin code
  * needs no new dependency). */
-export type QueueTransport = "cloudflare-queue" | "redis" | "sqlite" | "unknown";
+export type QueueTransportKind = "cloudflare-queue" | "redis" | "sqlite" | "unknown";
 
 /** Who drains a bound queue — structural mirror of `QueueConsumer` in
  * @ktb/queues-port. */
@@ -112,7 +112,7 @@ export type QueueConsumer = "in-app" | "jobs-worker" | "external" | "none";
 export interface QueueInfo {
 	readonly id: string;
 	readonly name: string;
-	readonly transport: QueueTransport;
+	readonly transport: QueueTransportKind;
 	readonly consumer: QueueConsumer;
 	readonly depth: QueueDepth | null;
 }
@@ -216,6 +216,50 @@ export type ScheduleWriteResult =
 export type ScheduleDeleteResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly reason: "unavailable" | "not-found" };
+
+/** Where a unified schedule entry comes from — structural mirror of
+ * `ScheduleEntrySource` in @ktb/scheduler-port. `"cron"` = deploy-time
+ * cron registry job (fired by the worker's `scheduled` handler);
+ * `"scheduled-job"` = runtime `scheduled_jobs` row (heartbeat sweep /
+ * SchedulerDo alarm). */
+export type ScheduleEntrySource = "cron" | "scheduled-job";
+
+/** Latest recorded fire joined onto a cron-registry entry — the
+ * console-facing slice of its `cron.<id>` job_runs row. */
+export interface ScheduleRunSliceInfo {
+	readonly ok: boolean;
+	readonly running: boolean;
+	readonly error: string | null;
+	readonly at: number;
+}
+
+/**
+ * One schedule as the /platform/cron console sees it — BOTH sources
+ * normalized to one shape (the unified "schedules" read model from
+ * @ktb/scheduler-port). `id` is console-unique (`cron:<id>` for
+ * registry jobs); `refId` is the id mutations address. `mutable` is
+ * false for deploy-time cron jobs — runnable, never pausable/deletable.
+ */
+export interface ScheduleEntryInfo {
+	readonly id: string;
+	readonly refId: string;
+	readonly source: ScheduleEntrySource;
+	readonly name: string;
+	readonly description: string | null;
+	readonly kind: string | null;
+	readonly params: JsonValue | null;
+	readonly cronExprs: readonly string[];
+	readonly runAt: number | null;
+	readonly nextRunAt: number | null;
+	readonly lastRunAt: number | null;
+	readonly lastRun: ScheduleRunSliceInfo | null;
+	readonly status: ScheduledJobStatus;
+	readonly mutable: boolean;
+	readonly tenantId: TenantId | null;
+	readonly createdBy: string | null;
+	readonly createdAt: number | null;
+	readonly updatedAt: number | null;
+}
 
 /** One job kind as consoles see it: handler registration merged with
  * plugin `jobs.kind`/`jobs.schedulable` declarations (P-094).
@@ -420,6 +464,11 @@ export interface ServerRuntime {
 	 * the composed app. */
 	readonly schedules?: {
 		readonly list: () => Promise<readonly ScheduledJobInfo[]>;
+		/** Unified schedules read model: cron registry jobs +
+		 * scheduled_jobs rows merged into ScheduleEntryInfo rows.
+		 * Optional — runtimes without the cron registry may omit it;
+		 * consoles degrade to the per-source lists. */
+		readonly entries?: () => Promise<readonly ScheduleEntryInfo[]>;
 		readonly create: (input: ScheduledJobCreateInput) => Promise<ScheduleWriteResult>;
 		readonly update: (id: string, patch: ScheduledJobUpdateInput) => Promise<ScheduleWriteResult>;
 		readonly remove: (id: string) => Promise<ScheduleDeleteResult>;

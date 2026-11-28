@@ -56,6 +56,12 @@ export const layoutsServicesPlugin = definePlugin({
  * layouts delete hook's cleanup switch keys on — keep them exact.
  */
 export const layoutsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/layouts": "panel_nav_layouts",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "layouts.chrome",
 	meta: { keywords: ["layouts", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

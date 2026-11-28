@@ -13,7 +13,7 @@ import { plugins as clientPlugins } from "./plugins.ts";
  * landing.page, panel.pages, pages id+path+component+context,
  * portals, boundaries kind+component, and elementKinds
  * kind/label/icon/renderer/editor).
- * Server-only fields (tables, services, routes, middleware, pipelines,
+ * Server-only fields (tables, services, cqrs, routes, middleware, pipelines,
  * orchestrations, page loader/guard, configSchema) are excluded — they
  * must never reach the client bundle.
  *
@@ -32,6 +32,9 @@ const clientView = (p: Plugin) => ({
 	system: p.system ?? null,
 	meta: p.meta ?? null,
 	priority: p.priority ?? null,
+	// Plugin-declared chrome i18n keys (E.19) — plain data the client
+	// shells merge via collectI18nKeys; must mirror across registries.
+	i18nKeys: p.i18nKeys ?? null,
 	requiredDeps: p.requiredDeps ?? [],
 	optionalDeps: p.optionalDeps ?? [],
 	chrome: p.chrome ?? [],
@@ -105,6 +108,7 @@ describe("client plugin registry", () => {
 			expect(p.middleware).toBeUndefined();
 			expect(p.pipelines).toBeUndefined();
 			expect(p.orchestrations).toBeUndefined();
+			expect(p.cqrs).toBeUndefined();
 			for (const page of p.panel?.pages ?? []) {
 				expect(page.loader).toBeUndefined();
 				expect(page.guard).toBeUndefined();

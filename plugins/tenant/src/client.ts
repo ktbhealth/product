@@ -17,6 +17,9 @@ import { TenantsPlatformPage } from "./platform-page.tsx";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const tenantChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "tenant.chrome",
 	meta: { keywords: ["tenant", "ui"] },
 	requiredDeps: ["platform.panel"],

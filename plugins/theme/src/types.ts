@@ -4,7 +4,15 @@
  * loaders and React props, so it must stay serializable and free of
  * Effect/drizzle imports. Client-safe: views, route components and the
  * client registry may all import this module.
+ *
+ * The self-host font manifest shapes ({@link ThemeFontAxis},
+ * {@link ThemeFontFace}, {@link ThemeFontAsset}) are aliases of the
+ * `@ktb/media` catalog-font contract — the single source of truth the
+ * fonts plugin's catalog adapter reads back out of
+ * `theme_assets.variants` (type-only import; erased at runtime).
  */
+
+import type { FontAssetManifest, FontAxis, FontFace, FontFallbackMetrics } from "@ktb/media";
 
 /** Theme scope kinds — mirrors `theme_definitions.scope`. */
 export type ThemeScopeKind = "platform" | "tenant" | "portal-instance";
@@ -63,65 +71,24 @@ export type ThemeFontSlot = "sans" | "heading" | "mono";
  * (`font-stretch`); the rest apply via `font-variation-settings` on
  * the element — stored here so consumers can emit them.
  */
-export interface ThemeFontAxis {
-	readonly tag: string;
-	readonly min: number;
-	readonly default: number;
-	readonly max: number;
-}
+export type ThemeFontAxis = FontAxis;
 
-/** One `@font-face` src entry inside a font asset. */
-export interface ThemeFontFace {
-	/** Serving URL (same-origin /api/theme/assets?key=…). */
-	readonly url: string;
-	/** CSS font-weight; absent = 400. */
-	readonly weight?: number;
-	/** CSS font-weight RANGE (`"min max"`) for variable fonts — emits
-	 * `font-weight:min max` on the @font-face and takes precedence over
-	 * `weight`. One ranged face replaces the per-weight face list. */
-	readonly weightRange?: readonly [number, number];
-	/** `unicode-range` descriptor value ("U+0020-007E, …") derived from
-	 * the font's cmap — browsers skip downloading the face for text it
-	 * cannot render. Catalog fonts additionally get a real subset
-	 * sibling (font-subset.ts) whose faces carry disjoint latin /
-	 * complement ranges. */
-	readonly unicodeRange?: string;
-	/** Non-`wght` `fvar` axes of a variable font (see
-	 * {@link ThemeFontAxis}). `present.ts` turns a `wdth` entry into
-	 * the `font-stretch` descriptor; the remaining axes have no
-	 * `@font-face` descriptor and are kept for element-level
-	 * `font-variation-settings` use. Stored JSON is untrusted —
-	 * consumers revalidate before emitting CSS. */
-	readonly axes?: readonly ThemeFontAxis[];
-	/** Hint for the `format()` descriptor — "woff2" | "woff" | "truetype" | "opentype". */
-	readonly format?: string;
-}
+/** One `@font-face` src entry inside a font asset — the shared
+ * `@ktb/media` {@link FontFace} contract. */
+export type ThemeFontFace = FontFace;
 
 /** Metric-matched fallback descriptors (fontaine/capsize algorithm):
  * percentages emitted as `size-adjust`/`ascent-override`/
  * `descent-override`/`line-gap-override` on the fallback `@font-face`. */
-export interface ThemeFontFallbackMetrics {
-	readonly sizeAdjust: number;
-	readonly ascentOverride: number;
-	readonly descentOverride: number;
-	readonly lineGapOverride: number;
-}
+export type ThemeFontFallbackMetrics = FontFallbackMetrics;
 
 /**
  * Self-hosted font asset written by the `theme.font` job: one or more
  * `@font-face` sources plus an optional metric-matched local() fallback
- * face that keeps layout stable during `font-display: swap`.
+ * face that keeps layout stable during `font-display: swap`. Alias of
+ * the shared `@ktb/media` {@link FontAssetManifest}.
  */
-export interface ThemeFontAsset {
-	readonly faces: readonly ThemeFontFace[];
-	readonly fallback?: {
-		/** Fallback family name — `${family} fallback` convention. */
-		readonly name: string;
-		/** System font the local() src resolves (e.g. "Arial"). */
-		readonly local: string;
-		readonly metrics: ThemeFontFallbackMetrics;
-	} | null;
-}
+export type ThemeFontAsset = FontAssetManifest;
 
 /** `fonts.assets` values: a bare URL string (Phase-3 shape, still
  * supported) or a full {@link ThemeFontAsset} written by the font job. */

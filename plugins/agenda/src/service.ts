@@ -2,22 +2,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import {
-	and,
-	asc,
-	eq,
-	gt,
-	gte,
-	isNotNull,
-	isNull,
-	lt,
-	lte,
-	ne,
-	or,
-	inArray,
-	sql,
-	type SQL,
-} from "drizzle-orm";
+import { and, asc, eq, gt, gte, isNull, lt, lte, ne, inArray, sql, type SQL } from "drizzle-orm";
 
 import { EventBus, Query } from "@effect-server-utils/cqrs";
 import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
@@ -27,7 +12,7 @@ import { Consultations } from "@ktb/consultations";
 import { Db, type DbClient } from "@ktb/db";
 import { appointments, patients } from "@ktb/db/schema";
 import { PatientsQueries } from "@ktb/patients/api";
-import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
+import { tenantIdAccessible, tenantRowScope, Tenant, tenantScopeId } from "@ktb/tenant";
 
 import {
 	AppointmentCancelled,
@@ -92,13 +77,7 @@ export const REMINDER_LEAD_MS = 15 * 60 * 1000;
  * by the fence). Personal scope degrades to "own rows only".
  */
 export const appointmentScope = (ownerId: string) =>
-	Effect.map(tenantScopeCondition(appointments), (fence) =>
-		and(fence, or(eq(appointments.ownerId, ownerId), isNotNull(appointments.tenantId))),
-	);
-
-/** True when `tenantId` is in the caller's accessible tenant set. */
-const tenantRowVisible = (tenantId: number) =>
-	Effect.map(accessibleTenantIds, (ids) => ids.some((id) => Number(id) === tenantId));
+	tenantRowScope(appointments, appointments.ownerId, ownerId);
 
 /**
  * Row-level authz — tenant-owned rows are governed by membership (any
@@ -113,7 +92,7 @@ const authorizeAppointmentRow = (
 ) =>
 	Effect.gen(function* () {
 		if (row.tenantId !== null) {
-			if (yield* tenantRowVisible(row.tenantId)) return;
+			if (yield* tenantIdAccessible(row.tenantId)) return;
 			return yield* Effect.fail(new Forbidden({ path: action }));
 		}
 		yield* requirePrincipalUser(row.ownerId, action);
@@ -334,7 +313,7 @@ export const AppointmentsLive = Layer.effect(
 				const owner = yield* patientQueries["patients.ownerOf"]({ id: patientId });
 				if (owner === null) return yield* Effect.fail(new Forbidden({ path }));
 				if (owner.tenantId !== null) {
-					if (!(yield* tenantRowVisible(owner.tenantId))) {
+					if (!(yield* tenantIdAccessible(owner.tenantId))) {
 						return yield* Effect.fail(new Forbidden({ path }));
 					}
 					return;

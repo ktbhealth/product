@@ -45,9 +45,11 @@ import {
  * and asserts the observable contract matches: `state.gate`,
  * `state.cleanup`, the per-stage `state[stageId]` aliases, the run
  * status, and the typed event chain. The stage implementations are
- * shared by construction (the kinds invoke pack.stages entries), so
- * these tests pin the ADAPTER semantics: input forwarding, state
- * merging, skip-on-failure continuation, env-corrector config.
+ * shared by construction (the orchestration def is DERIVED from the
+ * pack via `pipelinePackToOrchestration` — the adapted kinds invoke
+ * the same pack.stages entries), so these tests pin the ADAPTER
+ * semantics: input forwarding, state merging, skip-on-failure
+ * continuation, env-corrector config.
  */
 
 const record: RunRecord = {
@@ -150,14 +152,16 @@ const expectStateParity = (
 	}
 };
 
-/** The event chain the def declares — input → gated → cleaned →
- * env.cleaned → workflow.done, in order, nothing else. */
+/** The event chain the derived def declares — input →
+ * <stage>.done per stage → workflow.done, in order, nothing else.
+ * Event types come from the @ktb/pipeline bridge convention
+ * (`${defId}.${stageId}.done`). */
 const expectEventChain = (orchestration: OrchestrationRunResult): void => {
 	expect(orchestration.events.map((e) => e.type)).toEqual([
 		"input",
-		"transcript.asr.gated",
-		"transcript.llm.cleaned",
-		"transcript.env.cleaned",
+		"consultation-transcript.asr-gate.done",
+		"consultation-transcript.llm-cleanup.done",
+		"consultation-transcript.env-cleanup.done",
 		"workflow.done",
 	]);
 	expect(orchestration.trace.map((t) => t.nodeId)).toEqual([
@@ -377,9 +381,9 @@ describe("orchestration wiring", () => {
 		expect(transcriptOrchestrationDef.id).toBe("consultation-transcript");
 		expect(transcriptOrchestrationPack.def).toBe(transcriptOrchestrationDef);
 		expect(transcriptOrchestrationKinds.map((k) => k.id)).toEqual([
-			"transcript.asr-gate",
-			"transcript.llm-cleanup",
-			"transcript.env-cleanup",
+			"pipeline.consultation-transcript.asr-gate",
+			"pipeline.consultation-transcript.llm-cleanup",
+			"pipeline.consultation-transcript.env-cleanup",
 		]);
 		const registry = makeTranscriptOrchestratorRegistry();
 		expect(registry.has("consultation-transcript")).toBe(true);

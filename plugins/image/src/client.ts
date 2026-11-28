@@ -3,8 +3,7 @@ import { ImageIcon } from "lucide-react";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { ImageAdminConsolePage } from "./platform-page.tsx";
-import { ImageView } from "./views/ImageView.tsx";
-import { ImageElementEditor } from "./views/ImageElementEditor.tsx";
+import { imageElement } from "./kind.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -20,6 +19,9 @@ import { ImageElementEditor } from "./views/ImageElementEditor.tsx";
  * apps/web/src/plugins.test.ts.
  */
 export const imageChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "image.chrome",
 	meta: { keywords: ["image", "ui"] },
 	requiredDeps: ["platform.panel"],
@@ -55,24 +57,18 @@ export const imagePanelPlugin = definePlugin({
 	},
 });
 
-/** Element-kind manifest: mirrors imageElementsPlugin in ./index.ts —
- * same kind/label/icon and the same component references (ImageView is
- * a plain <img>; ImageElementEditor pulls the dialog/upload stack,
- * which the client bundle already carries via the admin console page).
- * The server descriptor registers via ImageElementKindLive — never
- * mirrored here. */
+/** Element-kind manifest (P-111): `imageElement.manifest` is the SAME
+ * object imageElementsPlugin carries in ./index.ts — the kind is
+ * declared once in ./kind.tsx via `defineElementKind`, so client and
+ * server manifests cannot drift (ImageView is a plain <img>;
+ * ImageElementEditor pulls the dialog/upload stack, which the client
+ * bundle already carries via the admin console page). The server
+ * descriptor registers via ImageElementKindLive — never mirrored
+ * here. */
 export const imageElementsPlugin = definePlugin({
 	id: "image.elements",
 	meta: { keywords: ["image", "ui"] },
-	elementKinds: [
-		{
-			kind: "image",
-			label: "Image",
-			icon: ImageIcon,
-			renderer: ImageView,
-			editor: ImageElementEditor,
-		},
-	],
+	elementKinds: [imageElement.manifest],
 });
 
 /** Single-concern plugins contributed by this module — the client

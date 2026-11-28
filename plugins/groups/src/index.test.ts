@@ -750,6 +750,7 @@ describe("plugins", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"groups.tables",
 			"groups.services",
+			"groups.cqrs",
 			"groups.chrome",
 			"groups.panel",
 		]);

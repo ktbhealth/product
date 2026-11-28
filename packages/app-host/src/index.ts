@@ -53,6 +53,7 @@ import { ApiExposures, makeApiExposures } from "@ktb/api";
 import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
 import { FlowDefinitions, makeFlowDefinitions } from "@ktb/flows";
 import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
+import { NotificationIngestions, makeNotificationIngestions } from "@ktb/notifications-port";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -68,7 +69,8 @@ import {
 import { builtinKinds } from "@ktb/orchestrator";
 import { orchestratorRegistryLive, pipelineRegistryLive } from "@ktb/plugin-pipeline";
 import { EnvCorrector } from "@ktb/plugin-pipeline-transcript";
-import { Jobs, makeJobs } from "@ktb/jobs-port";
+import { Jobs, makeJobs, queueSend } from "@ktb/jobs-port";
+import { insertOutboxRecord, kickOutboxDrain, makeOutbox, Outbox } from "@ktb/outbox";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
 import {
@@ -90,7 +92,7 @@ import {
 	makeAuth,
 	makeAuthService,
 } from "@ktb/auth-better";
-import { Email, nullEmailDriver, type EmailMessage } from "@ktb/email";
+import { Email, EMAIL_OUTBOX_KIND, nullEmailDriver, type EmailMessage } from "@ktb/email";
 import { cloudflareEmailDriver } from "@ktb/email-cloudflare";
 import { smtpEmailDriver } from "@ktb/email-smtp";
 import { stubEmailDriver } from "@ktb/email-stub";
@@ -106,11 +108,10 @@ import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
-import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
-import { platformPreferringEngine } from "./platform-llm.ts";
 import { correctTranscript as envCorrectTranscript } from "@ktb/anamnesis-llm";
 import { correctTranscriptEffect } from "./transcript-cleanup.ts";
+import { resolveLlmConfig } from "./llm-config.ts";
 import {
 	Command,
 	CommandBus,
@@ -151,30 +152,74 @@ export const plugins: readonly Plugin[] = orderPlugins(
 // safe on both edges.
 export * from "./namespaces.ts";
 
+// ServerRuntime capability factory — the generic console-capability
+// block every composition root wires identically (queues, crons,
+// schedules, job kinds, pub/sub, plugin-state probe).
+export * from "./server-runtime.ts";
+
 /**
- * CQRS groups are enumerated by convention, not by plugin objects: every
- * plugin api module (`plugins/<name>/src/api.ts`) may export query/command
- * group values, and the `isGroup` guards (provided by the library exactly for
- * host reflection) filter them out of each module's export surface.
- * Events need no enumeration — `EventBus` is already app-wide.
+ * CQRS groups are manifest-declared (E.20): a plugin's `cqrs` field
+ * lists the query/command groups the host folds into the app-wide
+ * buses — the same registry that carries services/tables/routes, so
+ * discovery, topo order and the package-granular enable gate all come
+ * from `plugins` itself. This replaces the retired
+ * `plugins/<pkg>/src/api.ts` glob convention (every api module's
+ * exports were scanned and `Query.isGroup`/`Command.isGroup` filtered
+ * them). Events need no enumeration — `EventBus` is already app-wide.
+ *
+ * The enabled-state gate stays package-granular (P-058): each group is
+ * tagged with the `pkg` stamp `discoverPlugins` put on the DECLARING
+ * plugin, so a package's CQRS surface is live while ANY of its plugin
+ * ids is enabled — identical to the old api.ts-file ownership.
  */
-const apiModules = import.meta.glob("../../../plugins/*/src/api.ts", { eager: true });
-// Each api module belongs to a plugin PACKAGE (`plugins/<pkg>/src/api.ts`);
-// the enabled-state gate below is package-granular — a package's CQRS
-// surface is live while ANY of its plugin ids is enabled (P-058).
-const apiEntries = Object.entries(apiModules).flatMap(([path, m]) => {
-	const pkg = /(?:^|\/)plugins\/([^/]+)\/src\/api\.ts$/.exec(path)?.[1];
-	/* v8 ignore next -- glob keys always match the plugins/<pkg>/src/api.ts shape */
-	return pkg === undefined
-		? []
-		: Object.values(m as Record<string, unknown>).map((value) => ({ pkg, value }));
+const cqrsPkg = (plugin: Plugin): string => {
+	if (plugin.pkg === undefined) {
+		throw new Error(
+			`plugin "${plugin.id}" declares cqrs groups without a package stamp — ` +
+				"cqrs manifests only resolve for plugins/* discoveries",
+		);
+	}
+	return plugin.pkg;
+};
+
+/** Manifest `cqrs` declarations → package-tagged query/command groups.
+ * Exported for tests: the `pkg`-stamp guard is a fail-fast for
+ * misdeclared manifests (every real `plugins/*` discovery carries the
+ * stamp, so the throw is unreachable through `plugins` itself). */
+export const manifestCqrsGroups = (
+	list: readonly Plugin[],
+): {
+	readonly queries: readonly { readonly pkg: string; readonly group: Query.AnyGroup }[];
+	readonly commands: readonly { readonly pkg: string; readonly group: Command.AnyGroup }[];
+} => ({
+	queries: list.flatMap((plugin) =>
+		(plugin.cqrs?.queries ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
+	),
+	commands: list.flatMap((plugin) =>
+		(plugin.cqrs?.commands ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
+	),
 });
-const queryGroups = apiEntries.flatMap(({ pkg, value }) =>
-	Query.isGroup(value) ? [{ pkg, group: value }] : [],
-);
-const commandGroups = apiEntries.flatMap(({ pkg, value }) =>
-	Command.isGroup(value) ? [{ pkg, group: value }] : [],
-);
+
+const { queries: queryGroups, commands: commandGroups } = manifestCqrsGroups(plugins);
+
+/**
+ * CQRS group sets the app-wide QueryBus/CommandBus dispatch over —
+ * `pkg` is the owning plugin package (enable-state gate label),
+ * `group` the erased cqrs group. `buildApp` callers pass the groups
+ * matching their plugin subset; the default below is the
+ * filesystem-discovered set for the full registry.
+ */
+export interface CqrsGroups {
+	readonly queryGroups: ReadonlyArray<{ readonly pkg: string; readonly group: Query.AnyGroup }>;
+	readonly commandGroups: ReadonlyArray<{
+		readonly pkg: string;
+		readonly group: Command.AnyGroup;
+	}>;
+}
+
+/** CQRS groups discovered from every plugin api module —
+ * the set `createApp` composes for the full plugin registry. */
+export const cqrsGroups: CqrsGroups = { queryGroups, commandGroups };
 
 /** Minimal binding surface the host needs. Any platform (workerd, bun,
  * future adapters) supplies these; the host never touches cloudflare:*. */
@@ -207,6 +252,11 @@ export interface AppEnv extends ObservabilityEnv {
 	readonly OPENAI_API_KEY?: string;
 	readonly LLM_BASE_URL?: string;
 	readonly LLM_MODEL?: string;
+	/** Dev shim (apps/web lib/ai.ts): OpenAI-compatible server backing
+	 * the local `AI` binding stand-in — doubles as the keyless OpenAI
+	 * env endpoint for generative calls when no LLM provider key is
+	 * configured (see llmConfig below). */
+	readonly AI_BASE_URL?: string;
 	readonly WORKERS_AI_MODEL?: string;
 	/** Comma-separated admin allowlist for the /platform console (P-026). */
 	readonly PLATFORM_ADMIN_EMAILS?: string;
@@ -220,7 +270,7 @@ export interface AppEnv extends ObservabilityEnv {
 	 * port is composed as an Effect service so plugin layers can
 	 * enqueue kind-dispatched jobs (eval.run, …) via serviceOption. */
 	readonly AUDIO_QUEUE?: {
-		send(body: unknown): Promise<unknown>;
+		send(body: unknown, options?: { readonly delaySeconds?: number }): Promise<unknown>;
 	};
 }
 
@@ -366,11 +416,115 @@ export interface AppOptions {
 }
 
 /**
- * Composition root: wires the plugin registry, platform bindings, and
- * impl layers into a runnable app. Deploy targets (apps/web) call this
- * once with their env and re-export the pieces they need.
+ * Port→impl selection is data: impl packages export Driver descriptors
+ * and the first enabled driver for a port wins (array order is the
+ * tie-break). Ordering encodes precedence — e.g. the captcha stub
+ * before Turnstile before the disabled verifier; LLM drivers carry
+ * their own when predicates mirroring the old factory branches.
+ *
+ * Auth and Db stay manual on purpose: they are single-impl ports
+ * wrapping live instances built from `env` (the better-auth object the
+ * routes call directly; the drizzle client over the SqlDatabase
+ * binding), not env-selectable adapters. Engine variance already
+ * lives at the edges — SqlDatabase at `Binding`, better-auth config
+ * in makeAuth — and tests stub these ports via Layer.succeed, which
+ * needs no driver descriptor. Putting them in the registry would add
+ * indirection with no second impl to select between.
+ *
+ * This is the DEFAULT driver set `buildApp` composes when the caller
+ * doesn't pass `drivers` — `createApp` uses it as-is; composition
+ * tests substitute a stub-only list.
  */
-export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
+export const defaultDrivers: readonly Driver<unknown>[] = [
+	recallDriver,
+	stubBotDriver,
+	googleCalendarsDriver,
+	stubCaptchaDriver,
+	turnstileCaptchaDriver,
+	nullCaptchaDriver,
+	smtpEmailDriver,
+	stubEmailDriver,
+	cloudflareEmailDriver,
+	nullEmailDriver,
+	...llmDrivers,
+	// Telemetry port: OTLP exporter wins when an endpoint is bound;
+	// the console driver is the always-eligible local/DX fallback.
+	otlpTelemetryDriver,
+	telemetryConsoleDriver,
+	// Entity cipher (PL-007 F2): the passthrough is the non-ZK
+	// default — always eligible, LAST in the list once real
+	// keyring-backed drivers arrive (first eligible wins).
+	passthroughCipherDriver,
+	// Vault secrets KEK (P-098 C1): eligible only when
+	// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
+	vaultKeyringEnvDriver,
+	// Eval validator runner (P-081): eligible only when the local
+	// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
+	// otherwise no EvalRunner is bound and eval runs stay queued.
+	evalRunnerLocalDriver,
+	// Same env gate, read side: serves run audio to the validator UI.
+	evalArtifactsLocalDriver,
+	// Generative script path for persona cohorts — bound only when
+	// EVAL_ACP_URL points at an agent; otherwise the validator falls
+	// back to the deterministic template renderer.
+	evalLlmAcpDriver,
+	// Endpoint factory for the eval lab — always eligible; it only
+	// resolves descriptor rows into LlmPort layers on demand, so
+	// binding it carries no env requirement of its own.
+	evalLlmFactoryDriver,
+	// Decision-endpoint factory (`systemone` ai_endpoint rows) —
+	// same always-eligible contract as the LLM factory: resolves
+	// descriptors into DecisionsPort layers on demand.
+	systemOneDecisionsDriver,
+];
+
+/** Everything `buildApp` needs to assemble a runnable app. */
+export interface BuildAppSpec<E extends AppEnv = AppEnv> {
+	/** Platform bindings/env the composition reads (DB, secrets, and
+	 * the env each driver's `when`/`provides` predicates see). */
+	readonly env: E;
+	/** Plugin registry to compose — pass `orderPlugins` output (the
+	 * module-level `plugins` export for the full app, a subset for
+	 * composition tests). Registry-derived services (PluginStates,
+	 * Routes, document collections, pipeline/orchestrator registries,
+	 * the CQRS enable gate) are all built from THIS list. */
+	readonly plugins: readonly Plugin[];
+	/** Port→impl driver descriptors; defaults to {@link defaultDrivers}.
+	 * Every REQUIRED port (Bot, Captcha, Email, Telemetry,
+	 * AnamnesisEngine, EntityCipher) must have an eligible driver —
+	 * substitute stub drivers to compose without real providers. */
+	readonly drivers?: readonly Driver<unknown>[];
+	/** CQRS groups the app-wide buses dispatch; defaults to the
+	 * filesystem-discovered {@link cqrsGroups}. Pass the groups
+	 * matching the `plugins` subset — a group whose handler layers
+	 * aren't composed fails layer build. */
+	readonly cqrsGroups?: CqrsGroups;
+	/** Extra layers merged LAST into the core layer: app-specific
+	 * services plugin layers may require, or test stubs that should
+	 * win over driver-selected impls for the same service tag
+	 * (Context.mergeAll is right-biased). Prefer `drivers` for port
+	 * selection; use this for services with no port. Type-erased like
+	 * plugin `services` layers — requirements surface at layer build. */
+	readonly coreLayers?: readonly Layer.Any[];
+	/** {@link AppOptions} — tenant resolver, email composers,
+	 * middleware stages. */
+	readonly options?: AppOptions;
+}
+
+/**
+ * Generic app assembly: plugin registry → service layers → core
+ * layers → CQRS buses → ManagedRuntime, behind one explicit call.
+ * `createApp` is the production composition (full discovered registry
+ * + default drivers); tests and alternate apps call `buildApp`
+ * directly with a plugin subset, stub drivers and extra core layers.
+ */
+export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
+	const { env, plugins, options } = spec;
+	const drivers = spec.drivers ?? defaultDrivers;
+	const { queryGroups, commandGroups } = spec.cqrsGroups ?? cqrsGroups;
+	// Type-erased like plugin `services` layers — unsatisfied
+	// requirements still fail at layer build.
+	const coreLayers = (spec.coreLayers ?? []) as readonly Layer.Layer<unknown, unknown, unknown>[];
 	// isProductionBuild reads import.meta.env.PROD safely: the Vite build
 	// statically replaces it (true for `vp build`/`vp preview` output —
 	// prod deploy — false for dev servers and vitest), while runtimes
@@ -385,61 +539,6 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const BindingLive = Layer.succeed(Binding, env.DB);
 	const db = makeDb(env.DB);
 
-	// Port→impl selection is data: impl packages export Driver descriptors
-	// and the first enabled driver for a port wins (array order is the
-	// tie-break). Ordering encodes precedence — e.g. the captcha stub
-	// before Turnstile before the disabled verifier; LLM drivers carry
-	// their own when predicates mirroring the old factory branches.
-	// Auth and Db stay manual on purpose: they are single-impl ports
-	// wrapping live instances built here (the better-auth object the
-	// routes call directly; the drizzle client over the SqlDatabase
-	// binding), not env-selectable adapters. Engine variance already
-	// lives at the edges — SqlDatabase at `Binding`, better-auth config
-	// in makeAuth — and tests stub these ports via Layer.succeed, which
-	// needs no driver descriptor. Putting them in the registry would add
-	// indirection with no second impl to select between.
-	const drivers: readonly Driver<unknown>[] = [
-		recallDriver,
-		stubBotDriver,
-		googleCalendarsDriver,
-		stubCaptchaDriver,
-		turnstileCaptchaDriver,
-		nullCaptchaDriver,
-		smtpEmailDriver,
-		stubEmailDriver,
-		cloudflareEmailDriver,
-		nullEmailDriver,
-		...llmDrivers,
-		// Telemetry port: OTLP exporter wins when an endpoint is bound;
-		// the console driver is the always-eligible local/DX fallback.
-		otlpTelemetryDriver,
-		telemetryConsoleDriver,
-		// Entity cipher (PL-007 F2): the passthrough is the non-ZK
-		// default — always eligible, LAST in the list once real
-		// keyring-backed drivers arrive (first eligible wins).
-		passthroughCipherDriver,
-		// Vault secrets KEK (P-098 C1): eligible only when
-		// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
-		vaultKeyringEnvDriver,
-		// Eval validator runner (P-081): eligible only when the local
-		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
-		// otherwise no EvalRunner is bound and eval runs stay queued.
-		evalRunnerLocalDriver,
-		// Same env gate, read side: serves run audio to the validator UI.
-		evalArtifactsLocalDriver,
-		// Generative script path for persona cohorts — bound only when
-		// EVAL_ACP_URL points at an agent; otherwise the validator falls
-		// back to the deterministic template renderer.
-		evalLlmAcpDriver,
-		// Endpoint factory for the eval lab — always eligible; it only
-		// resolves descriptor rows into LlmPort layers on demand, so
-		// binding it carries no env requirement of its own.
-		evalLlmFactoryDriver,
-		// Decision-endpoint factory (`systemone` ai_endpoint rows) —
-		// same always-eligible contract as the LLM factory: resolves
-		// descriptors into DecisionsPort layers on demand.
-		systemOneDecisionsDriver,
-	];
 	// Drivers are type-erased (Layer.Any); each port maps to exactly one
 	// service, so the concrete layer type is restored here — same shape
 	// the hand-written ternaries used to produce.
@@ -479,14 +578,22 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		...(emailSender === null
 			? {}
 			: {
-					// A failed delivery must not fail the sign-up itself — the
-					// account exists and the link can be requested again.
+					// Transactional email rides the outbox (@ktb/outbox):
+					// the rendered message is written as a pending row and
+					// the edge drainer delivers it with retry — a provider
+					// outage delays mail instead of losing it to a
+					// console.error. The sign-up itself never fails on
+					// delivery; only the row write can, and that error is
+					// logged honestly below. The kick is best-effort — the
+					// cron sweep is the durable backstop.
 					sendVerificationEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({
+							const message: EmailMessage = {
 								to: email,
 								...(await verificationEmail({ name, url })),
-							});
+							};
+							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("verification email failed", error);
 						}
@@ -495,10 +602,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 					// just request the link again.
 					sendPasswordResetEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({
+							const message: EmailMessage = {
 								to: email,
 								...(await passwordResetEmail({ name, url })),
-							});
+							};
+							await insertOutboxRecord(db, { kind: EMAIL_OUTBOX_KIND, payload: message });
+							kickOutboxDrain(db);
 						} catch (error) {
 							console.error("password reset email failed", error);
 						}
@@ -530,15 +639,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// creates accounts through.
 	const AccountsLive = Layer.succeed(Accounts, makeAccountsService(auth));
 	// LLM provider config is resolved here, once — impl packages never
-	// read env themselves.
-	const llmConfig: LlmConfig = {
-		anthropicApiKey: env.ANTHROPIC_API_KEY,
-		openAiApiKey: env.LLM_API_KEY ?? env.OPENAI_API_KEY,
-		openAiBaseUrl: env.LLM_BASE_URL,
-		openAiModel: env.LLM_MODEL,
-		workersAi: env.AI,
-		workersAiModel: env.WORKERS_AI_MODEL,
-	};
+	// read env themselves (see ./llm-config.ts for the AI_BASE_URL
+	// dev-shim rule).
+	const llmConfig = resolveLlmConfig(env);
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
 	// Env-corrector port (P-120): the transcript env-cleanup stage
 	// probes this ambient service — the durable-safe successor of the
@@ -550,14 +653,13 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const EnvCorrectorLive = Layer.succeed(EnvCorrector, {
 		correct: (text: string) => envCorrectTranscript(llmConfig, text),
 	});
-	// F2: the ai-provider plugin's PlatformLlm capability wins over env
-	// providers when a platform-default endpoint is configured; the
-	// wrapped engine is the (b) env fallback → (c) heuristic path.
-	const AnamnesisEngineLive = Layer.unwrap(
-		Effect.map(AnamnesisEngine, (inner) =>
-			Layer.succeed(AnamnesisEngine, platformPreferringEngine(inner)),
-		),
-	).pipe(Layer.provide(envAnamnesisEngineLive));
+	// F2: every AnamnesisEngine driver binds the engine over an
+	// env-derived LlmPort routed through `preferringLlmPortLive` — the
+	// ai-provider plugin's PlatformLlm capability wins over env
+	// providers per call, env is the (b) fallback, the heuristic
+	// extractor the (c) floor. The platform-llm bridge is dissolved:
+	// the precedence lives inside the port itself (@ktb/eval-core).
+	const AnamnesisEngineLive = envAnamnesisEngineLive;
 	// Telemetry port: driver-selected exporter set (OTLP when configured,
 	// console JSON otherwise) — provides Logger/Tracer references, the
 	// Telemetry service, metric instrumentation and the LOG_LEVEL var.
@@ -575,7 +677,13 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const JobsLive =
 		jobsQueue === undefined
 			? Layer.empty
-			: Layer.succeed(Jobs, makeJobs({ send: (envelope) => jobsQueue.send(envelope), db }));
+			: Layer.succeed(Jobs, makeJobs({ send: queueSend(jobsQueue), db }));
+	// Outbox port (@ktb/outbox): reliable-delivery writes — always bound
+	// (Db is unconditional); plugins enqueue via serviceOption and the
+	// edge's drain sweep + deliverer registry handle delivery. The auth
+	// email callbacks above write rows directly through the repo
+	// helpers (they are plain async hooks, not Effect code).
+	const OutboxLive = Layer.succeed(Outbox, makeOutbox({ db }));
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
@@ -673,6 +781,17 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// each contributed def's owner against PluginStates.enabledIds()
 	// at startRun, so toggles apply without a layer rebuild.
 	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
+	// Notification-ingestion registry (notificationIngestions manifest
+	// field): same composition-time collection — the @ktb/notifications
+	// service layer consumes it via `NotificationIngestions` and
+	// subscribes each `{ event, project }` entry on the app-wide
+	// EventBus. Enablement is NOT filtered here (same contract as the
+	// other registries): a disabled producer's entries stay subscribed
+	// but its events are never dispatched.
+	const NotificationIngestionsLive = Layer.succeed(
+		NotificationIngestions,
+		makeNotificationIngestions(plugins),
+	);
 	const RoutesLive = Layer.succeed(Routes, makeRoutes(collectRouteDefinitions(plugins)));
 	// Request-middleware registry (PL-015/P-110): the serializable view
 	// behind /platform/middleware — collected stage metadata (handlers
@@ -717,9 +836,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const PipelineRegistryLive = pipelineRegistryLive(plugins).pipe(Layer.orDie);
 	// Orchestrator registry (P-120 cutover): every plugin manifest's
 	// `orchestrations` packs — pipeline.transcript's
-	// consultation-transcript OrchestrationDef twin today — collected
-	// in topo order alongside PipelineRegistryLive. `builtinKinds`
-	// seeds the engine vocabulary (ai/emit/gate/poll/subworkflow)
+	// consultation-transcript OrchestrationDef twin and ai.provider.
+	// services' kinds-only `ai` pack today — collected in topo order
+	// alongside PipelineRegistryLive. `builtinKinds` seeds the
+	// domain-blind engine vocabulary (emit/gate/poll/subworkflow)
 	// ahead of pack kinds so manifest defs may reference them; pack
 	// kinds that shadow a builtin id fail layer build loudly. Same
 	// orDie contract: registration failures are programming errors.
@@ -740,6 +860,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		EvalRunnerLive,
 		EvalArtifactsLive,
 		JobsLive,
+		OutboxLive,
 		EntityCipherLive,
 		SecretKeyringLive,
 		LlmLive,
@@ -753,6 +874,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TriggerDefinitionsLive,
 		FlowDefinitionsLive,
 		WizardDefinitionsLive,
+		NotificationIngestionsLive,
 		RoutesLive,
 		MiddlewareStagesLive,
 		PipelineRegistryLive,
@@ -773,6 +895,11 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),
 		...TenantResolverLive,
+		// Caller-supplied extras LAST: Context.mergeAll is right-biased,
+		// so a coreLayer providing the same service tag as a
+		// driver-selected impl wins — the test-stub seam. Plugin layers
+		// and the CQRS buses are provided `core`, so they see these too.
+		...coreLayers,
 	);
 	// App-wide CQRS buses (P-049): each group's dispatcher is built once,
 	// wrapped in shared middleware, folded into an erased DispatchTable,
@@ -1153,3 +1280,13 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		auth,
 	};
 };
+
+/**
+ * Production composition root: the full discovered plugin registry +
+ * {@link defaultDrivers} + filesystem-discovered {@link cqrsGroups}.
+ * Deploy targets (apps/web) call this once with their env and
+ * re-export the pieces they need; tests and alternate apps compose
+ * through {@link buildApp} directly.
+ */
+export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) =>
+	buildApp<E>({ env, plugins, options });

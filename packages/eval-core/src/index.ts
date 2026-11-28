@@ -1,5 +1,6 @@
 export * from "./schema.ts";
 export * from "./ports.ts";
+export * from "./preferring-llm.ts";
 export * from "./diff.ts";
 export * from "./report.ts";
 export * from "./calibrate.ts";

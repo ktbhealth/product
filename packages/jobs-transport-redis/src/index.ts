@@ -32,8 +32,8 @@
 
 import { createClient, type RedisClientType } from "redis";
 
-import type { JobEnvelope, JobMessageLike } from "@ktb/jobs-port";
-import type { QueueDepthStats } from "@ktb/queues-port";
+import type { JobMessageLike } from "@ktb/jobs-port";
+import type { QueueDepthStats, QueueTransport } from "@ktb/queues-port";
 
 /** Minimal client surface the transport needs — injectable for tests. */
 export interface RedisLike {
@@ -57,6 +57,16 @@ export interface RedisLike {
 	quit(): Promise<unknown>;
 	/** Hard socket teardown — optional on the injectable seam. */
 	destroy?(): void;
+	/** Sorted-set + eval surface for delayed delivery (`runAt`
+	 * envelopes park on `<queue>:delayed` until a sweeper moves them
+	 * onto the list). Optional: a client without it degrades delayed
+	 * sends to immediate LPUSH — early delivery beats a stalled job. */
+	zAdd?(key: string, member: { score: number; value: string }): Promise<unknown>;
+	zCard?(key: string): Promise<number>;
+	eval?(
+		script: string,
+		options: { keys: readonly string[]; arguments: readonly string[] },
+	): Promise<unknown>;
 }
 
 export interface RedisJobsTransportOptions {
@@ -66,13 +76,28 @@ export interface RedisJobsTransportOptions {
 	readonly queue?: string;
 	/** BLMOVE block seconds per poll — default 5. */
 	readonly blockSeconds?: number;
+	/** Delayed-delivery sweep interval ms — default 1000. Envelopes
+	 * carrying `runAt` park on the `<queue>:delayed` zset until a
+	 * sweep moves the due ones onto the list. */
+	readonly sweepMs?: number;
 	/** Test seam: supply a connected client instead of `url`. */
 	readonly client?: RedisLike;
 }
 
-export interface RedisJobsTransport {
-	/** JobsEnqueuer-compatible send — LPUSH the serialized envelope. */
-	readonly send: (envelope: JobEnvelope) => Promise<void>;
+/**
+ * The Redis jobs transport — a `QueueTransport` (@ktb/queues-port)
+ * plus the consumer-side extras only this adapter has: `receive`
+ * pulls batches for the jobs-worker loop and `requeuePending` recovers
+ * crash-orphaned entries at boot.
+ */
+export interface RedisJobsTransport extends QueueTransport {
+	/** Transport-level list key (e.g. "ktb:jobs") — the QueueTransport
+	 * `name` the registry and dispatch derive from. */
+	readonly name: string;
+	/** LPUSH the serialized envelope — the QueueTransport `send`
+	 * widened to `unknown`: the wire payload is whatever the producer
+	 * serialized (job envelopes today). */
+	readonly send: (body: unknown) => Promise<void>;
 	/** Move up to `count` envelopes onto the pending list as
 	 * JobMessageLike batch (BLMOVE loop). */
 	readonly receive: (count?: number) => Promise<readonly JobMessageLike[]>;
@@ -91,7 +116,9 @@ export interface RedisJobsTransport {
 }
 
 const DEFAULT_URL = "redis://127.0.0.1:6379";
-const DEFAULT_QUEUE = "ktb:jobs";
+/** Default list key — exported so composition roots name the queue
+ * without duplicating the literal. */
+export const DEFAULT_QUEUE = "ktb:jobs";
 // QUIT is queued through node-redis's offline command queue and only
 // flushes once the socket reconnects — bound it so close() never hangs
 // on an unreachable Redis, then destroy the socket outright.
@@ -106,7 +133,9 @@ export const createRedisJobsTransport = async (
 ): Promise<RedisJobsTransport> => {
 	const queue = opts.queue ?? DEFAULT_QUEUE;
 	const pending = `${queue}:pending`;
+	const delayed = `${queue}:delayed`;
 	const blockSeconds = opts.blockSeconds ?? 5;
+	const sweepMs = opts.sweepMs ?? 1000;
 	const client: RedisLike =
 		opts.client ??
 		(await (async () => {
@@ -115,9 +144,56 @@ export const createRedisJobsTransport = async (
 			return c as unknown as RedisLike;
 		})());
 
-	const send = async (envelope: JobEnvelope): Promise<void> => {
-		await client.lPush(queue, JSON.stringify(envelope));
+	const send = async (body: unknown): Promise<void> => {
+		const serialized = JSON.stringify(body);
+		// Delayed delivery: a future runAt parks the envelope on the
+		// delayed zset (score = epoch ms); the sweeper LPUSHes it when
+		// due. Past/absent runAt — or a client without zset support —
+		// delivers immediately (early beats stalled). `body` is `unknown`
+		// at the QueueTransport seam, so runAt is read defensively.
+		const runAt = isRecord(body) ? body["runAt"] : undefined;
+		if (
+			typeof runAt === "number" &&
+			Number.isFinite(runAt) &&
+			runAt > Date.now() &&
+			client.zAdd !== undefined
+		) {
+			await client.zAdd(delayed, { score: runAt, value: serialized });
+			return;
+		}
+		await client.lPush(queue, serialized);
 	};
+
+	// Atomic due-sweep: ZRANGEBYSCORE + per-member ZREM/LPUSH inside
+	// one Lua eval, so a crash mid-sweep can neither double-deliver
+	// (ZREM gates the LPUSH) nor silently drop an entry.
+	const SWEEP_DUE = `
+local due = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, tonumber(ARGV[2]))
+local moved = 0
+for _, member in ipairs(due) do
+  if redis.call('ZREM', KEYS[1], member) == 1 then
+    redis.call('LPUSH', KEYS[2], member)
+    moved = moved + 1
+  end
+end
+return moved
+`;
+	const SWEEP_BATCH = 100;
+	const sweepDelayed = async (): Promise<void> => {
+		if (client.eval === undefined) return;
+		try {
+			await client.eval(SWEEP_DUE, {
+				keys: [delayed, queue],
+				arguments: [String(Date.now()), String(SWEEP_BATCH)],
+			});
+		} catch (error) {
+			console.warn("jobs transport: delayed sweep failed", { error: String(error) });
+		}
+	};
+	// unref'd like the dev:node poller — an idle transport never keeps
+	// the process alive; close() clears it.
+	const sweepTimer = setInterval(() => void sweepDelayed(), sweepMs);
+	sweepTimer.unref();
 
 	const receive = async (count = 1): Promise<readonly JobMessageLike[]> => {
 		const messages: JobMessageLike[] = [];
@@ -168,17 +244,27 @@ export const createRedisJobsTransport = async (
 	};
 
 	return {
+		name: queue,
 		send,
 		receive,
 		requeuePending,
 		stats: async () => {
-			const [pendingCount, inflight] = await Promise.all([
+			const [pendingCount, inflight, delayedCount] = await Promise.all([
 				client.lLen(queue),
 				client.lLen(pending),
+				client.zCard === undefined ? Promise.resolve(0) : client.zCard(delayed),
 			]);
-			return { pending: pendingCount, processing: inflight, done: 0, failed: 0 };
+			// Delayed entries count as pending backlog — they are queued
+			// work, just not yet deliverable.
+			return {
+				pending: pendingCount + delayedCount,
+				processing: inflight,
+				done: 0,
+				failed: 0,
+			};
 		},
 		close: async () => {
+			clearInterval(sweepTimer);
 			const timer = new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS).unref());
 			await Promise.race([client.quit().catch(() => {}), timer]);
 			client.destroy?.();

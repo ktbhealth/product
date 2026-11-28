@@ -13,9 +13,10 @@ import type { TenantRole } from "@ktb/tenant";
 import { boundTenantFn, pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
 import { portalChromeProps } from "#/lib/chrome-props.ts";
-import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
+import { pluginGroupLabel, pluginItemLabel } from "#/lib/i18n.ts";
 import {
 	collectChrome,
+	collectI18nKeys,
 	enabledIdSet,
 	enabledPlugins,
 	entryEnabled,
@@ -120,6 +121,7 @@ export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderDa
 	// unresolved tenant → undefined → those gates fail closed.
 	const chromeUser =
 		user === null || user === undefined ? user : { ...user, tenantRoleRank: tenant?.roleRank };
+	const i18nKeys = collectI18nKeys(visiblePlugins);
 	const items = collectChrome(
 		visiblePlugins,
 		"portal.sidebar",
@@ -131,13 +133,14 @@ export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderDa
 			? [
 					{
 						...chromeEntry.content.item,
-						label: pluginPanelLabel(
+						label: pluginItemLabel(
 							chromeEntry.content.item.to,
 							chromeEntry.content.item.label,
 							i18n,
+							i18nKeys,
 						),
 						...(chromeEntry.content.item.group !== undefined
-							? { group: pluginPanelGroup(chromeEntry.content.item.group, i18n) }
+							? { group: pluginGroupLabel(chromeEntry.content.item.group, i18n, i18nKeys) }
 							: {}),
 					},
 				]

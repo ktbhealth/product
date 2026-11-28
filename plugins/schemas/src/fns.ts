@@ -3,8 +3,8 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { pluginHandler, run, runAs, sessionHandler } from "@ktb/server-fns";
-import { PlatformAdmin } from "@ktb/platform";
+import { asAdmin, orHandled } from "@ktb/admin-store";
+import { pluginHandler, run, sessionHandler } from "@ktb/server-fns";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
 import {
@@ -65,20 +65,6 @@ const toMetaWire = (row: SchemaMeta): SchemaMetaWire => ({
 
 const EMPTY_RESULT: SchemaValidationWire = { valid: false, issues: [] };
 
-/** Run `eff` as the session user after the PlatformAdmin gate. */
-const asAdmin = <A, E>(
-	user: { readonly id: string; readonly email?: string },
-	eff: Effect.Effect<A, E, unknown>,
-): Promise<A> =>
-	runAs(
-		user,
-		Effect.gen(function* () {
-			const platformAdmin = yield* PlatformAdmin;
-			yield* platformAdmin.requireAdmin();
-			return yield* eff;
-		}),
-	);
-
 const CreateInput = Schema.Struct({
 	name: Schema.NonEmptyString,
 	description: Schema.optionalKey(Schema.String),
@@ -109,12 +95,6 @@ const HANDLED_TAGS = [
 	"SchemaNameTaken",
 ] as const;
 
-const isHandled = (error: unknown): boolean =>
-	typeof error === "object" &&
-	error !== null &&
-	"_tag" in error &&
-	(HANDLED_TAGS as readonly string[]).includes(String((error as { _tag?: unknown })._tag));
-
 /** Create a schema (defaults to `{}`, optional name/description);
  * `null` for non-admins and handled domain failures. */
 export const createSchemaFn = createServerFn({ method: "POST" })
@@ -130,10 +110,7 @@ export const createSchemaFn = createServerFn({ method: "POST" })
 						const row = yield* schemas.adminCreate(data);
 						return row === null ? null : toDocWire(row);
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return null;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, null));
 			}),
 		),
 	);
@@ -154,10 +131,7 @@ export const updateSchemaFn = createServerFn({ method: "POST" })
 						const { id, ...input } = data;
 						return toDocWire(yield* schemas.adminUpdate(id, input));
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return null;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, null));
 			}),
 		),
 	);
@@ -176,10 +150,7 @@ export const deleteSchemaFn = createServerFn({ method: "POST" })
 						yield* schemas.adminRemove(data.id);
 						return true;
 					}),
-				).catch((error: unknown) => {
-					if (isHandled(error)) return false;
-					throw error;
-				});
+				).catch(orHandled(HANDLED_TAGS, false));
 			}),
 		),
 	);
@@ -198,10 +169,7 @@ export const listSchemasFn = createServerFn({ method: "GET" }).handler(
 					const rows = yield* schemas.adminList();
 					return rows.map(toMetaWire);
 				}),
-			).catch((error: unknown) => {
-				if (isHandled(error)) return [] as readonly SchemaMetaWire[];
-				throw error;
-			});
+			).catch(orHandled(HANDLED_TAGS, [] as readonly SchemaMetaWire[]));
 		}),
 	),
 );
@@ -246,8 +214,5 @@ export const validateSchemaFn = createServerFn({ method: "POST" })
 				const schemas = yield* Schemas;
 				return yield* schemas.validate(data.schemaId, data.data);
 			}),
-		).catch((error: unknown) => {
-			if (isHandled(error)) return EMPTY_RESULT;
-			throw error;
-		});
+		).catch(orHandled(HANDLED_TAGS, EMPTY_RESULT));
 	});

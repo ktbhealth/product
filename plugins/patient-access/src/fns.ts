@@ -1,14 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import { Schema } from "effect";
 import { and, eq, inArray, isNotNull, like, or } from "drizzle-orm";
 
 import { Db } from "@ktb/db";
 import { consultations, patientAccess, patients, portalKeys } from "@ktb/db/schema";
-import { Email } from "@ktb/email";
-import { inviteAcceptPath } from "@ktb/invites";
+import { sendInviteEmail } from "@ktb/invites";
 import {
 	forbiddenTo,
 	getDoctorAccess,
@@ -89,8 +87,9 @@ export type InvitePatientResult =
 	| {
 			readonly ok: true;
 			readonly link: Pick<PatientLink, "id" | "email" | "status">;
-			/** Whether the access email actually went out — false when this
-			 * deployment sends no email or the delivery failed. */
+			/** Whether the access email was accepted for delivery — false
+			 * when this deployment sends no email or the outbox write
+			 * failed. Delivery itself is async (@ktb/outbox). */
 			readonly emailed: boolean;
 	  }
 	| { readonly ok: false; readonly error: PatientInviteErrorCode | "failed" };
@@ -99,35 +98,26 @@ export type InvitePatientResult =
  * Tell the invitee by email, in the acting user's current locale.
  * Someone with no account yet gets a single-use accept link that
  * creates it; an existing account is pointed at the portal sign-in.
- * Best effort: the grant already exists, so a deployment without email
- * or a failed delivery never fails the invite — it only reports `false`.
+ * Delivery goes through the shared invites-kit sender (@ktb/invites
+ * `sendInviteEmail`): queued on the outbox when bound, inline
+ * otherwise — best effort, the grant already exists, so a deployment
+ * without email or a failed delivery never fails the invite, it only
+ * reports `false`.
  */
-const notifyInvitee = async (
+const notifyInvitee = (
 	to: string,
 	doctorName: string,
 	patientName: string | null,
 ): Promise<boolean> => {
-	const { getRequestUrl } = await import("@tanstack/react-start/server");
 	const copy = patientAccessMessages(getLocale()).inviteEmail;
-	const sender = await run(
-		Effect.map(Effect.serviceOption(Email), (email) => Option.getOrNull(email)),
-	);
-	if (!sender) return false;
-	const acceptPath = await run(
-		inviteAcceptPath({ email: to, kind: "patient", inviterName: doctorName }),
-	);
-	const url = new URL(acceptPath ?? "/login/patient", getRequestUrl()).toString();
-	try {
-		await sender.send({
-			to,
-			subject: copy.subject(doctorName),
-			text: copy.body(doctorName, patientName, url, acceptPath !== null),
-		});
-		return true;
-	} catch (error) {
-		console.error("patient invite email failed", error);
-		return false;
-	}
+	return sendInviteEmail({
+		to,
+		kind: "patient",
+		inviterName: doctorName,
+		subject: copy.subject(doctorName),
+		body: (url, accept) => copy.body(doctorName, patientName, url, accept),
+		errorLabel: "patient invite email failed",
+	});
 };
 
 /** Invite an email to a patient record of the acting doctor. */

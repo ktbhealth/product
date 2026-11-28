@@ -140,6 +140,13 @@ export const clinicianPagesPlugin = definePlugin({
 });
 
 export const clinicianChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/portal/doctor/activity": "panel_nav_activity",
+			"/portal/secretary/activity": "panel_nav_activity",
+		},
+		groups: { Governance: "panel_group_governance" },
+	},
 	id: "clinician.chrome",
 	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: ["clinician.portal"],

@@ -25,6 +25,12 @@ export const cronServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region under the Concurrency group; the dep
 // edge orders it after the shell like the other panel entries.
 export const cronChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/cron": "panel_nav_cron",
+		},
+		groups: { Concurrency: "panel_group_concurrency" },
+	},
 	id: "cron.chrome",
 	meta: { keywords: ["cron", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
@@ -69,17 +75,16 @@ export const cronPanelPlugin = definePlugin({
 						// state, never a fabricated empty list.
 						const section = <A>(effect: Effect.Effect<A, Forbidden>) =>
 							effect.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null as A | null)));
-						const [jobs, runs, schedules, scheduleKinds, schedulableKinds] = yield* Effect.all(
+						const [runs, entries, scheduleKinds, schedulableKinds] = yield* Effect.all(
 							[
-								section(admin.jobs()),
 								section(admin.runs()),
-								section(admin.schedules()),
+								section(admin.entries()),
 								section(admin.scheduleKinds()),
 								section(admin.schedulableKinds()),
 							],
 							{ concurrency: "unbounded" },
 						);
-						return { jobs, runs, schedules, scheduleKinds, schedulableKinds };
+						return { runs, entries, scheduleKinds, schedulableKinds };
 					}),
 			}),
 		],

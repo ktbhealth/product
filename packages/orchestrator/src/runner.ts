@@ -119,6 +119,11 @@ export interface OrchestrationSession {
 	/** Events still queued, in routing order — the durable store
 	 * persists these as pending rows between steps. */
 	readonly pendingEvents: () => readonly Event[];
+	/** Earliest epoch ms at which a queued-but-not-yet-due
+	 * (`notBefore`-delayed) event becomes routable; null when no
+	 * delayed event is pending. The durable runner enqueues its next
+	 * step job at this instant; the in-memory runner sleeps until it. */
+	readonly nextWakeAt: () => number | null;
 	readonly snapshot: () => OrchestrationSnapshot;
 	readonly result: () => OrchestrationRunResult;
 }
@@ -268,10 +273,26 @@ const resolveRuntimes = (
 const makeSession = (def: OrchestrationDef, f: SessionFields): OrchestrationSession => {
 	/** Enqueue an event emitted by `source` — the only way kinds (and
 	 * the runner itself) introduce new work. */
-	const enqueue = (source: string, type: string, payload: JsonObject = {}): Effect.Effect<void> =>
+	const enqueue = (
+		source: string,
+		type: string,
+		payload: JsonObject = {},
+		notBefore?: number,
+	): Effect.Effect<void> =>
 		Effect.sync(() => {
-			f.queue.push(OrchestrationEvent.new(type, payload, source));
+			f.queue.push(OrchestrationEvent.new(type, payload, source, notBefore));
 		});
+
+	/** Index of the first queued event that is due at `now` — events
+	 * carrying a future `notBefore` stay queued (delayed routing, see
+	 * {@link OrchestrationEvent.notBefore}). -1 when nothing is due. */
+	const nextDueIndex = (now: number): number => {
+		for (let i = 0; i < f.queue.length; i += 1) {
+			const notBefore = f.queue[i]?.notBefore;
+			if (notBefore === undefined || notBefore <= now) return i;
+		}
+		return -1;
+	};
 
 	const step = (maxBatch = Number.MAX_SAFE_INTEGER) =>
 		Effect.gen(function* () {
@@ -293,7 +314,14 @@ const makeSession = (def: OrchestrationDef, f: SessionFields): OrchestrationSess
 					});
 				}
 
-				const event = f.queue.shift() as Event;
+				const dueIndex = nextDueIndex(Date.now());
+				if (dueIndex === -1) {
+					// Only delayed (`notBefore`-future) events remain —
+					// pause the batch; the caller re-enters at
+					// nextWakeAt (in-memory sleep / delayed step job).
+					break;
+				}
+				const event = f.queue.splice(dueIndex, 1)[0] as Event;
 				f.events.push(event);
 				processed += 1;
 
@@ -357,7 +385,7 @@ const makeSession = (def: OrchestrationDef, f: SessionFields): OrchestrationSess
 						config: f.config,
 						state: { ...f.state },
 						params: node.params ?? {},
-						emit: (type, payload) => enqueue(node.id, type, payload),
+						emit: (type, payload, opts) => enqueue(node.id, type, payload, opts?.notBefore),
 					};
 
 					let attempt = invokeKind(rt.kind, ctx);
@@ -420,7 +448,14 @@ const makeSession = (def: OrchestrationDef, f: SessionFields): OrchestrationSess
 						f.state[node.id] = result.output;
 					}
 					for (const emitted of result.events ?? []) {
-						f.queue.push(OrchestrationEvent.new(emitted.type, emitted.payload ?? {}, node.id));
+						f.queue.push(
+							OrchestrationEvent.new(
+								emitted.type,
+								emitted.payload ?? {},
+								node.id,
+								emitted.notBefore,
+							),
+						);
 					}
 					f.trace.push({ nodeId: node.id, status: "ok", latencyMs, fires: rt.fires });
 
@@ -440,6 +475,18 @@ const makeSession = (def: OrchestrationDef, f: SessionFields): OrchestrationSess
 		step,
 		isFinished: () => f.halted || (f.queue.length === 0 && f.doneEmitted),
 		pendingEvents: () => [...f.queue],
+		nextWakeAt: () => {
+			const now = Date.now();
+			let wake: number | null = null;
+			for (const queued of f.queue) {
+				const notBefore = queued.notBefore;
+				// Anything due now (or undated) means the next step must
+				// run immediately — null signals "no delay".
+				if (notBefore === undefined || notBefore <= now) return null;
+				if (wake === null || notBefore < wake) wake = notBefore;
+			}
+			return wake;
+		},
 		snapshot: () => ({
 			runtimes: f.runtimes.map((rt) => ({
 				nodeId: rt.node.id,
@@ -561,6 +608,14 @@ export const runOrchestration = (
 		});
 		while (!session.isFinished()) {
 			yield* session.step();
+			// Delayed routing: when only `notBefore`-future events remain,
+			// sleep until the earliest wake instant instead of busy-
+			// looping (the durable runner expresses the same pause as a
+			// delayed `orchestrator.step` job).
+			const wakeAt = session.nextWakeAt();
+			if (wakeAt !== null) {
+				yield* Effect.sleep(Math.max(0, wakeAt - Date.now()));
+			}
 		}
 		return session.result();
 	});

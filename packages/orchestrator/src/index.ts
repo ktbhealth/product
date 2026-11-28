@@ -37,24 +37,12 @@ export {
 	type OrchestratorRegistryService,
 } from "./registry.ts";
 export {
-	aiKind,
-	AmbientAsrPort,
-	AmbientDecisionsPort,
-	AmbientLlmPort,
-	AmbientPlatformDecisions,
-	AmbientPlatformLlm,
 	builtinKinds,
 	emitKind,
 	gateKind,
 	OrchestrationDepth,
 	pollKind,
 	subworkflowKind,
-	type AmbientAsrPortShape,
-	type AmbientDecisionsPortShape,
-	type AmbientLlmPortShape,
-	type AmbientPlatformDecisionsShape,
-	type AmbientPlatformLlmShape,
-	type AmbientTaskEnvelope,
 } from "./kinds.ts";
 export {
 	ORCHESTRATOR_STEP_KIND,

@@ -11,6 +11,7 @@ import {
 	type CronJobInfo,
 	type CronRunResult,
 	type ScheduleDeleteResult,
+	type ScheduleEntryInfo,
 	type ScheduleWriteResult,
 	type ScheduledJobCreateInput,
 	type ScheduledJobInfo,
@@ -52,6 +53,10 @@ export class CronAdmin extends Context.Service<
 		 * capability is absent; mutation results carry their own
 		 * honest failure reasons. */
 		readonly schedules: () => Effect.Effect<readonly ScheduledJobInfo[] | null, Forbidden>;
+		/** Unified schedules read model — cron registry jobs +
+		 * scheduled_jobs rows merged into one entry list. Null when the
+		 * runtime cannot report (capability or `entries` absent). */
+		readonly entries: () => Effect.Effect<readonly ScheduleEntryInfo[] | null, Forbidden>;
 		readonly scheduleKinds: () => Effect.Effect<readonly string[] | null, Forbidden>;
 		/** `jobs.schedulable` declarations — kind picker metadata with
 		 * params schemas and suggested defaults (P-094). */
@@ -131,6 +136,20 @@ export const CronAdminLive = Layer.effect(
 							try {
 								const capability = runtimeProbe((r) => r.schedules);
 								return capability === undefined ? null : await capability.list();
+							} catch {
+								return null;
+							}
+						}),
+					),
+				),
+			entries: () =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<readonly ScheduleEntryInfo[] | null> => {
+							try {
+								const capability = runtimeProbe((r) => r.schedules);
+								if (capability?.entries === undefined) return null;
+								return await capability.entries();
 							} catch {
 								return null;
 							}

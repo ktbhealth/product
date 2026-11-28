@@ -3,6 +3,7 @@ import type { Plugin } from "@ktb/kernel";
 import { plugins as platformClientPlugins } from "@ktb/platform/client";
 
 import { collectBoundaries } from "./boundaries.ts";
+import { classifyDispatchTarget, type DispatchTarget } from "./dispatch.ts";
 import { collectPages, collectPortals } from "./pages.ts";
 
 /**
@@ -31,8 +32,11 @@ export const plugins: readonly Plugin[] = orderPlugins(
 // Registry-derived collections (P-058/P-059/P-060): pure helpers over the
 // plugin list, re-exported so apps consume one client entry. The page
 // maps are computed once here — the registry is static.
+export * from "./app-dispatch.tsx";
 export * from "./boundaries.ts";
 export * from "./chrome.ts";
+export * from "./dispatch.ts";
+export * from "./i18n-keys.ts";
 export * from "./login-tiles.ts";
 export * from "./namespaces.ts";
 export * from "./pages.ts";
@@ -44,6 +48,11 @@ export const { pages, appPages, portalPages } = collectPages(plugins);
 /** Every contributed portal instance (P-081), in topo order — the
  * portal shells and the switcher resolve descriptors from this. */
 export const portalInstances = collectPortals(plugins);
+
+/** Root-splat dispatch classification bound to this registry's portal
+ * instances (see {@link classifyDispatchTarget}). */
+export const dispatchTarget = (path: string): DispatchTarget =>
+	classifyDispatchTarget(path, portalInstances);
 
 /** Every contributed router boundary (404/error), in topo order —
  * select the live winner per kind with selectNotFoundBoundary /

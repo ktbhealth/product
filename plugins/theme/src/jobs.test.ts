@@ -179,11 +179,16 @@ const makeBucket = (objects: Record<string, { size?: number; data: Uint8Array }>
 				if (data === undefined) return null;
 				const declared = objects[key]?.size ?? data.byteLength;
 				const bytes = data.slice();
-				return { size: declared, arrayBuffer: async () => bytes.buffer };
+				return {
+					size: declared,
+					body: new Response(bytes).body!,
+					arrayBuffer: async () => bytes.buffer,
+				};
 			},
 			put: async (key: string, value: Uint8Array) => {
 				store.set(key, value.slice());
 			},
+			delete: async () => {},
 		},
 	};
 };

@@ -998,6 +998,9 @@ export const auditServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const auditChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Assurance: "panel_group_assurance" },
+	},
 	id: "audit.chrome",
 	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

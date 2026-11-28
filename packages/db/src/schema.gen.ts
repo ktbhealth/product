@@ -1,9 +1,16 @@
 // GENERATED FILE — do not edit.
 // Regenerate with `bun run gen:db-schema` (tools/gen-db-schema.mjs).
-// Aggregates plugin-owned drizzle table definitions for
-// `@ktb/db/schema` and drizzle-kit (drizzle.config.ts points here).
-// Relative paths are deliberate: @ktb/db must not depend on plugin
-// packages — see tools/gen-db-schema.mjs.
+// Aggregates owner-declared drizzle table definitions (plugins/*
+// and packages/* src/schema.ts modules) for `@ktb/db/schema` and
+// drizzle-kit (drizzle.config.ts points here).
+// Relative paths are deliberate: @ktb/db must not depend on the
+// owning packages — see tools/gen-db-schema.mjs.
+export * from "../../auth/src/schema.ts";
+export * from "../../jobs-port/src/schema.ts";
+export * from "../../orchestrator/src/schema.ts";
+export * from "../../outbox/src/schema.ts";
+export * from "../../platform/src/schema.ts";
+export * from "../../scheduler-port/src/schema.ts";
 export * from "../../../plugins/agenda/src/schema.ts";
 export * from "../../../plugins/ai-model/src/schema.ts";
 export * from "../../../plugins/ai-prompt/src/schema.ts";

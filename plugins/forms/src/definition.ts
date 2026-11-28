@@ -1,13 +1,6 @@
-import type { JsonObject } from "effect/Schema";
 import type { JsonSchemaObject } from "@ktb/json-schema";
 import { assertSchema } from "@ktb/json-schema";
-import {
-	collectKindContributions,
-	GENERIC_CONTRIBUTION_SLOT,
-	type ContributionKindDescriptor,
-	type Plugin,
-	type PluginContribution,
-} from "@ktb/kernel";
+import { defineDefKind } from "@ktb/kernel";
 
 /**
  * Form definitions as DATA — the `form.def` contribution kind.
@@ -33,17 +26,6 @@ import {
  * richer needs a code change in @ktb/forms — there is no `hook`
  * escape hatch.
  */
-
-/** The registered contribution kind for form definitions. */
-export const FORM_DEF_KIND: ContributionKindDescriptor = {
-	id: "form.def",
-	slot: GENERIC_CONTRIBUTION_SLOT,
-	// app-host.client: defs are JSON data the browser renderer consumes
-	// (ctx.plugins on page surfaces). Emitters must mirror
-	// `contributions` in client.ts — see module docstring.
-	consumers: ["app-host.client", "plugin-manager"],
-	ordering: "topo",
-};
 
 /**
  * Per-field presentation hints, keyed by TOP-LEVEL property name only
@@ -190,11 +172,38 @@ export const assertFormDefinition = (value: unknown, context: string): FormDefin
 };
 
 /**
+ * The `form.def` contribution pipeline — kind descriptor, define /
+ * contribution / to-def / collect / registry builders — owned by
+ * `defineDefKind` (@ktb/kernel). Two deliberate deviations from the
+ * sibling kinds, preserved from the hand-rolled version: manifest
+ * entries carry NO `version` (defs version implicitly with the
+ * plugin), and there is no composition-root service — the
+ * `/forms/<id>` page resolves defs straight from `ctx.plugins`
+ * (see ./forms-page.tsx), so `makeRegistry` stays unexported.
+ */
+const formDefKind = defineDefKind<FormDefinition, "forms">({
+	id: "form.def",
+	// app-host.client: defs are JSON data the browser renderer consumes
+	// (ctx.plugins on page surfaces). Emitters must mirror
+	// `contributions` in client.ts — see module docstring.
+	consumers: ["app-host.client", "plugin-manager"],
+	assert: assertFormDefinition,
+	defId: (def) => def.id,
+	noun: "form",
+	field: "forms",
+	version: () => undefined,
+	uniqueKey: (def) => def.id,
+	uniqueLabel: "form definition",
+});
+
+/** The registered contribution kind for form definitions. */
+export const FORM_DEF_KIND = formDefKind.KIND;
+
+/**
  * Build a typed definition — asserts immediately so packaging bugs
  * surface at module load, not at first render.
  */
-export const defineForm = (def: FormDefinition): FormDefinition =>
-	assertFormDefinition(def, `form "${String((def as { id?: unknown }).id)}"`);
+export const defineForm = formDefKind.define;
 
 /**
  * Build the manifest entry a plugin adds to `contributions`:
@@ -207,23 +216,13 @@ export const defineForm = (def: FormDefinition): FormDefinition =>
  * (the /forms/<id> segment). Remember to mirror `contributions` in the
  * plugin's `src/client.ts` — the renderer reads the client registry.
  */
-export const formDefContribution = (def: FormDefinition): PluginContribution => ({
-	kind: FORM_DEF_KIND.id,
-	id: def.id,
-	// Defs are pure JSON by construction (JsonSchema subset + string
-	// hints) — the cast bridges the typed view onto the serializable
-	// contract, same as documentCollectionContribution.
-	meta: def as unknown as JsonObject,
-});
+export const formDefContribution = formDefKind.contribution;
 
 /** Narrow a collected `PluginContribution` back to a definition.
  * Throws on malformed entries — same packaging-bug contract as
  * {@link assertFormDefinition}. `owner` falls back to the
  * contributing plugin id. */
-export const toFormDefinition = (entry: PluginContribution, pluginId: string): FormDefinition => {
-	const def = assertFormDefinition(entry.meta, `plugin "${pluginId}" contribution "${entry.id}"`);
-	return def.owner === undefined ? { ...def, owner: pluginId } : def;
-};
+export const toFormDefinition = formDefKind.toDef;
 
 /**
  * The ordered form registry page surfaces resolve against: every
@@ -232,19 +231,7 @@ export const toFormDefinition = (entry: PluginContribution, pluginId: string): F
  * a packaging bug — this throws rather than letting the last
  * contribution win.
  */
-export const collectFormDefinitions = (plugins: readonly Plugin[]): readonly FormDefinition[] => {
-	const collected = collectKindContributions(plugins, FORM_DEF_KIND).map((entry) =>
-		toFormDefinition(entry.payload as PluginContribution, entry.plugin.id),
-	);
-	const seen = new Set<string>();
-	for (const def of collected) {
-		if (seen.has(def.id)) {
-			throw new Error(`duplicate form definition "${def.id}" contributed by multiple plugins`);
-		}
-		seen.add(def.id);
-	}
-	return collected;
-};
+export const collectFormDefinitions = formDefKind.collect;
 
 /**
  * Extract the form id from a `/forms/<id>` request path — the

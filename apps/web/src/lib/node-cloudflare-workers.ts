@@ -6,10 +6,12 @@ import { makeSqliteDatabase } from "@ktb/db-sqlite";
 import { loadDevVars, makeLocalAudioBucket, makeLocalQueue } from "@ktb/dev-node";
 import { connect as nodeSocketConnect } from "@ktb/email-smtp/node-connect";
 import { observabilityEnvKeys } from "@ktb/observability";
-import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
+import { createRedisJobsTransport, DEFAULT_QUEUE } from "@ktb/jobs-transport-redis";
 import { createRedisPubSubTransport } from "@ktb/pubsub-transport-redis";
+import type { QueueTransport } from "@ktb/queues-port";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
+import { THEME_ASSETS_QUEUE_NAME } from "./queue-names.ts";
 
 /**
  * Node/Bun stand-in for the `cloudflare:workers` module — aliased in
@@ -183,7 +185,7 @@ env.THEME_ASSETS_QUEUE = makeLocalQueue({
 	dbPath:
 		process.env.KTB_DEV_THEME_QUEUE_DB ??
 		resolve(dirname(fileURLToPath(import.meta.url)), "../../data/theme-queue.db"),
-	queue: "ktb-theme-assets",
+	queue: THEME_ASSETS_QUEUE_NAME,
 	loadHandler: async () => {
 		const { handleThemeQueueBatch } = await import("./theme-jobs.ts");
 		return handleThemeQueueBatch;
@@ -199,27 +201,32 @@ const IMAGES_DIR =
 	resolve(dirname(fileURLToPath(import.meta.url)), "../../data/images");
 env.IMAGES_BUCKET = makeLocalAudioBucket(IMAGES_DIR);
 
-// Redis jobs queue probe (dev:node only): apps/jobs-worker consumes the
-// ktb:jobs list off Redis; LLEN gives the pending backlog for the
-// /platform queue registry. The transport connects lazily on the first
-// stats call so an absent Redis never blocks boot, and a failed connect
-// resolves null — the registry's honest "unavailable" state, same
-// contract as the other probes. This file is never bundled for workerd
-// (the cloudflare:workers alias only applies under KTB_DEV_NODE), so
-// the node Redis client is safe to import here.
+// Redis jobs queue (dev:node only): apps/jobs-worker consumes the
+// ktb:jobs list off Redis; the full QueueTransport (send/receive/
+// stats/close + name) is exposed so platform.ts's queue registry
+// derives the /platform/queue entry from the bound transport itself.
+// The transport connects lazily on first use so an absent Redis never
+// blocks boot, and a failed stats resolves null — the registry's
+// honest "unavailable" state, same contract as the other probes.
+// This file is never bundled for workerd (the cloudflare:workers
+// alias only applies under KTB_DEV_NODE), so the node Redis client is
+// safe to import here.
 let redisJobsTransport: ReturnType<typeof createRedisJobsTransport> | undefined;
 const redisJobsQueue = () => {
 	redisJobsTransport ??= createRedisJobsTransport({
 		url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
 		...(process.env.JOBS_QUEUE !== undefined ? { queue: process.env.JOBS_QUEUE } : {}),
 	}).catch((error: unknown) => {
-		// Let the next stats call retry instead of caching the failure.
+		// Let the next call retry instead of caching the failure.
 		redisJobsTransport = undefined;
 		throw error;
 	});
 	return redisJobsTransport;
 };
 env.REDIS_JOBS_QUEUE = {
+	name: process.env.JOBS_QUEUE ?? DEFAULT_QUEUE,
+	send: async (body: unknown) => (await redisJobsQueue()).send(body),
+	receive: async (count?: number) => (await redisJobsQueue()).receive(count),
 	stats: async () => {
 		try {
 			return await (await redisJobsQueue()).stats();
@@ -227,7 +234,11 @@ env.REDIS_JOBS_QUEUE = {
 			return null;
 		}
 	},
-};
+	close: async () => {
+		const transport = await redisJobsQueue().catch(() => undefined);
+		await transport?.close();
+	},
+} satisfies QueueTransport;
 
 // Redis pub/sub stand-in (dev:node only): PUBSUB CHANNELS/NUMSUB give the
 // /platform/pubsub console real cross-process topics — the same Redis

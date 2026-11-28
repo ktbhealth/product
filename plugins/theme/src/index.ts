@@ -149,6 +149,9 @@ export const themeRoutesPlugin = definePlugin({
 
 /** Sidebar entry under the System group (same mechanism as jobs.chrome). */
 export const themeChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "theme.chrome",
 	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, themeServicesPlugin.id],

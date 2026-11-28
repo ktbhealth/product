@@ -1,6 +1,9 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+
+import type { ElementKind } from "@ktb/kernel";
 
 /**
  * Element-kind registry (P-102 phase 3): managed content generalized
@@ -129,3 +132,97 @@ export const makeElementKinds = (): ElementKindsShape => {
 
 /** Shared-registry layer for the composition root's `core`. */
 export const ElementKindsLive = Layer.sync(ElementKinds, makeElementKinds);
+
+/** The server half of an element kind — the `resolve`/`hooks` fields
+ * of an {@link ElementKindDescriptor} minus the `kind`/`label`
+ * identity, which the factory takes from the manifest so the two
+ * sides can never drift. */
+export type ElementKindServerParts = Pick<ElementKindDescriptor, "resolve" | "hooks">;
+
+/** One element kind declared once via {@link defineElementKind}:
+ * `manifest` is the client-consumed `elementKinds` contribution entry,
+ * `live` derives the server registration layer from the same
+ * declaration. */
+export interface ElementKindDefinition<S> {
+	/** The client manifest entry — feed `elementKinds: [def.manifest]`
+	 * on BOTH the server index.ts and the client.ts mirror; sharing the
+	 * object makes manifest parity structural instead of asserted. */
+	readonly manifest: ElementKind;
+	/** The server half of the declaration: derives the descriptor's
+	 * `resolve`/`hooks` from the plugin's service record. `kind`/`label`
+	 * come from `manifest`, so identity can never drift between sides. */
+	readonly server: (services: S) => ElementKindServerParts;
+	/** Build the registration layer. `services` is an Effect producing
+	 * the record `server` derives the descriptor from — the plugin's
+	 * own services (yielded via `Effect.gen` in the plugin's server
+	 * module) become the layer's requirements, so existing
+	 * `provideMerge` wiring is unchanged. Consumes `ElementKinds`
+	 * optionally: hosts without the registry build fine and register
+	 * nothing. */
+	readonly live: <R>(services: Effect.Effect<S, never, R>) => Layer.Layer<never, never, R>;
+}
+
+/**
+ * Declare an element kind ONCE — manifest (client) and server
+ * descriptor (registry) derived from a single spec, replacing the
+ * keep-`kind`/`label`-in-sync-by-comment contract between a plugin's
+ * `elementKinds` manifest and its `ElementKindDescriptor`.
+ *
+ * `manifest` is the {@link ElementKind} contribution entry verbatim.
+ * `server` is a function from the plugin's service record to the
+ * descriptor's `resolve`/`hooks` — kept as a function (not an Effect)
+ * so the declaration can live in a CLIENT-SAFE module: the services
+ * record is only produced inside `live`'s layer effect, which the
+ * plugin's server module supplies. Service shapes cross the boundary
+ * as `import type` (erased at build), so the client bundle never sees
+ * the server graph.
+ *
+ * ```ts
+ * export const myKind = defineElementKind<MyServices>({
+ *   manifest: { kind: "my-kind", label: "My kind", renderer: MyView },
+ *   server: ({ myService }) => ({ resolve: (ref) => myService.get(ref) }),
+ * });
+ * // client + server manifests: elementKinds: [myKind.manifest]
+ * // server layer: myKind.live(Effect.gen(function* () {
+ * //   return { myService: yield* MyService };
+ * // }))
+ * ```
+ */
+export const defineElementKind = <S>(spec: {
+	readonly manifest: ElementKind;
+	readonly server: (services: S) => ElementKindServerParts;
+}): ElementKindDefinition<S> => {
+	const definition: ElementKindDefinition<S> = {
+		manifest: { ...spec.manifest },
+		server: spec.server,
+		live: (services) => elementKindsLive([definition], services),
+	};
+	return definition;
+};
+
+/**
+ * Registration layer for a set of {@link ElementKindDefinition}s —
+ * the multi-kind counterpart of `def.live(services)` (builder-blocks
+ * registers nine kinds through ONE layer). Registers every kind into
+ * `ElementKinds` in declaration order when the registry is present;
+ * builds fine without it. `services` is produced once and shared by
+ * every kind's `server`.
+ */
+export const elementKindsLive = <S, R>(
+	kinds: readonly ElementKindDefinition<S>[],
+	services: Effect.Effect<S, never, R>,
+): Layer.Layer<never, never, R> =>
+	Layer.effectDiscard(
+		Effect.gen(function* () {
+			const registry = yield* Effect.serviceOption(ElementKinds);
+			if (Option.isNone(registry)) return;
+			const svc = yield* services;
+			for (const kind of kinds) {
+				yield* registry.value.register({
+					kind: kind.manifest.kind,
+					label: kind.manifest.label,
+					...kind.server(svc),
+				});
+			}
+		}),
+	);

@@ -9,6 +9,8 @@ import type { RequestHandler } from "@tanstack/react-start/server";
 import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
 import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
 import { flushTelemetry, runScheduledCron } from "#/lib/platform.ts";
+import { AUDIO_QUEUE_NAME, THEME_ASSETS_QUEUE_NAME } from "#/lib/queue-names.ts";
+import type { QueueMessage } from "@ktb/queues-port";
 
 // F3b: re-export the AcpBridge Durable Object class — the Alchemy
 // `ACP_BRIDGE` binding points at this worker's `AcpBridge` export.
@@ -28,6 +30,19 @@ export const createServerEntry: (entry: ServerEntry) => ServerEntry =
 	createCoreServerEntry<Register>;
 
 const entry = createServerEntry({ fetch });
+
+/**
+ * Queue-name → batch-handler dispatch, keyed by the transport names in
+ * lib/queue-names.ts — the same names the platform queue registry
+ * publishes off the bound transports. The dedicated theme-assets
+ * consumer dispatches to its own kind registry; every other consumer
+ * binding is the shared transcription/jobs transport (the default —
+ * an unrecognized queue name lands there exactly as before).
+ */
+const queueBatchHandlers = new Map<string, (messages: readonly QueueMessage[]) => Promise<void>>([
+	[AUDIO_QUEUE_NAME, handleAudioQueueBatch],
+	[THEME_ASSETS_QUEUE_NAME, handleThemeQueueBatch],
+]);
 
 /**
  * Custom worker entry (replaces TanStack's default server entry): same
@@ -51,14 +66,11 @@ export default {
 		return response;
 	}) as RequestHandler<Register>,
 	queue: async (batch: MessageBatch, _env: unknown, ctx: ExecutionContext) => {
-		// Dedicated theme-assets queue (PL-006 phase 4) dispatches to its
-		// own kind registry; every other consumer binding is the shared
-		// transcription/jobs transport.
-		if (batch.queue === "ktb-theme-assets") {
-			await handleThemeQueueBatch(batch.messages);
-		} else {
-			await handleAudioQueueBatch(batch.messages);
-		}
+		// Unrecognized consumer bindings fall back to the shared
+		// transcription/jobs transport — same as before the dispatch
+		// map existed.
+		const handler = queueBatchHandlers.get(batch.queue) ?? handleAudioQueueBatch;
+		await handler(batch.messages);
 		ctx?.waitUntil?.(flushTelemetry());
 	},
 	// Cron triggers (Alchemy `crons` — see alchemy.run.ts, provisioned

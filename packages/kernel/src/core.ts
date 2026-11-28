@@ -4,6 +4,7 @@ import type { JsonObject } from "effect/Schema";
 import type * as Schema from "effect/Schema";
 import type { PipelinePack } from "@ktb/pipeline";
 import type { OrchestrationPack } from "@ktb/orchestrator";
+import type { NotificationIngestion } from "@ktb/notifications-port";
 
 /**
  * Registry of plugin ids known at compile time. Each plugin entry module
@@ -74,6 +75,22 @@ export interface PluginContribution {
 	readonly meta?: JsonObject;
 }
 
+/** Plugin-declared chrome i18n keys: the `app.*` message keys the host
+ * resolves for this plugin's chrome labels, sidebar group headers and
+ * footer notes — the manifest-side replacement for host path/name→key
+ * maps. Values are `app.`-namespace key suffixes, the same contract
+ * `loginTile.labelKey` uses; the declared English `label`/`group`/
+ * `fallback` literals stay the fallback when the key is absent. Pure
+ * data — safe on BOTH registries (client mirrors carry it too). */
+export interface PluginI18nKeys {
+	/** `to` → app message key for `link`/`sidebarItem` chrome labels. */
+	readonly labels?: Readonly<Record<string, string>>;
+	/** Sidebar group label → app message key for group headers. */
+	readonly groups?: Readonly<Record<string, string>>;
+	/** Footer note `key` → app message key. */
+	readonly notes?: Readonly<Record<string, string>>;
+}
+
 export interface PluginBase {
 	readonly id: string;
 	/** Deployable package this plugin belongs to — the `plugins/<pkg>`
@@ -134,13 +151,27 @@ export interface PluginBase {
 	 * stubs reject it ({@link ClientStubPlugin}). */
 	readonly pipelines?: readonly PipelinePack[];
 	/** Orchestration packs this plugin contributes (event-driven node
-	 * DAGs — def + kind handlers, see @ktb/orchestrator). Additive like
+	 * DAGs — kind handlers + optional def, see @ktb/orchestrator).
+	 * Additive like
 	 * `pipelines`: may accompany any dedicated contribution field. The
 	 * host collects these into `OrchestratorRegistryLive` at
 	 * composition; kind handlers are Effects, so this is
 	 * server-manifest data — client stubs reject it
 	 * ({@link ClientStubPlugin}). */
 	readonly orchestrations?: readonly OrchestrationPack[];
+	/** Chrome i18n keys this plugin's contributions resolve against the
+	 * host's `app.*` catalog (see {@link PluginI18nKeys}). */
+	readonly i18nKeys?: PluginI18nKeys;
+	/** Notification-ingestion handlers this plugin contributes —
+	 * `{ event, project }` pairs projecting domain events into
+	 * console-notification drafts (@ktb/notifications-port). Additive
+	 * like `pipelines`: may accompany any dedicated contribution
+	 * field. Projectors are functions, so this is server-manifest data
+	 * — client stubs reject it ({@link ClientStubPlugin}). The app
+	 * host collects these into `NotificationIngestionsLive` at
+	 * composition; the notifications plugin subscribes them on the
+	 * app-wide EventBus — no dep edge to the consumer is required. */
+	readonly notificationIngestions?: readonly NotificationIngestion[];
 }
 
 type ContributionField =
@@ -154,7 +185,8 @@ type ContributionField =
 	| "portals"
 	| "boundaries"
 	| "elementKinds"
-	| "middleware";
+	| "middleware"
+	| "cqrs";
 
 /** Marks every contribution field EXCEPT `K` as forbidden (`?: never`). */
 export type ForbiddenContributions<K extends ContributionField> = {

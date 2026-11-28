@@ -33,9 +33,10 @@ import {
 } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
 import { portalChromeProps } from "#/lib/chrome-props.ts";
-import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
+import { pluginGroupLabel, pluginItemLabel } from "#/lib/i18n.ts";
 import {
 	collectChrome,
+	collectI18nKeys,
 	enabledIdSet,
 	enabledPlugins,
 	findPage,
@@ -210,15 +211,21 @@ export function PlatformShell({ loaderData }: { loaderData: PlatformLoaderData }
 	const locale = i18n?.locale ?? "en";
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
 	const denied = new Set(deniedPaths);
+	const i18nKeys = collectI18nKeys(visiblePlugins);
 	const items = collectChrome(visiblePlugins, "portal.sidebar", pathname, "platform", user).flatMap(
 		(entry) =>
 			entry.content.kind === "sidebarItem" && !denied.has(entry.content.item.to)
 				? [
 						{
 							...entry.content.item,
-							label: pluginPanelLabel(entry.content.item.to, entry.content.item.label, i18n),
+							label: pluginItemLabel(
+								entry.content.item.to,
+								entry.content.item.label,
+								i18n,
+								i18nKeys,
+							),
 							...(entry.content.item.group !== undefined
-								? { group: pluginPanelGroup(entry.content.item.group, i18n) }
+								? { group: pluginGroupLabel(entry.content.item.group, i18n, i18nKeys) }
 								: {}),
 						},
 					]

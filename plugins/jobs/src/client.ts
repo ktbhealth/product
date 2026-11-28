@@ -49,6 +49,12 @@ export const opsServicesPlugin = definePlugin({
  * the `portal.sidebar` chrome region.
  */
 export const opsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/ops": "panel_nav_ops",
+		},
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "jobs.chrome",
 	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: ["platform.panel"],

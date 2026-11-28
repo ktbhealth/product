@@ -7,9 +7,9 @@ import type { PanelPageContext } from "@ktb/kernel";
 import { CronPlatformPage } from "./platform-page.tsx";
 
 vi.mock("./views/CronPage.tsx", () => ({
-	CronPage: ({ jobs, runs, locale }: { jobs: unknown; runs: unknown; locale: string }) => (
+	CronPage: ({ runs, entries, locale }: { runs: unknown; entries: unknown; locale: string }) => (
 		<div data-testid="cron-page">
-			{locale}:{Array.isArray(jobs) ? jobs.length : "null"}:
+			{locale}:{Array.isArray(entries) ? entries.length : "null"}:
 			{Array.isArray(runs) ? runs.length : "null"}
 		</div>
 	),
@@ -21,7 +21,9 @@ afterEach(cleanup);
 
 describe("CronPlatformPage", () => {
 	it("narrows loader data into view props", () => {
-		render(<CronPlatformPage data={{ jobs: [{ id: "a" }], runs: [] }} ctx={ctx("pt-BR")} />);
+		render(
+			<CronPlatformPage data={{ entries: [{ id: "cron:a" }], runs: [] }} ctx={ctx("pt-BR")} />,
+		);
 		expect(screen.getByTestId("cron-page").textContent).toBe("pt-BR:1:0");
 	});
 

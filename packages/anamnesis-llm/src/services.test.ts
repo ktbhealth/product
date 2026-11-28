@@ -1,4 +1,3 @@
-import { LanguageModel } from "effect/ai";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
@@ -7,29 +6,41 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Anamnesis } from "@ktb/anamnesis";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
+import { LlmPort, PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
 import {
 	AnamnesisEngineLive,
 	heuristicAnamnesisEngineLive,
 	makeAnamnesisEngine,
+	parseAnamnesis,
 } from "./services.ts";
 import { DEFAULT_WORKERS_AI_MODEL } from "./workers-ai.ts";
 
 const mocks = vi.hoisted(() => ({
 	anthropicLive: vi.fn(),
 	openAiLive: vi.fn(),
-	workersAiEngine: vi.fn(),
 }));
 
-vi.mock("./llm.ts", () => ({
-	anthropicLanguageModelLive: mocks.anthropicLive,
-	openAiLanguageModelLive: mocks.openAiLive,
-}));
-
-vi.mock("./workers-ai.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("./workers-ai.ts")>();
+vi.mock("./llm.ts", async () => {
+	const { LanguageModel } = await import("effect/ai");
+	const Effect = await import("effect/Effect");
 	const Layer = await import("effect/Layer");
-	mocks.workersAiEngine.mockReturnValue(Layer.empty);
-	return { ...actual, makeWorkersAiAnamnesisEngine: mocks.workersAiEngine };
+	// Failing LanguageModel — the env LlmPort adapter maps the error
+	// to PortError, so every extract lands on the heuristic fallback.
+	const failingModel = {
+		[LanguageModel.TypeId]: LanguageModel.TypeId,
+		generateText: () => Effect.fail(new Error("provider down")),
+		generateObject: () => Effect.die("unused"),
+		streamText: () => {
+			throw new Error("unused");
+		},
+	} as unknown as import("effect/ai").LanguageModel.LanguageModel;
+	const lmLayer = () => Layer.succeed(LanguageModel.LanguageModel, failingModel);
+	mocks.anthropicLive.mockImplementation(lmLayer);
+	mocks.openAiLive.mockImplementation(lmLayer);
+	return {
+		anthropicLanguageModelLive: mocks.anthropicLive,
+		openAiLanguageModelLive: mocks.openAiLive,
+	};
 });
 
 /** Captures log entries emitted through Effect.log* inside the effect. */
@@ -77,70 +88,117 @@ const MOCK_ANAMNESIS: Anamnesis = {
 	conduta: section("Dipirona"),
 };
 
-/** Minimal LanguageModel fake — only generateObject is exercised. */
-const fakeModel = (
-	generateObject: LanguageModel.LanguageModel["generateObject"],
-): LanguageModel.LanguageModel =>
+const record = (engine: string): RunRecord =>
 	({
-		[LanguageModel.TypeId]: LanguageModel.TypeId,
-		generateText: () => Effect.die("unused"),
-		generateObject,
-		streamText: () => {
-			throw new Error("unused");
-		},
-	}) as unknown as LanguageModel.LanguageModel;
+		runId: "r",
+		taskId: "t",
+		stage: "generate",
+		engine,
+		inputHash: "h",
+		startedAt: 0,
+	}) as RunRecord;
 
-const okObject = <A>(value: A) =>
-	vi.fn(
-		() =>
-			Effect.succeed(
-				new LanguageModel.GenerateObjectResponse(value as never, [] as never),
-			) as never,
+type GenerateOut = { readonly text: string; readonly engine?: string } | Error;
+
+/** Minimal LlmPort fake — generate/correct are the only members the
+ * engine exercises. */
+const fakeLlmLayer = (generate: (envelope: TaskEnvelope) => GenerateOut) =>
+	Layer.succeed(
+		LlmPort,
+		LlmPort.of({
+			generate: (envelope) => {
+				const out = generate(envelope);
+				return out instanceof Error
+					? Effect.fail(new PortError({ port: "llm", message: out.message }))
+					: Effect.succeed({
+							text: out.text,
+							record: record(out.engine ?? "test-engine"),
+						});
+			},
+			correct: () => Effect.fail(new PortError({ port: "llm", message: "unused" })),
+		}),
 	);
 
-const failingModel = () => fakeModel((() => Effect.fail(new Error("provider down"))) as never);
+const failingLlmLayer = fakeLlmLayer(() => new Error("provider down"));
 
-const lmLayer = () => Layer.succeed(LanguageModel.LanguageModel, failingModel());
+/** Port that defects instead of failing — exercises the catchDefect
+ * degradation arm, which typed PortErrors never reach. */
+const dyingLlmLayer = Layer.succeed(
+	LlmPort,
+	LlmPort.of({
+		generate: () => Effect.die(new Error("defect boom")),
+		correct: () => Effect.die(new Error("unused")),
+	}),
+);
+
+const engineFrom = async (layer: Layer.Layer<AnamnesisEngine>) =>
+	Effect.runPromise(
+		Effect.gen(function* () {
+			return yield* AnamnesisEngine;
+		}).pipe(Effect.provide(layer)),
+	);
 
 beforeEach(() => {
-	mocks.anthropicLive.mockReset().mockImplementation(lmLayer);
-	mocks.openAiLive.mockReset().mockImplementation(lmLayer);
-	mocks.workersAiEngine.mockReset().mockReturnValue(Layer.empty);
+	mocks.anthropicLive.mockClear();
+	mocks.openAiLive.mockClear();
+});
+
+describe("parseAnamnesis", () => {
+	it("parses bare JSON and fenced JSON", () => {
+		expect(parseAnamnesis(JSON.stringify(MOCK_ANAMNESIS)).queixa_principal.content).toBe(
+			"Dor de cabeça",
+		);
+		expect(
+			parseAnamnesis(`\`\`\`json\n${JSON.stringify(MOCK_ANAMNESIS)}\n\`\`\``).hda.content,
+		).toBe("Há 3 dias");
+	});
+
+	it("parses JSON wrapped in prose", () => {
+		const res = parseAnamnesis(`Aqui está:\n${JSON.stringify(MOCK_ANAMNESIS)}\nFim.`);
+		expect(res.conduta.content).toBe("Dipirona");
+	});
+
+	it("rejects non-JSON output", () => {
+		expect(() => parseAnamnesis("not json")).toThrow();
+	});
 });
 
 describe("AnamnesisEngine", () => {
-	it("extracts via the provided LanguageModel", async () => {
-		const gen = okObject(MOCK_ANAMNESIS);
+	it("extracts via the provided LlmPort", async () => {
+		const seen: TaskEnvelope[] = [];
 		const layer = makeAnamnesisEngine("test").pipe(
-			Layer.provide(Layer.succeed(LanguageModel.LanguageModel, fakeModel(gen))),
+			Layer.provide(
+				fakeLlmLayer((envelope) => {
+					seen.push(envelope);
+					return { text: JSON.stringify(MOCK_ANAMNESIS), engine: "test-engine" };
+				}),
+			),
 		);
-		const engine = await Effect.runPromise(
-			Effect.gen(function* () {
-				return yield* AnamnesisEngine;
-			}).pipe(Effect.provide(layer)),
-		);
+		const engine = await engineFrom(layer);
 		const res = await Effect.runPromise(engine.extract({ transcript: "paciente com dor" }));
-		expect(res.engine).toBe("test");
+		expect(res.engine).toBe("test-engine");
 		expect(res.anamnesis.queixa_principal.content).toBe("Dor de cabeça");
 		expect(res.anamnesis.historico).toBeUndefined();
-		expect(gen).toHaveBeenCalledOnce();
-		const call = (gen.mock.calls as unknown as [[{ objectName: string; prompt: unknown }]])[0]![0];
-		expect(call.objectName).toBe("anamnesis");
-		const promptJson = JSON.stringify(call.prompt);
-		expect(promptJson).toContain("clinical documentation assistant");
-		expect(promptJson).toContain("paciente com dor");
+		expect(seen).toHaveLength(1);
+		expect(seen[0]!.taskId).toBe("anamnesis-extract");
+		expect(seen[0]!.role).toBe("generator");
+		expect(seen[0]!.outputSchema).toBe("Text");
+		const input = seen[0]!.input;
+		expect(input).toContain("clinical documentation assistant");
+		expect(input).toContain("paciente com dor");
 	});
 
 	it("sends patient history as prompt context and records it in historico", async () => {
-		const gen = okObject(MOCK_ANAMNESIS);
+		let sent = "";
 		const layer = makeAnamnesisEngine("test").pipe(
-			Layer.provide(Layer.succeed(LanguageModel.LanguageModel, fakeModel(gen))),
+			Layer.provide(
+				fakeLlmLayer((envelope) => {
+					sent = envelope.input;
+					return { text: JSON.stringify(MOCK_ANAMNESIS) };
+				}),
+			),
 		);
-		const engine = await Effect.runPromise(
-			Effect.gen(function* () {
-				return yield* AnamnesisEngine;
-			}).pipe(Effect.provide(layer)),
-		);
+		const engine = await engineFrom(layer);
 		const history = {
 			count: 1,
 			visits: [
@@ -154,20 +212,13 @@ describe("AnamnesisEngine", () => {
 		};
 		const res = await Effect.runPromise(engine.extract({ transcript: "retorno", history }));
 		expect(res.anamnesis.historico?.content).toContain("Consultas anteriores (1):");
-		const call = (gen.mock.calls as unknown as [[{ prompt: unknown }]])[0]![0];
-		expect(JSON.stringify(call.prompt)).toContain("PATIENT HISTORY");
-		expect(JSON.stringify(call.prompt)).toContain("Dor de cabeça");
+		expect(sent).toContain("PATIENT HISTORY");
+		expect(sent).toContain("Dor de cabeça");
 	});
 
-	it("falls back to heuristic when the model fails", async () => {
-		const layer = makeAnamnesisEngine("openai").pipe(
-			Layer.provide(Layer.succeed(LanguageModel.LanguageModel, failingModel())),
-		);
-		const engine = await Effect.runPromise(
-			Effect.gen(function* () {
-				return yield* AnamnesisEngine;
-			}).pipe(Effect.provide(layer)),
-		);
+	it("falls back to heuristic when the port fails", async () => {
+		const layer = makeAnamnesisEngine("openai").pipe(Layer.provide(failingLlmLayer));
+		const engine = await engineFrom(layer);
 		const { entries, logger } = captureLogs();
 		const { spans, tracer } = makeTracer();
 		const res = await Effect.runPromise(
@@ -185,15 +236,34 @@ describe("AnamnesisEngine", () => {
 		expect(String(warn?.annotations.error)).toContain("provider down");
 	});
 
-	it("heuristic fallback still attaches historico when history is given", async () => {
+	it("falls back to heuristic when the port defects", async () => {
+		const layer = makeAnamnesisEngine("openai").pipe(Layer.provide(dyingLlmLayer));
+		const engine = await engineFrom(layer);
+		const { entries, logger } = captureLogs();
+		const res = await Effect.runPromise(
+			engine
+				.extract({ transcript: "paciente relata febre" })
+				.pipe(Effect.provide(Logger.layer([logger]))),
+		);
+		expect(res.engine).toBe("openai!fallback");
+		expect(res.anamnesis.queixa_principal.content).toBeTruthy();
+		const warn = entries.find((e) => String(e.message).includes("anamnesis extraction failed"));
+		expect(String(warn?.annotations.error)).toContain("defect boom");
+	});
+
+	it("falls back to heuristic when the payload is unparseable", async () => {
 		const layer = makeAnamnesisEngine("openai").pipe(
-			Layer.provide(Layer.succeed(LanguageModel.LanguageModel, failingModel())),
+			Layer.provide(fakeLlmLayer(() => ({ text: "not json" }))),
 		);
-		const engine = await Effect.runPromise(
-			Effect.gen(function* () {
-				return yield* AnamnesisEngine;
-			}).pipe(Effect.provide(layer)),
-		);
+		const engine = await engineFrom(layer);
+		const res = await Effect.runPromise(engine.extract({ transcript: "paciente relata tosse" }));
+		expect(res.engine).toBe("openai!fallback");
+		expect(res.anamnesis.queixa_principal.content).toBeTruthy();
+	});
+
+	it("heuristic fallback still attaches historico when history is given", async () => {
+		const layer = makeAnamnesisEngine("openai").pipe(Layer.provide(failingLlmLayer));
+		const engine = await engineFrom(layer);
 		const res = await Effect.runPromise(
 			engine.extract({
 				transcript: "paciente relata tosse",
@@ -215,11 +285,7 @@ describe("AnamnesisEngine", () => {
 	});
 
 	it("heuristic engine extracts without a model", async () => {
-		const engine = await Effect.runPromise(
-			Effect.gen(function* () {
-				return yield* AnamnesisEngine;
-			}).pipe(Effect.provide(heuristicAnamnesisEngineLive)),
-		);
+		const engine = await engineFrom(heuristicAnamnesisEngineLive);
 		const { spans, tracer } = makeTracer();
 		const res = await Effect.runPromise(
 			engine
@@ -232,14 +298,8 @@ describe("AnamnesisEngine", () => {
 });
 
 describe("AnamnesisEngineLive selection", () => {
-	const fakeAi = { run: async () => ({ response: "{}" }) };
-
 	const extract = async (cfg: Parameters<typeof AnamnesisEngineLive>[0]) => {
-		const engine = await Effect.runPromise(
-			Effect.gen(function* () {
-				return yield* AnamnesisEngine;
-			}).pipe(Effect.provide(AnamnesisEngineLive(cfg))),
-		);
+		const engine = await engineFrom(AnamnesisEngineLive(cfg));
 		return Effect.runPromise(engine.extract({ transcript: "t" }));
 	};
 
@@ -267,27 +327,34 @@ describe("AnamnesisEngineLive selection", () => {
 			baseUrl: undefined,
 			model: "gpt-4o-mini",
 		});
-		AnamnesisEngineLive({ workersAi: fakeAi });
-		expect(mocks.workersAiEngine).toHaveBeenLastCalledWith(fakeAi, DEFAULT_WORKERS_AI_MODEL);
-		AnamnesisEngineLive({ workersAi: fakeAi, workersAiModel: "m" });
-		expect(mocks.workersAiEngine).toHaveBeenLastCalledWith(fakeAi, "m");
 	});
 
-	it("prefers anthropic over openai over workers-ai", () => {
-		AnamnesisEngineLive({ anthropicApiKey: "a", openAiApiKey: "o", workersAi: fakeAi });
+	it("prefers anthropic over openai over workers-ai", async () => {
+		const ai = { run: vi.fn(async () => ({ response: "{}" })) };
+		AnamnesisEngineLive({ anthropicApiKey: "a", openAiApiKey: "o", workersAi: ai });
 		expect(mocks.anthropicLive).toHaveBeenCalledOnce();
 		expect(mocks.openAiLive).not.toHaveBeenCalled();
-		expect(mocks.workersAiEngine).not.toHaveBeenCalled();
-		AnamnesisEngineLive({ openAiApiKey: "o", workersAi: fakeAi });
+		expect(ai.run).not.toHaveBeenCalled();
+		AnamnesisEngineLive({ openAiApiKey: "o", workersAi: ai });
 		expect(mocks.openAiLive).toHaveBeenCalledOnce();
-		expect(mocks.workersAiEngine).not.toHaveBeenCalled();
-		AnamnesisEngineLive({ workersAi: fakeAi });
-		expect(mocks.workersAiEngine).toHaveBeenCalledOnce();
+		expect(ai.run).not.toHaveBeenCalled();
+		await extract({ workersAi: ai });
+		expect(ai.run).toHaveBeenCalled();
 	});
 
 	it("selected engines report their provider tag", async () => {
 		expect((await extract({ anthropicApiKey: "k" })).engine).toBe("anthropic!fallback");
 		expect((await extract({ openAiApiKey: "k" })).engine).toBe("openai!fallback");
-		expect(AnamnesisEngineLive({})).toBe(heuristicAnamnesisEngineLive);
+		expect((await extract({})).engine).toBe("heuristic");
+	});
+
+	it("workers-ai extracts through its LlmPort with the default model", async () => {
+		const ai = { run: vi.fn(async () => ({ response: JSON.stringify(MOCK_ANAMNESIS) })) };
+		const res = await extract({ workersAi: ai });
+		expect(res.engine).toBe(`workers-ai:${DEFAULT_WORKERS_AI_MODEL}`);
+		expect(ai.run).toHaveBeenCalledWith(
+			DEFAULT_WORKERS_AI_MODEL,
+			expect.objectContaining({ messages: expect.any(Array) }),
+		);
 	});
 });

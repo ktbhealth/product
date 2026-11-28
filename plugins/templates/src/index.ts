@@ -48,6 +48,12 @@ export const templatesServicesPlugin = definePlugin({
  * (Site group).
  */
 export const templatesChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/templates": "panel_nav_templates",
+		},
+		groups: { Site: "panel_group_site" },
+	},
 	id: "templates.chrome",
 	meta: { keywords: ["templates", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

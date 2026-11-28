@@ -6,6 +6,8 @@ import { auditServicesPlugin } from "@ktb/audit";
 import { integrityServicesPlugin } from "@ktb/integrity";
 import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { notificationIngestion, notificationIngestMessages } from "@ktb/notifications-port";
+import { ConsultationCreated } from "./api.ts";
 import { platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { routeContribution } from "@ktb/platform/routes";
 import { jobKindContribution } from "@ktb/platform/capabilities";
@@ -26,6 +28,7 @@ import {
 	ConsultationsDashboardStats,
 } from "./views/ConsultationsDashboard.tsx";
 import { Consultations, ConsultationsLive } from "./service.ts";
+import { ConsultationsQueries } from "./api.ts";
 import { AUDIO_TRANSCRIPTION_JOB_KIND } from "./audio-jobs.ts";
 import type { AdminConsultationRow } from "./queries.ts";
 import {
@@ -95,6 +98,12 @@ export {
 	type SignedVersion,
 } from "./shared.ts";
 export { consultationScope } from "./tenant-visibility.ts";
+export {
+	consultationAudioMachine,
+	AUDIO_RETRY_SOURCES,
+	type ConsultationAudioEvent,
+	type ConsultationAudioStatus,
+} from "./audio-status.ts";
 
 export const consultationsTablesPlugin = definePlugin({
 	id: "consultations.tables",
@@ -124,6 +133,21 @@ export const consultationsServicesPlugin = definePlugin({
 		rbacServicesPlugin.id,
 		vaultServicesPlugin.id,
 	],
+	// Notification ingestion (@ktb/notifications-port): consultation
+	// creation projects into a console-notification draft. The app host
+	// collects this into `NotificationIngestions` at composition — the
+	// notifications consumer needs no dep edge back to this plugin.
+	notificationIngestions: [
+		notificationIngestion(ConsultationCreated, (e, { zk, locale }) => {
+			const t = notificationIngestMessages(locale);
+			return {
+				userId: e.userId,
+				kind: "consultation.created",
+				title: t.titles.consultationCreated,
+				body: zk ? undefined : e.source,
+			};
+		}),
+	],
 	services: Layer.mergeAll(
 		ConsultationsLive,
 		ConsultationsQueriesLive,
@@ -142,6 +166,17 @@ export const consultationsServicesPlugin = definePlugin({
 				"Audio transcription — payload carries recording/object refs minted by the upload flow; consumed by the dedicated audio normalizer on AUDIO_QUEUE.",
 		}),
 	],
+});
+
+/** CQRS surface (E.20): the query group declared in ./api.ts, folded
+ * into the app-wide query bus by the host. The patients-owned groups
+ * this package also handles (`PatientRecordConsultationsQueries`,
+ * `PatientCascadeCommands`) are declared on patients.cqrs — the
+ * package-granular enable gate keys off the declaring package. */
+export const consultationsCqrsPlugin = definePlugin({
+	id: "consultations.cqrs",
+	meta: { keywords: ["consultations", "cqrs"] },
+	cqrs: { queries: [ConsultationsQueries] },
 });
 
 // Route subtree composed into the host's virtualRouteConfig (P-033):
@@ -178,6 +213,13 @@ export const consultationsRoutesPlugin = definePlugin({
 // `chrome` region; the dep edge orders it after the platform shell
 // like the retired panel entry.
 export const consultationsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/consultations": "nav_consultations",
+			"/platform/consultations": "nav_consultations",
+		},
+		groups: { "Domain data": "panel_group_domain_data" },
+	},
 	id: "consultations.chrome",
 	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
@@ -294,6 +336,7 @@ export const consultationsPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	consultationsTablesPlugin,
 	consultationsServicesPlugin,
+	consultationsCqrsPlugin,
 	consultationsRoutesPlugin,
 	consultationsChromePlugin,
 	consultationsPanelPlugin,
@@ -305,6 +348,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"consultations.tables": true;
 		"consultations.services": true;
+		"consultations.cqrs": true;
 		"consultations.routes": true;
 		"consultations.chrome": true;
 		"consultations.panel": true;

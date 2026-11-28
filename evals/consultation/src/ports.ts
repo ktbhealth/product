@@ -19,8 +19,8 @@ import type {
 // Platform* services) followed so production plugins can depend on
 // @ktb/eval-core instead of this evals/-workspace pack. Re-exported so
 // consumers keep importing the tags from `@ktb/eval-consultation`
-// directly. The Context key strings are unchanged — the orchestrator's
-// ambient-port mirrors key on them.
+// directly. The Context key strings are unchanged — serialized service
+// references key on them.
 export {
 	DecisionsFactory,
 	DecisionsPort,

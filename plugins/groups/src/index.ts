@@ -510,10 +510,24 @@ export const groupsServicesPlugin = definePlugin({
 	services: Layer.mergeAll(GroupsLive, GroupsQueriesLive),
 });
 
+/** CQRS surface (E.20): the query group declared in ./api.ts, folded
+ * into the app-wide query bus by the host. */
+export const groupsCqrsPlugin = definePlugin({
+	id: "groups.cqrs",
+	meta: { keywords: ["groups", "cqrs"] },
+	cqrs: { queries: [GroupsQueries] },
+});
+
 // Chrome contribution (P-060): the console sidebar entry lives in the
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const groupsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/groups": "panel_nav_groups",
+		},
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "groups.chrome",
 	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
@@ -562,6 +576,7 @@ export const groupsPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	groupsTablesPlugin,
 	groupsServicesPlugin,
+	groupsCqrsPlugin,
 	groupsChromePlugin,
 	groupsPanelPlugin,
 ];
@@ -572,6 +587,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"groups.tables": true;
 		"groups.services": true;
+		"groups.cqrs": true;
 		"groups.chrome": true;
 		"groups.panel": true;
 	}

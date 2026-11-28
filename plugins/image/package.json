@@ -11,11 +11,13 @@
 		"./delete-hooks": "./src/delete-hooks.ts"
 	},
 	"dependencies": {
+		"@ktb/admin-store": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/media": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/views": "workspace:*",

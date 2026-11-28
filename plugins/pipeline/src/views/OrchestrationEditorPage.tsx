@@ -158,7 +158,7 @@ function TypeListField({
 }
 
 /** Kind-aware params editor. `ai`/`gate` get structured fields (the
- * shapes `builtinKinds` document); `emit` and unknown kinds fall back
+ * shapes the shipped kinds document); `emit` and unknown kinds fall back
  * to a raw-JSON draft with an explicit Apply — a malformed draft must
  * never reach the def silently. */
 function ParamsEditor({

@@ -5,7 +5,8 @@ import * as Layer from "effect/Layer";
 import { and, eq, inArray } from "drizzle-orm";
 import { KeyRoundIcon } from "lucide-react";
 
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
+import { AEAD_ENVELOPE_VERSION } from "@ktb/crypto/aead";
 import { Db, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -366,6 +367,45 @@ export async function tenantIsZk(db: DbClient, tenantId: number): Promise<boolea
 export async function setTenantZk(db: DbClient, tenantId: number): Promise<void> {
 	await db.update(groups).set({ zk: true }).where(eq(groups.id, tenantId));
 }
+
+const ZK_ENVELOPE = new RegExp(`^${AEAD_ENVELOPE_VERSION}\\.`);
+
+/** Any populated value already looks like a `v1.` AEAD envelope. */
+const hasCipheredValue = (values: readonly (string | null | undefined)[]) =>
+	values.some((v) => typeof v === "string" && v !== "" && ZK_ENVELOPE.test(v));
+
+/** Under ZK every populated value must be a `v1.` envelope — an
+ * absent/empty value is not content and stays allowed (a NOT NULL
+ * transcript starts as ""). */
+const allCiphered = (values: readonly (string | null | undefined)[]) =>
+	values.every(
+		(v) =>
+			v === null || v === undefined || v === "" || (typeof v === "string" && ZK_ENVELOPE.test(v)),
+	);
+
+/**
+ * ZK write gate (PL-007 F3) — shared by every plugin persisting
+ * client-side-ciphered fields (patients record text, consultation
+ * transcript/anamnesis). Fails closed both ways: under a ZK tenant
+ * (`groups.zk`, see {@link tenantIsZk}) every populated value the write
+ * carries must already be a `v1.` AEAD envelope — the server never
+ * stores plaintext PII there; outside ZK (non-ZK tenant or personal
+ * scope — no clinic keyring exists there) an envelope write is
+ * unreadable forever, so it is denied the same way. `values` arrive
+ * already serialized so envelopes are detectable. Reads need no gate:
+ * rows come back exactly as stored and clients decrypt.
+ */
+export const requireCipheredWhenZk = Effect.fn("Vault.requireCipheredWhenZk")(function* (
+	db: DbClient,
+	tenantId: number | null,
+	values: readonly (string | null | undefined)[],
+	action: string,
+) {
+	const zk = tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)));
+	if (zk ? !allCiphered(values) : hasCipheredValue(values)) {
+		yield* Effect.fail(new Forbidden({ path: action }));
+	}
+});
 
 /**
  * Fail-closed read of the tenant zk flag for server-composed text

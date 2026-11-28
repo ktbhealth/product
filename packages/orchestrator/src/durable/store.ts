@@ -7,7 +7,7 @@ import {
 	orchestrationEvents,
 	orchestrationNodeRuns,
 	orchestrationRuns,
-} from "@ktb/db/schema";
+} from "../schema.ts";
 
 import type { OrchestrationEvent, OrchestrationDef } from "../types.ts";
 import type { OrchestrationSnapshot } from "../runner.ts";
@@ -22,7 +22,7 @@ import type {
 
 /**
  * store.ts — repo helpers over the `orchestration_*` tables
- * (@ktb/db). Follows the job-runs.ts precedent: plain async functions
+ * (../schema.ts). Follows the jobs-port precedent: plain async functions
  * taking `DbClient`, no service wrapper. JSON columns are plain `text`
  * in the schema; parse/serialize lives here so a corrupt row reads as
  * absent (`null`) instead of throwing inside drizzle.
@@ -67,6 +67,7 @@ const eventValues = (runId: string, seq: number, event: OrchestrationEvent) => (
 	payload: stringify(event.payload ?? {}),
 	source: event.source,
 	ts: event.ts,
+	notBefore: event.notBefore ?? null,
 });
 
 const toEvent = (row: typeof orchestrationEvents.$inferSelect): OrchestrationEvent => ({
@@ -75,6 +76,7 @@ const toEvent = (row: typeof orchestrationEvents.$inferSelect): OrchestrationEve
 	source: row.source,
 	id: row.eventId,
 	ts: row.ts,
+	...(row.notBefore === null ? {} : { notBefore: row.notBefore }),
 });
 
 // ---------------------------------------------------------------------------

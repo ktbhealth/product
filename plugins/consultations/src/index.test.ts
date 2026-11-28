@@ -2086,6 +2086,7 @@ describe("plugins", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"consultations.tables",
 			"consultations.services",
+			"consultations.cqrs",
 			"consultations.routes",
 			"consultations.chrome",
 			"consultations.panel",

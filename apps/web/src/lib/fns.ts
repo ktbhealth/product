@@ -18,11 +18,8 @@ import { localeFromSearch } from "./i18n.ts";
 import {
 	appPages,
 	portalPages,
-	collectPortals,
-	defaultPageContext,
 	enabledIdSet,
 	enabledPlugins,
-	findPage,
 	findPortalInstance,
 	namespacesForPath,
 	portalInstanceIdForPath,
@@ -45,7 +42,13 @@ import {
 	optionalDoctorHandler,
 	optionalSessionHandler,
 } from "@ktb/server-fns";
-import type { MiddlewareContext, Page, PanelPage } from "@ktb/kernel";
+import type { Page, PanelPage } from "@ktb/kernel";
+import {
+	collectServerPages,
+	dispatchPage,
+	type PageDataResult,
+	type PageDispatchDeps,
+} from "@ktb/app-host/server";
 import { cachedEnabledIds } from "./enabled-ids.ts";
 import { runPageMiddleware } from "./middleware.ts";
 import { Schema } from "effect";
@@ -291,155 +294,44 @@ export const platformAdminFn = createServerFn({ method: "GET" }).handler(
 
 /**
  * Result of the page data server fns (`portalPageDataFn`,
- * `appPageDataFn`): a discriminated union so the route loader can tell
- * "page denied/missing" apart from a loader that legitimately returned
- * `null`/`undefined` data. Server-fn errors do not round-trip as
- * router `notFound()`, so denial is data, not a throw — the route maps
- * `notfound` to `throw notFound()`.
+ * `appPageDataFn`) — the wire contract lives in @ktb/app-host
+ * (`PageDataResult`); re-exported for existing importers.
  */
-export type PageDataResult =
-	| { readonly status: "ok"; readonly data: any }
-	| { readonly status: "notfound" }
-	| { readonly status: "redirect"; readonly to: string };
+export type { PageDataResult };
 
-/** Server-registry page lookup, built lazily on first dispatch — kept
- * out of module scope so the client bundle never evaluates it (the
- * `serverPlugins` import is handler-only, like `run`/`runAs`). Merges
- * `panel.pages` AND `pages` contributions (P-059); first in topo order
- * wins, matching the client registry. */
+/** Server-registry page lookup for `consoleDeniedFn` guard checks —
+ * the dispatch itself lives in @ktb/app-host/server (`dispatchPage`);
+ * this memo feeds only the sidebar's denied-path scan. */
 let serverPages: ReadonlyMap<string, Page | PanelPage> | undefined;
 
 const serverPageMap = (): ReadonlyMap<string, Page | PanelPage> => {
-	serverPages ??= (() => {
-		const map = new Map<string, Page | PanelPage>();
-		for (const p of serverPlugins) {
-			for (const page of [...(p.panel?.pages ?? []), ...(p.pages ?? [])]) {
-				if (!map.has(page.path)) map.set(page.path, page);
-			}
-		}
-		return map;
-	})();
+	serverPages ??= collectServerPages(serverPlugins);
 	return serverPages;
 };
 
-/** Server-registry portal instances (P-081), built lazily like
- * `serverPageMap` — the audience gate resolves each path's instance
- * descriptor (its `audience` rule) from the server registry. */
-let serverPortals: ReturnType<typeof collectPortals> | undefined;
-
-const serverPortalEntries = () => {
-	serverPortals ??= collectPortals(serverPlugins);
-	return serverPortals;
+/** App-bound dispatch deps: the discovered server registry, the
+ * client-registry page maps, the runtime runners and the middleware
+ * pipeline (lib/middleware.ts binds @ktb/app-host/server's generic
+ * runner to this app's stages/env). */
+const pageDispatchDeps: PageDispatchDeps = {
+	plugins: serverPlugins,
+	appPages,
+	portalPages,
+	run,
+	runAs,
+	runMiddleware: runPageMiddleware,
 };
 
-/** The registry entry for the portal instance `path` belongs to, or
- * undefined for app paths / unregistered instances. */
-const portalEntryForPath = (path: string) =>
-	serverPortalEntries().find((e) => e.instance.id === portalInstanceIdForPath(path));
-
 /**
- * Shared page dispatch (P-050/P-059/P-081): resolves the descriptor
- * registered for `path` in the given shell's client registry and runs
- * its Effect handlers. Portal pages require a session AND membership
- * in the path's portal instance audience (anonymous → notfound);
- * app pages may be public — effects then run without a bound Principal
- * (`run` instead of `runAs`), so loaders that need a user must guard
- * themselves. The enabled-state gate applies to both shells at PACKAGE
- * granularity (same contract as the CQRS gate — `plugins/<pkg>` is one
- * deployable unit): a fully disabled package's pages 404 exactly like
- * unregistered paths. Page `guard` runs before `loader`; `false` or a
- * failure hides the page. Pages without a loader get
- * `{ status: "ok", data: null }`. `search` is the request's parsed
- * URL search params — forwarded to `loader` as its optional second
- * argument (app pages use it for schema-driven param cleaning);
- * portal dispatch passes none.
+ * Shared page dispatch (P-050/P-059/P-081) — the generic pipeline
+ * lives in @ktb/app-host/server; this binds it to the app registries
+ * and runtime. See `dispatchPage` there for the full contract.
  */
-const pageData = async (
+const pageData = (
 	path: string,
 	shell: PageShell,
 	search?: Record<string, unknown>,
-): Promise<PageDataResult> => {
-	// findPage resolves exact paths first, then the longest matching
-	// "/*" wildcard subtree — DB-backed pages (pages plugin)
-	// register one wildcard descriptor that serves every path its
-	// guard/loader resolves.
-	const entry = findPage(shell === "portal" ? portalPages : appPages, path);
-	if (entry === undefined) return { status: "notfound" };
-	// Entries injected by tests may predate the `context` field — derive
-	// it from the path the same way collectPages does.
-	const context = entry.context ?? defaultPageContext(path);
-	if (context !== shell) return { status: "notfound" };
-	// Request-middleware pipeline (PL-015/P-110): the former inline
-	// gates — principal/session resolution, plugin enablement, portal
-	// audience — now run as ordered stages (lib/middleware-stages.ts)
-	// plus any plugin-contributed `middleware` stages, linear with
-	// early return. Portal instances may declare `subject: "doctor"`
-	// (P-081): the principal stage then resolves the doctor-acting
-	// user — `Principal.userId` is the acting doctor's id and
-	// `actorId` the signed-in account, exactly like the plugins' own
-	// server fns; no doctor profile to act as → deny → notfound, same
-	// as anonymous. `deny` maps to notfound; `redirect` short-circuits
-	// with a navigation target the route dispatchers turn into a
-	// router redirect.
-	const portalEntry = shell === "portal" ? portalEntryForPath(path) : undefined;
-	const middlewareCtx: MiddlewareContext = {
-		path,
-		context: shell,
-		routeKey: entry.page.path,
-		...(search === undefined ? {} : { search }),
-		owner: {
-			pluginId: entry.pluginId,
-			...(entry.pkg === undefined ? {} : { pkg: entry.pkg }),
-		},
-		subject:
-			shell === "portal" && portalEntry?.instance.subject === "doctor" ? "doctor" : "session",
-		plugins: serverPlugins,
-		...(portalEntry === undefined ? {} : { portalInstance: portalEntry.instance }),
-		state: {},
-	};
-	const verdict = await runPageMiddleware(middlewareCtx);
-	if (verdict.type === "deny") return { status: "notfound" };
-	if (verdict.type === "redirect") return { status: "redirect", to: verdict.to };
-	// The principal stage stored the resolved user (null on public app
-	// pages) — guard/loader run under the same run/runAs split the
-	// stages used.
-	const user = middlewareCtx.state.user;
-	const runEffect = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
-		user === null || user === undefined
-			? run(effect)
-			: runAs(
-					user as { readonly id: string; readonly email?: string; readonly actorId?: string },
-					effect,
-				);
-	// Page descriptors are split across the two registries: the client
-	// manifest carries id/path/component, while `guard`/`loader` stay
-	// server-side on the @ktb/app-host plugin objects and never reach
-	// the browser bundle. A descriptor's own handlers win when present —
-	// tests inject full pages directly.
-	// Look the server descriptor up by the ENTRY's registered path, not
-	// the request path: wildcard descriptors ("/*") would otherwise
-	// claim every unmatched request and their guard/loader would run
-	// for pages they don't own.
-	const serverPage = serverPageMap().get(entry.page.path);
-	const page = entry.page;
-	const guard = page.guard ?? serverPage?.guard;
-	// Widened view of the loader union: `Page.loader` takes an optional
-	// search record, `PanelPage.loader` declares path only — both are
-	// invoked with `(path, search)`; single-param loaders ignore the
-	// extra argument at runtime.
-	const loader:
-		| ((path: string, search?: Record<string, unknown>) => Effect.Effect<unknown, unknown, unknown>)
-		| undefined = page.loader ?? serverPage?.loader;
-	// Page-level guard (feature flags / entitlements) runs before the
-	// loader; `false` — or a failure — hides the page exactly like an
-	// unknown path.
-	if (guard !== undefined) {
-		const allowed = await runEffect(guard(path)).catch(() => false);
-		if (!allowed) return { status: "notfound" };
-	}
-	if (loader === undefined) return { status: "ok", data: null };
-	return { status: "ok", data: await runEffect(loader(path, search)) };
-};
+): Promise<PageDataResult> => dispatchPage({ path, shell, search }, pageDispatchDeps);
 
 /**
  * Loader data for /platform console pages (P-050): `panel.pages`

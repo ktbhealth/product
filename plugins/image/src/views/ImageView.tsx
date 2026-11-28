@@ -3,7 +3,7 @@ import type { ElementKindRendererProps } from "@ktb/kernel";
 /**
  * Renderable payload the `"image"` kind's server descriptor resolves —
  * exactly what `ImageView` receives as `value`. Kept structural (not
- * imported from element-kind.ts) so this module stays client-safe and
+ * imported from kind.tsx) so this module stays client-safe and
  * free of service imports.
  */
 export interface ImageViewPayload {

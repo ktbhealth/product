@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { makeDb, type DbClient } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
-import { orchestrationRuns } from "@ktb/db/schema";
+import { orchestrationRuns } from "../schema.ts";
 
 import { eq } from "drizzle-orm";
 import type { JobEnvelope, JobsEnqueuer } from "@ktb/jobs-port";
@@ -42,7 +42,7 @@ const fakeJobs = (fail?: { at?: number; value?: unknown }) => {
 	const sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: string | number | null };
+		options?: { tenantId?: string | number | null; runAt?: number };
 	}[] = [];
 	let calls = 0;
 	const jobs: JobsEnqueuer = {
@@ -99,7 +99,7 @@ interface Harness {
 	readonly sent: {
 		kind: string;
 		payload: unknown;
-		options?: { tenantId?: string | number | null };
+		options?: { tenantId?: string | number | null; runAt?: number };
 	}[];
 	readonly registration: ReturnType<typeof orchestratorStepRegistration>;
 }
@@ -469,6 +469,48 @@ describe("durable step execution", () => {
 		await Effect.runPromise(h.runner.step(runId));
 		expect(h.sent.length).toBeGreaterThan(1);
 		expect(h.sent.at(-1)?.options?.tenantId).toBe(9);
+	});
+
+	it("enqueues the continuation step at runAt when only delayed events remain", async () => {
+		// A kind emitting a `notBefore`-future event leaves the run
+		// unfinished with nothing due — the next step job must carry
+		// runAt = the wake instant so the transport delays delivery.
+		const delayKind: OrchestrationKind = {
+			id: "delay",
+			run: () =>
+				Effect.succeed({
+					events: [{ type: "wake", payload: {}, notBefore: Date.now() + 60_000 }],
+				}),
+		};
+		const h = harness({ kinds: [delayKind, passthroughKind("noop")] });
+		h.registry.registerDef(def("d", [node("a", "delay", ["input"]), node("b", "noop", ["wake"])]));
+		const runId = await Effect.runPromise(h.runner.start("d", {}));
+		await Effect.runPromise(h.runner.step(runId));
+		const last = h.sent.at(-1);
+		expect(last?.kind).toBe(ORCHESTRATOR_STEP_KIND);
+		const runAt = last?.options?.runAt;
+		expect(typeof runAt).toBe("number");
+		expect(runAt as number).toBeGreaterThan(Date.now());
+		// The delayed event persists as the pending queue; the run
+		// stays "running" until the wake instant.
+		const loaded = await loadOrchestrationRun(h.db, runId);
+		expect(loaded?.record.status).toBe("running");
+		expect(loaded?.pending.map((p) => p.event.type)).toEqual(["wake"]);
+		expect(loaded?.pending[0]?.event.notBefore).toBe(runAt);
+	});
+
+	it("enqueues continuation steps immediately when due work remains", async () => {
+		const h = harness({
+			kinds: [counterKind("count", "tick"), passthroughKind("noop")],
+			batchSize: 1,
+		});
+		h.registry.registerDef(
+			def("chain", [node("a", "count", ["input"]), node("b", "noop", ["tick"])]),
+		);
+		const runId = await Effect.runPromise(h.runner.start("chain", {}));
+		await Effect.runPromise(h.runner.step(runId));
+		// batchSize 1 leaves "tick" due → immediate continuation (no runAt).
+		expect(h.sent.at(-1)?.options?.runAt).toBeUndefined();
 	});
 
 	it("step on a missing run is a no-op", async () => {

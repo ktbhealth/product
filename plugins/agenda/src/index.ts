@@ -7,6 +7,8 @@ import { consultationsServicesPlugin } from "@ktb/consultations";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
+import { notificationIngestion, notificationIngestMessages } from "@ktb/notifications-port";
+import { AppointmentReminderDue } from "./api.ts";
 import { Principal } from "@ktb/authz";
 import { Patients, patientsServicesPlugin, type Patient } from "@ktb/patients";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
@@ -151,6 +153,32 @@ export const agendaServicesPlugin = definePlugin({
 	// optional — absent fails the check closed).
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
 	optionalDeps: [rbacServicesPlugin.id, vaultSecretsPlugin.id],
+	// Notification ingestion (@ktb/notifications-port): the reminder
+	// sweep's due event projects into a per-user console notification.
+	// The app host collects this into `NotificationIngestions` at
+	// composition — the notifications consumer needs no dep edge back.
+	notificationIngestions: [
+		notificationIngestion(AppointmentReminderDue, (e, { zk, locale }) => {
+			const t = notificationIngestMessages(locale);
+			const time = e.startsAt.toLocaleTimeString(locale, {
+				hour: "2-digit",
+				minute: "2-digit",
+			});
+			return {
+				userId: e.ownerId,
+				kind: "appointment.reminder",
+				title: t.titles.appointmentReminder,
+				// startsAt is a plaintext scheduling column — metadata the
+				// server may read under ZK. patientName is the stored `v1.`
+				// envelope there, so the ZK body carries only the time.
+				body:
+					zk || e.patientName === null
+						? t.bodies.appointmentReminderZk(time)
+						: t.bodies.appointmentReminder(e.patientName, time),
+				payload: JSON.stringify({ appointmentId: e.id }),
+			};
+		}),
+	],
 	services: CalendarIntegrationsLive.pipe(Layer.provideMerge(AppointmentsLive)),
 });
 

@@ -72,6 +72,12 @@ export const opsServicesPlugin = definePlugin({
 // `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const opsChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/ops": "panel_nav_ops",
+		},
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "jobs.chrome",
 	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

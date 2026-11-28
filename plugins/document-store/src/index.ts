@@ -281,6 +281,9 @@ export const documentStoreAdminPlugin = definePlugin({
  * and the cross-collection documents browser — same chrome contract
  * as pages.chrome. */
 export const documentStoreChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Storage: "panel_group_storage" },
+	},
 	id: "document-store.chrome",
 	meta: { keywords: ["documents", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

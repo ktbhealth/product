@@ -68,7 +68,8 @@ export const pipelineRegistryLive = (
 /** Flatten every plugin manifest's `orchestrations` contributions into
  * the pack list `orchestratorRegistryLive` registers — same topo-order
  * collection contract as {@link collectPipelinePacks}. Each pack is
- * `{def, kinds}`: the def validates against ALL collected kinds at
+ * `{def?, kinds}`: the optional def validates against ALL collected
+ * kinds at
  * layer build (a node kind no pack provides fails loudly), so kind
  * order across packs does not matter. */
 export const collectOrchestratorPacks = (
@@ -79,7 +80,9 @@ export const collectOrchestratorPacks = (
  * contribute — kinds first (deduped across packs is NOT attempted:
  * a kind id claimed by two packs is a `DuplicateKindError` at layer
  * build, same loud-failure contract as pipeline registration), then
- * defs in plugin order. `extraKinds` lets the composition root seed
+ * defs in plugin order. Packs may be kinds-only (`def` absent —
+ * shared kind vocabulary like @ktb/orchestrator-ai's `ai` kind) and
+ * contribute no def. `extraKinds` lets the composition root seed
  * engine vocabulary (`builtinKinds`) or host kinds before the pack
  * kinds; pack kinds may not shadow them (same duplicate rule). The
  * error channel stays typed (`DuplicateKindError | UnknownKindError |
@@ -94,7 +97,7 @@ export const orchestratorRegistryLive = (
 	const packs = collectOrchestratorPacks(plugins);
 	return OrchestratorRegistryLive(
 		[...extraKinds, ...packs.flatMap((pack) => pack.kinds)],
-		packs.map((pack) => pack.def),
+		packs.flatMap((pack) => (pack.def === undefined ? [] : [pack.def])),
 	);
 };
 
@@ -142,6 +145,9 @@ interface EditorLoaderData {
  * apps/web/src/plugins.test.ts.
  */
 export const pipelineAdminChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Runtime: "panel_group_runtime" },
+	},
 	id: "pipeline.admin.chrome",
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {

@@ -179,6 +179,8 @@ export const TenantResolverLive = (options: Omit<MakeTenantResolverOptions, "dir
 export {
 	accessibleTenantIds,
 	scopedRepo,
+	tenantIdAccessible,
+	tenantRowScope,
 	tenantScopeCondition,
 	type ScopedRepo,
 	type ScopedRows,

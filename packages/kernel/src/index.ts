@@ -15,6 +15,7 @@ export type {
 	PluginConfigSchema,
 	PluginContribution,
 	PluginId,
+	PluginI18nKeys,
 	PluginMeta,
 	PluginRegistry,
 	PluginPriority,
@@ -47,6 +48,7 @@ export {
 export {
 	collectContributions,
 	collectKindContributions,
+	CQRS_KIND,
 	ELEMENT_KINDS_KIND,
 	FIELD_CONTRIBUTION_KINDS,
 	GENERIC_CONTRIBUTION_SLOT,
@@ -97,6 +99,7 @@ export type {
 	BoundaryContribution,
 	BoundaryPageProps,
 	ChromeWhen,
+	CqrsPlugin,
 	ElementKind,
 	ElementKindCategory,
 	ElementKindEditorProps,
@@ -156,6 +159,15 @@ export type ClientStubPlugin = Omit<MarkerPlugin, "contributions" | "configSchem
 	/** `orchestrations` packs carry kind handlers (Effects) —
 	 * server-manifest data that must never ride the client bundle. */
 	readonly orchestrations?: never;
+	/** `i18nKeys` labels chrome contributions — a stub carries none, so
+	 * the field is meaningless (and likely a copy/paste leak). */
+	readonly i18nKeys?: never;
+	/** `cqrs` groups carry handler metadata (Effects) — server-manifest
+	 * data that must never ride the client bundle. */
+	readonly cqrs?: never;
+	/** `notificationIngestions` carry projector functions —
+	 * server-manifest data that must never ride the client bundle. */
+	readonly notificationIngestions?: never;
 };
 
 export const clientStub = <const P extends ClientStubPlugin>(plugin: P): P => plugin;

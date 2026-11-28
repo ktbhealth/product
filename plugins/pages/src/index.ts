@@ -65,6 +65,9 @@ export const pagesServicesPlugin = definePlugin({
  * plugin's public server fn, so nav membership is data, not code.
  */
 export const pagesChromePlugin = definePlugin({
+	i18nKeys: {
+		groups: { Site: "panel_group_site" },
+	},
 	id: "pages.chrome",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],

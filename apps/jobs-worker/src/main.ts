@@ -20,7 +20,7 @@
  */
 
 import { makeJobHandlerRegistry, makeJobs } from "@ktb/jobs-port";
-import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
+import { DEFAULT_QUEUE, createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
 import { batchSizeFromEnv } from "./env.ts";
 import { openWorkerDb } from "./db.ts";
@@ -28,9 +28,11 @@ import { registerWorkerHandlers } from "./handlers.ts";
 import { makeOrchestrationWorker } from "./orchestration.ts";
 import { runJobWorker } from "./worker.ts";
 
-// Composition-built kind → handler registry: builtin kinds only —
-// this process composes no plugins, so plugin-owned kinds (eval.run,
-// …) stay unregistered and degrade to "unknown job kind".
+// Composition-built kind → handler registry: builtin kinds plus the
+// orchestrator.step registration (which itself loads plugin
+// orchestrations packs — see orchestration.ts/packs.ts). Plugin-owned
+// job kinds (eval.run, …) stay unregistered and degrade to
+// "unknown job kind".
 const jobHandlerRegistry = makeJobHandlerRegistry();
 registerWorkerHandlers(jobHandlerRegistry);
 
@@ -43,8 +45,8 @@ const db = openWorkerDb();
 if (db !== undefined) {
 	// orchestrator.step re-enqueues itself through the same transport;
 	// makeJobs also writes the job_runs projection rows the /platform
-	// queue console reads. See orchestration.ts for the dev-mode gaps
-	// (no plugin packs, registry-only ambientContext).
+	// queue console reads. See orchestration.ts/packs.ts for the
+	// dev-mode gaps (explicit pack list, registry-only ambientContext).
 	const jobs = makeJobs({ send: (envelope) => transport.send(envelope), db });
 	makeOrchestrationWorker({ db, jobs }).registerStepHandler(jobHandlerRegistry);
 	console.log("jobs worker: orchestrator.step registered");
@@ -59,7 +61,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 	process.on(sig, () => ac.abort());
 }
 
-console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? "ktb:jobs");
+console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? DEFAULT_QUEUE);
 // Recover envelopes orphaned on the pending list by a previous
 // crash/kill — BLMOVE parks popped entries there until ack, so a dead
 // worker's in-flight jobs would otherwise never redeliver.

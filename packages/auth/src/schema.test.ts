@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
 
-import { account, session, user, verification } from "@ktb/db/schema";
+import { account, session, user, verification } from "./schema.ts";
 
-describe("auth-better schema", () => {
+describe("auth schema", () => {
 	it("exposes table config and resolves foreign keys for all auth tables", () => {
 		for (const t of [user, session, account, verification]) {
 			const cfg = getTableConfig(t);

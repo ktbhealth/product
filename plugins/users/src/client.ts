@@ -16,6 +16,12 @@ import { UsersPlatformPage } from "./platform-page.tsx";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const usersChromePlugin = definePlugin({
+	i18nKeys: {
+		labels: {
+			"/platform/users": "panel_nav_users",
+		},
+		groups: { Identity: "panel_group_identity" },
+	},
 	id: "users.chrome",
 	meta: { keywords: ["users", "ui"] },
 	requiredDeps: ["platform.panel"],
@@ -58,6 +64,7 @@ export const plugins: readonly Plugin[] = [
 		// into the client bundle.
 		optionalDeps: ["audit.services"],
 	}),
+	definePlugin({ id: "users.cqrs", meta: { keywords: ["users", "cqrs"] } }),
 	usersChromePlugin,
 	usersPanelPlugin,
 ];
