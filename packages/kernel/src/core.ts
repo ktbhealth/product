@@ -4,6 +4,7 @@ import type { JsonObject } from "effect/Schema";
 import type * as Schema from "effect/Schema";
 import type { PipelinePack } from "@ktb/pipeline";
 import type { OrchestrationPack } from "@ktb/orchestrator";
+import type { NotificationIngestion } from "@ktb/notifications-port";
 
 /**
  * Registry of plugin ids known at compile time. Each plugin entry module
@@ -161,6 +162,16 @@ export interface PluginBase {
 	/** Chrome i18n keys this plugin's contributions resolve against the
 	 * host's `app.*` catalog (see {@link PluginI18nKeys}). */
 	readonly i18nKeys?: PluginI18nKeys;
+	/** Notification-ingestion handlers this plugin contributes —
+	 * `{ event, project }` pairs projecting domain events into
+	 * console-notification drafts (@ktb/notifications-port). Additive
+	 * like `pipelines`: may accompany any dedicated contribution
+	 * field. Projectors are functions, so this is server-manifest data
+	 * — client stubs reject it ({@link ClientStubPlugin}). The app
+	 * host collects these into `NotificationIngestionsLive` at
+	 * composition; the notifications plugin subscribes them on the
+	 * app-wide EventBus — no dep edge to the consumer is required. */
+	readonly notificationIngestions?: readonly NotificationIngestion[];
 }
 
 type ContributionField =

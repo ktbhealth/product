@@ -53,6 +53,7 @@ import { ApiExposures, makeApiExposures } from "@ktb/api";
 import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
 import { FlowDefinitions, makeFlowDefinitions } from "@ktb/flows";
 import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
+import { NotificationIngestions, makeNotificationIngestions } from "@ktb/notifications-port";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -769,6 +770,17 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 	// each contributed def's owner against PluginStates.enabledIds()
 	// at startRun, so toggles apply without a layer rebuild.
 	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
+	// Notification-ingestion registry (notificationIngestions manifest
+	// field): same composition-time collection — the @ktb/notifications
+	// service layer consumes it via `NotificationIngestions` and
+	// subscribes each `{ event, project }` entry on the app-wide
+	// EventBus. Enablement is NOT filtered here (same contract as the
+	// other registries): a disabled producer's entries stay subscribed
+	// but its events are never dispatched.
+	const NotificationIngestionsLive = Layer.succeed(
+		NotificationIngestions,
+		makeNotificationIngestions(plugins),
+	);
 	const RoutesLive = Layer.succeed(Routes, makeRoutes(collectRouteDefinitions(plugins)));
 	// Request-middleware registry (PL-015/P-110): the serializable view
 	// behind /platform/middleware — collected stage metadata (handlers
@@ -849,6 +861,7 @@ export const buildApp = <E extends AppEnv>(spec: BuildAppSpec<E>) => {
 		TriggerDefinitionsLive,
 		FlowDefinitionsLive,
 		WizardDefinitionsLive,
+		NotificationIngestionsLive,
 		RoutesLive,
 		MiddlewareStagesLive,
 		PipelineRegistryLive,

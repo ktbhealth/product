@@ -8,32 +8,24 @@
  */
 
 import { paramMessage } from "@ktb/i18n";
+import {
+	notificationIngestMessages,
+	type NotificationIngestMessages,
+} from "@ktb/notifications-port";
 
 export const NOTIFICATION_LOCALES = ["en", "pt-BR", "es"] as const;
 export type NotificationLocale = (typeof NOTIFICATION_LOCALES)[number];
 export const BASE_LOCALE: NotificationLocale = "en";
 
-export interface NotificationMessages {
+/** Persisted titles/bodies come from @ktb/notifications-port — producer
+ * plugins resolve the same catalogs at ingest without importing this
+ * plugin; the UI keys below stay local to the console surfaces. */
+export interface NotificationMessages extends NotificationIngestMessages {
 	readonly label: string;
 	readonly unreadCount: (n: number) => string;
 	readonly markAllRead: string;
 	readonly empty: string;
 	readonly markAsRead: (title: string) => string;
-	/** Persisted notification titles, keyed by event kind. */
-	readonly titles: {
-		readonly patientCreated: string;
-		readonly patientDeleted: string;
-		readonly consultationCreated: string;
-		readonly appointmentReminder: string;
-	};
-	/** Persisted notification bodies, keyed by event kind. */
-	readonly bodies: {
-		/** "Patient name — 14:30" for plaintext tenants. */
-		readonly appointmentReminder: (name: string, time: string) => string;
-		/** Metadata-only variant under ZK — the patient's `v1.` name
-		 * envelope never lands in the row; only the schedule time. */
-		readonly appointmentReminderZk: (time: string) => string;
-	};
 	/** /platform dashboard slot: the console-activity card contributed
 	 * via portal.dashboard.sections. */
 	readonly dashboard: {
@@ -44,21 +36,12 @@ export interface NotificationMessages {
 }
 
 const en: NotificationMessages = {
+	...notificationIngestMessages("en"),
 	label: "Notifications",
 	unreadCount: paramMessage("en", "{n} unread", ["n"]),
 	markAllRead: "Mark all read",
 	empty: "No notifications",
 	markAsRead: paramMessage("en", 'Mark "{title}" as read', ["title"]),
-	titles: {
-		patientCreated: "Patient created",
-		patientDeleted: "Patient deleted",
-		consultationCreated: "Consultation started",
-		appointmentReminder: "Appointment starting soon",
-	},
-	bodies: {
-		appointmentReminder: paramMessage("en", "{name} — {time}", ["name", "time"]),
-		appointmentReminderZk: paramMessage("en", "Starts at {time}", ["time"]),
-	},
 	dashboard: {
 		consoleActivity: "Console activity",
 		unreadNotifications: "Unread notifications",
@@ -67,21 +50,12 @@ const en: NotificationMessages = {
 };
 
 const ptBR: NotificationMessages = {
+	...notificationIngestMessages("pt-BR"),
 	label: "Notificações",
 	unreadCount: paramMessage("pt-BR", "{n, plural, =1{{n} não lida} other{{n} não lidas}}", ["n"]),
 	markAllRead: "Marcar todas como lidas",
 	empty: "Nenhuma notificação",
 	markAsRead: paramMessage("pt-BR", 'Marcar "{title}" como lida', ["title"]),
-	titles: {
-		patientCreated: "Paciente criado",
-		patientDeleted: "Paciente excluído",
-		consultationCreated: "Consulta iniciada",
-		appointmentReminder: "Consulta prestes a começar",
-	},
-	bodies: {
-		appointmentReminder: paramMessage("pt-BR", "{name} — {time}", ["name", "time"]),
-		appointmentReminderZk: paramMessage("pt-BR", "Começa às {time}", ["time"]),
-	},
 	dashboard: {
 		consoleActivity: "Atividade do console",
 		unreadNotifications: "Notificações não lidas",
@@ -90,21 +64,12 @@ const ptBR: NotificationMessages = {
 };
 
 const es: NotificationMessages = {
+	...notificationIngestMessages("es"),
 	label: "Notificaciones",
 	unreadCount: paramMessage("es", "{n} sin leer", ["n"]),
 	markAllRead: "Marcar todas como leídas",
 	empty: "Ninguna notificación",
 	markAsRead: paramMessage("es", 'Marcar "{title}" como leída', ["title"]),
-	titles: {
-		patientCreated: "Paciente creado",
-		patientDeleted: "Paciente eliminado",
-		consultationCreated: "Consulta iniciada",
-		appointmentReminder: "Consulta a punto de comenzar",
-	},
-	bodies: {
-		appointmentReminder: paramMessage("es", "{name} — {time}", ["name", "time"]),
-		appointmentReminderZk: paramMessage("es", "Empieza a las {time}", ["time"]),
-	},
 	dashboard: {
 		consoleActivity: "Actividad de la consola",
 		unreadNotifications: "Notificaciones no leídas",

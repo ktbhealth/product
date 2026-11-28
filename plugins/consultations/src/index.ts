@@ -6,6 +6,8 @@ import { auditServicesPlugin } from "@ktb/audit";
 import { integrityServicesPlugin } from "@ktb/integrity";
 import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { notificationIngestion, notificationIngestMessages } from "@ktb/notifications-port";
+import { ConsultationCreated } from "./api.ts";
 import { platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { routeContribution } from "@ktb/platform/routes";
 import { jobKindContribution } from "@ktb/platform/capabilities";
@@ -124,6 +126,21 @@ export const consultationsServicesPlugin = definePlugin({
 		patientAccessServicesPlugin.id,
 		rbacServicesPlugin.id,
 		vaultServicesPlugin.id,
+	],
+	// Notification ingestion (@ktb/notifications-port): consultation
+	// creation projects into a console-notification draft. The app host
+	// collects this into `NotificationIngestions` at composition — the
+	// notifications consumer needs no dep edge back to this plugin.
+	notificationIngestions: [
+		notificationIngestion(ConsultationCreated, (e, { zk, locale }) => {
+			const t = notificationIngestMessages(locale);
+			return {
+				userId: e.userId,
+				kind: "consultation.created",
+				title: t.titles.consultationCreated,
+				body: zk ? undefined : e.source,
+			};
+		}),
 	],
 	services: Layer.mergeAll(
 		ConsultationsLive,

@@ -16,6 +16,7 @@ import {
 	documentCollectionContribution,
 } from "@ktb/document-store";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { notificationIngestion, notificationIngestMessages } from "@ktb/notifications-port";
 import { viewDefContribution, defineView } from "@ktb/views";
 import { defineWizard, wizardDefContribution, WizardHooks } from "@ktb/wizards";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
@@ -685,6 +686,31 @@ export const patientsServicesPlugin = definePlugin({
 	// first so the Permissions port record authz consumes is composed
 	// (still optional — absent fails record checks closed).
 	optionalDeps: [auditServicesPlugin.id, vaultServicesPlugin.id, rbacServicesPlugin.id],
+	// Notification ingestion (@ktb/notifications-port): patient lifecycle
+	// events project into console-notification drafts. The app host
+	// collects these into `NotificationIngestions` at composition — the
+	// notifications consumer needs no dep edge back to this plugin.
+	notificationIngestions: [
+		notificationIngestion(PatientCreated, (e, { zk, locale }) => {
+			const t = notificationIngestMessages(locale);
+			return {
+				userId: e.ownerId,
+				kind: "patient.created",
+				title: t.titles.patientCreated,
+				// Under ZK `e.name` is ciphertext the server cannot read —
+				// drop the body entirely rather than persist it.
+				body: zk ? undefined : e.name,
+			};
+		}),
+		notificationIngestion(PatientDeleted, (e, { locale }) => {
+			const t = notificationIngestMessages(locale);
+			return {
+				userId: e.ownerId,
+				kind: "patient.deleted",
+				title: t.titles.patientDeleted,
+			};
+		}),
+	],
 	services: Layer.mergeAll(PatientsLive, PatientsQueriesLive, PatientsCommandsLive),
 });
 
