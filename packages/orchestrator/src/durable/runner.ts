@@ -160,9 +160,18 @@ export const makeOrchestrationRunner = (
 	 * `start` marks the run failed then defects; mid-run continuation
 	 * defects outright (the consumer retries and the persisted boundary
 	 * means the retry just continues the run). */
-	const enqueueStep = (runId: string, tenantId: number | null): Effect.Effect<void, unknown> =>
+	const enqueueStep = (
+		runId: string,
+		tenantId: number | null,
+		runAt?: number,
+	): Effect.Effect<void, unknown> =>
 		Effect.tryPromise({
-			try: () => deps.jobs.enqueue(ORCHESTRATOR_STEP_KIND, { runId }, { tenantId }),
+			try: () =>
+				deps.jobs.enqueue(
+					ORCHESTRATOR_STEP_KIND,
+					{ runId },
+					{ tenantId, ...(runAt !== undefined ? { runAt } : {}) },
+				),
 			catch: (error) => error,
 		}).pipe(Effect.asVoid);
 
@@ -225,7 +234,14 @@ export const makeOrchestrationRunner = (
 				}),
 			);
 			if (!finished) {
-				yield* enqueueStep(runId, loaded.record.tenantId).pipe(
+				// Delayed routing: when only `notBefore`-future events
+				// remain (a poll kind's interval tick), the next step
+				// job is enqueued at the earliest wake instant — the
+				// transport holds it (CF delaySeconds / dev:node run_at /
+				// Redis delayed zset) so wall-clock intervals are real.
+				// `nextWakeAt` null → due work remains → immediate.
+				const runAt = session.nextWakeAt() ?? undefined;
+				yield* enqueueStep(runId, loaded.record.tenantId, runAt).pipe(
 					Effect.catch((error) => Effect.die(error)),
 				);
 			}

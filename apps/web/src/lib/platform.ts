@@ -12,7 +12,7 @@ import {
 } from "@ktb/tenant";
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
-import { makeJobHandlerRegistry, makeJobs } from "@ktb/jobs-port";
+import { makeJobHandlerRegistry, makeJobs, queueSend, type QueueSendBinding } from "@ktb/jobs-port";
 import { asQueueTransport, type QueueBindingLike } from "@ktb/queues-port";
 import { runSchedulerSweep } from "@ktb/scheduler-port";
 import { APP_CRON_JOBS } from "./cron-jobs.ts";
@@ -209,7 +209,13 @@ const audioQueue =
 // consumer side lives in @ktb/consultations/audio-consumer (kind →
 // handler dispatch over jobHandlerRegistry below, wired by
 // lib/audio-jobs.ts).
-const jobs = audioQueue === undefined ? undefined : makeJobs({ send: audioQueue.send, db });
+// The jobs enqueuer binds the RAW queue binding through `queueSend`,
+// not `audioQueue.send`: asQueueTransport's send drops the options
+// argument, so envelope `runAt` (delayed orchestrator.step deliveries)
+// would be silently ignored. `audioQueue` still feeds the
+// /platform/queue registry via makeServerRuntime below.
+const jobsQueue = env.AUDIO_QUEUE as unknown as QueueSendBinding | undefined;
+const jobs = jobsQueue === undefined ? undefined : makeJobs({ send: queueSend(jobsQueue), db });
 
 // Composition-built kind → handler registry for this process's queue
 // consumers (PL-007). Every kind the web consumer dispatches is
@@ -245,14 +251,17 @@ orchestration?.registerStepHandler(jobHandlerRegistry);
 // (THEME_ASSETS_QUEUE_NAME) — image derivatives and font downloads
 // never contend with transcription. Same jobs-port shape: job_runs
 // projection + kind-dispatched envelope; the consumer lives in
-// @ktb/theme/jobs.
+// @ktb/theme/jobs. Same raw-binding rule as `jobs` above: `queueSend`
+// carries `runAt` through `delaySeconds`.
 const themeQueue =
 	env.THEME_ASSETS_QUEUE === undefined
 		? undefined
 		: asQueueTransport(env.THEME_ASSETS_QUEUE as QueueBindingLike, {
 				name: THEME_ASSETS_QUEUE_NAME,
 			});
-const themeJobs = themeQueue === undefined ? undefined : makeJobs({ send: themeQueue.send, db });
+const themeJobsQueue = env.THEME_ASSETS_QUEUE as unknown as QueueSendBinding | undefined;
+const themeJobs =
+	themeJobsQueue === undefined ? undefined : makeJobs({ send: queueSend(themeJobsQueue), db });
 
 // The generic console-capability block (queue/cron/schedule/pubsub
 // registries, job-kind declarations, scheduled-job dispatch, the

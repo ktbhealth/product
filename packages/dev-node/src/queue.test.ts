@@ -64,6 +64,31 @@ describe("makeLocalQueue", () => {
 		queue.close();
 	});
 
+	it("honors an envelope runAt — the row parks until the instant is due", async () => {
+		const seen: unknown[] = [];
+		const queue = makeLocalQueue({
+			dbPath: dbPath(),
+			pollMs: 10,
+			loadHandler: async () => async (messages) => {
+				for (const m of messages) {
+					seen.push(m.body);
+					m.ack();
+				}
+			},
+		});
+		const runAt = Date.now() + 120;
+		await queue.send({ id: "j1", kind: "k", payload: null, runAt });
+		// The row exists but is not due — nothing delivered yet.
+		const row = jobs(dbPath())[0];
+		expect(row).toMatchObject({ status: "pending" });
+		expect(row?.run_at as number).toBeGreaterThanOrEqual(runAt);
+		await new Promise((r) => setTimeout(r, 60));
+		expect(seen).toHaveLength(0);
+		await vi.waitFor(() => expect(seen).toHaveLength(1), { timeout: 2000 });
+		expect(seen[0]).toMatchObject({ id: "j1", kind: "k" });
+		queue.close();
+	});
+
 	it("batches all due rows into a single consumer call", async () => {
 		const batches: LocalQueueMessage[][] = [];
 		const queue = makeLocalQueue({

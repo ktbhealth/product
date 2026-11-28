@@ -3,7 +3,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { FlaskConicalIcon, Users2Icon } from "lucide-react";
 
 import { AiEndpoints, type EndpointCard } from "@ktb/ai-provider";
@@ -30,6 +30,7 @@ import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
 import { instanceToDatasetManifest } from "./manifest.ts";
+import { evalInstanceItemMachine, evalInstanceMachine } from "./status-machines.ts";
 import { InstancesPanelPage, PersonasPanelPage } from "./platform-page.tsx";
 import {
 	evalInstance,
@@ -42,6 +43,14 @@ import {
 
 export { evalInstance, evalInstanceItem, evalPersonaDef } from "./schema.ts";
 export type { EvalInstance, EvalInstanceItem, EvalPersonaDef } from "./schema.ts";
+export {
+	evalInstanceItemMachine,
+	evalInstanceMachine,
+	type EvalInstanceEvent,
+	type EvalInstanceItemEvent,
+	type EvalInstanceItemStatus,
+	type EvalInstanceStatus,
+} from "./status-machines.ts";
 
 /** Permission the gate checks — same spelling as the rbac catalog
  * (`eval.validator`). Canonical home is this plugin: the eval lab is
@@ -508,6 +517,23 @@ const STALE_CLAIM_MS = 60_000;
  * long queue can't starve a single request. */
 const MAX_TICKS_PER_POLL = 5;
 
+// Conditional-write source sets, derived from the status machines
+// (status-machines.ts) so every `WHERE status IN (…)` guard tracks the
+// declared lifecycle instead of a hand-kept literal. A `false` /
+// zero-row result means a concurrent transition won — the tick's
+// claim/finalize semantics already treat that as skip-or-retry.
+const INSTANCE_FAIL_SOURCES = evalInstanceMachine.predecessors("fail");
+const INSTANCE_START_SOURCES = evalInstanceMachine.predecessors("start");
+/** Finalize may land `ready` (finish) or `failed` (fail) — the union
+ * of both events' sources. */
+const INSTANCE_FINALIZE_SOURCES = [
+	...new Set([...evalInstanceMachine.predecessors("finish"), ...INSTANCE_FAIL_SOURCES]),
+];
+const ITEM_CLAIM_SOURCES = evalInstanceItemMachine.predecessors("claim");
+const ITEM_COMPLETE_SOURCES = evalInstanceItemMachine.predecessors("complete");
+const ITEM_FAIL_SOURCES = evalInstanceItemMachine.predecessors("fail");
+const ITEM_RECLAIM_SOURCES = evalInstanceItemMachine.predecessors("reclaim");
+
 export class EvalInstances extends Context.Service<
 	EvalInstances,
 	{
@@ -630,7 +656,12 @@ export const EvalInstancesLive = Layer.effect(
 								doctorId: entities.doctorId,
 								scriptMode: rendered.mode,
 							})
-							.where(eq(evalInstanceItem.id, item.id)),
+							.where(
+								and(
+									eq(evalInstanceItem.id, item.id),
+									inArray(evalInstanceItem.status, [...ITEM_COMPLETE_SOURCES]),
+								),
+							),
 					]),
 				);
 			});
@@ -659,7 +690,15 @@ export const EvalInstancesLive = Layer.effect(
 			// on `generating` against a broken table.
 			const initFailed = (cause: unknown) =>
 				Effect.promise(() =>
-					db.update(evalInstance).set({ status: "failed" }).where(eq(evalInstance.id, instanceId)),
+					db
+						.update(evalInstance)
+						.set({ status: "failed" })
+						.where(
+							and(
+								eq(evalInstance.id, instanceId),
+								inArray(evalInstance.status, [...INSTANCE_FAIL_SOURCES]),
+							),
+						),
 				).pipe(Effect.andThen(Effect.fail(cause)));
 			const items = yield* Effect.promise(async () => {
 				// Reclaim stale claims BEFORE the pending scan: without
@@ -673,7 +712,7 @@ export const EvalInstancesLive = Layer.effect(
 					.where(
 						and(
 							eq(evalInstanceItem.instanceId, instanceId),
-							eq(evalInstanceItem.status, "generating"),
+							inArray(evalInstanceItem.status, [...ITEM_RECLAIM_SOURCES]),
 							or(
 								isNull(evalInstanceItem.claimedAt),
 								lt(evalInstanceItem.claimedAt, new Date(Date.now() - STALE_CLAIM_MS)),
@@ -706,7 +745,12 @@ export const EvalInstancesLive = Layer.effect(
 								done: items.filter((i) => i.status === "done" || i.status === "error").length,
 								manifest,
 							})
-							.where(eq(evalInstance.id, instanceId)),
+							.where(
+								and(
+									eq(evalInstance.id, instanceId),
+									inArray(evalInstance.status, [...INSTANCE_FINALIZE_SOURCES]),
+								),
+							),
 					);
 				}
 				return;
@@ -716,7 +760,12 @@ export const EvalInstancesLive = Layer.effect(
 				db
 					.update(evalInstanceItem)
 					.set({ status: "generating", claimedAt: new Date() })
-					.where(and(eq(evalInstanceItem.id, pending.id), eq(evalInstanceItem.status, "pending")))
+					.where(
+						and(
+							eq(evalInstanceItem.id, pending.id),
+							inArray(evalInstanceItem.status, [...ITEM_CLAIM_SOURCES]),
+						),
+					)
 					.returning({ id: evalInstanceItem.id }),
 			);
 			/* v8 ignore next -- second tick losing the claim is a no-op */
@@ -749,7 +798,12 @@ export const EvalInstancesLive = Layer.effect(
 					db
 						.update(evalInstanceItem)
 						.set({ status: "error", error: String(cause) })
-						.where(eq(evalInstanceItem.id, pending.id)),
+						.where(
+							and(
+								eq(evalInstanceItem.id, pending.id),
+								inArray(evalInstanceItem.status, [...ITEM_FAIL_SOURCES]),
+							),
+						),
 				);
 			yield* (
 				persona === null
@@ -1000,7 +1054,15 @@ export const EvalInstancesLive = Layer.effect(
 				);
 				if (inst === undefined || inst.status !== "draft") return;
 				yield* Effect.promise(() =>
-					db.update(evalInstance).set({ status: "generating" }).where(eq(evalInstance.id, id)),
+					db
+						.update(evalInstance)
+						.set({ status: "generating" })
+						.where(
+							and(
+								eq(evalInstance.id, id),
+								inArray(evalInstance.status, [...INSTANCE_START_SOURCES]),
+							),
+						),
 				);
 				// Poll-driven: no detached fiber — workerd kills pending
 				// work when the request ends, orphaning rows mid-flight.

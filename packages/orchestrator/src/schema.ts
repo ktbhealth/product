@@ -87,6 +87,10 @@ export const orchestrationEvents = sqliteTable(
 		payload: text("payload").notNull(),
 		source: text("source").notNull(),
 		ts: integer("ts").notNull(),
+		/** Delayed routing (epoch ms) — the session holds the event out
+		 * of routing until this instant (poll-kind intervals). NULL =
+		 * due immediately. */
+		notBefore: integer("not_before"),
 	},
 	(table) => [primaryKey({ columns: [table.runId, table.seq] })],
 );

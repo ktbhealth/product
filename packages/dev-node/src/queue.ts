@@ -254,7 +254,18 @@ export const makeLocalQueue = (options: LocalQueueOptions): LocalQueue => {
 		send: (body: unknown): Promise<unknown> => {
 			const text = JSON.stringify(body) ?? "null";
 			const t = now();
-			insert.run(queue, text, maxAttempts, t, t, t);
+			// Delayed delivery: jobs-port envelopes may carry `runAt`
+			// (epoch ms) — the poller's `run_at <= now` claim already
+			// implements the hold, so a future runAt just parks the row
+			// until due. Non-envelope bodies (legacy producers) send now.
+			const runAt =
+				typeof body === "object" &&
+				body !== null &&
+				typeof (body as { runAt?: unknown }).runAt === "number" &&
+				Number.isFinite((body as { runAt: number }).runAt)
+					? Math.max(t, (body as { runAt: number }).runAt)
+					: t;
+			insert.run(queue, text, maxAttempts, runAt, t, t);
 			return Promise.resolve({});
 		},
 		stats: (): Promise<QueueDepth> => {

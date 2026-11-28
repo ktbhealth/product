@@ -39,6 +39,16 @@ const fakeRedis = () => {
 		return v;
 	};
 	const timeouts: number[] = [];
+	// Sorted-set stand-in for the delayed queue (`<queue>:delayed`).
+	const zsets = new Map<string, Map<string, number>>();
+	const zsetFor = (key: string) => {
+		let z = zsets.get(key);
+		if (z === undefined) {
+			z = new Map();
+			zsets.set(key, z);
+		}
+		return z;
+	};
 	const client: RedisLike = {
 		lPush: async (key, value) => {
 			listFor(key).unshift(value);
@@ -63,14 +73,41 @@ const fakeRedis = () => {
 		},
 		lLen: async (key) => listFor(key).length,
 		quit: async () => "OK",
+		zAdd: async (key, member) => {
+			zsetFor(key).set(member.value, member.score);
+			return 1;
+		},
+		zCard: async (key) => zsetFor(key).size,
+		// Emulates the transport's SWEEP_DUE Lua: move due zset members
+		// (score <= now, earliest first, capped) onto the list head.
+		eval: async (_script, { keys, arguments: args }) => {
+			const [zkey, lkey] = keys as [string, string];
+			const now = Number(args[0]);
+			const limit = Number(args[1]);
+			const z = zsets.get(zkey);
+			if (z === undefined) return 0;
+			const due = [...z.entries()]
+				.filter(([, score]) => score <= now)
+				.sort((a, b) => a[1] - b[1])
+				.slice(0, limit);
+			let moved = 0;
+			for (const [member] of due) {
+				z.delete(member);
+				listFor(lkey).unshift(member);
+				moved += 1;
+			}
+			return moved;
+		},
 	};
 	// `list` stays the queue for existing assertions; `pending` is the
 	// in-flight list the transport parks popped entries on.
 	return {
 		client,
 		lists,
+		zsets,
 		list: listFor("ktb:jobs"),
 		pending: listFor("ktb:jobs:pending"),
+		delayed: zsetFor("ktb:jobs:delayed"),
 		timeouts,
 	};
 };
@@ -383,6 +420,58 @@ describe("createRedisJobsTransport", () => {
 		});
 		await expect(t.close()).resolves.toBeUndefined();
 		expect(destroy).toHaveBeenCalledOnce();
+	});
+
+	it("parks a future runAt on the delayed zset; the sweep delivers it when due", async () => {
+		const { client, list, delayed } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0, sweepMs: 5 });
+		const runAt = Date.now() + 40;
+		await t.send({ ...envelope("late"), runAt });
+		// Nothing on the deliverable list — the envelope sits in the zset.
+		expect(list).toHaveLength(0);
+		expect(delayed.size).toBe(1);
+		// Not due yet: an immediate receive finds nothing.
+		expect(await t.receive()).toEqual([]);
+		await vi.waitFor(() => expect(list).toHaveLength(1), { timeout: 2000 });
+		const [msg] = await t.receive();
+		expect(msg?.body).toMatchObject({ id: "late", kind: "jobs.ping" });
+		expect(delayed.size).toBe(0);
+		await t.close();
+	});
+
+	it("delivers a runAt envelope immediately when the client lacks zset support", async () => {
+		const entries: string[] = [];
+		const client: RedisLike = {
+			lPush: async (_key, value) => {
+				entries.unshift(value);
+				return 1;
+			},
+			rPush: async () => 0,
+			blMove: async () => entries.pop() ?? null,
+			lMove: async () => null,
+			lRem: async () => 0,
+			lLen: async () => entries.length,
+			quit: async () => "OK",
+		};
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send({ ...envelope("early"), runAt: Date.now() + 60_000 });
+		const [msg] = await t.receive();
+		expect(msg?.body).toMatchObject({ id: "early" });
+		await t.close();
+	});
+
+	it("stats() counts delayed entries as pending backlog", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0, sweepMs: 60_000 });
+		await t.send(envelope("now"));
+		await t.send({ ...envelope("later"), runAt: Date.now() + 60_000 });
+		expect(await t.stats()).toEqual({
+			pending: 2,
+			processing: 0,
+			done: 0,
+			failed: 0,
+		});
+		await t.close();
 	});
 
 	it("falls back to default url, queue and block seconds", async () => {

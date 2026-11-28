@@ -41,6 +41,7 @@
 		"@ktb/rbac": "workspace:*",
 		"@ktb/rbac-plugin": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
+		"@ktb/statemachine": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktb/transcription": "workspace:*",
 		"@ktb/transcription-webspeech": "workspace:*",

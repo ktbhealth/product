@@ -14,6 +14,7 @@
 		"@ktb/jobs-transport-redis": "workspace:*",
 		"@ktb/orchestrator": "workspace:*",
 		"@ktb/orchestrator-ai": "workspace:*",
+		"@ktb/plugin-pipeline-transcript": "workspace:*",
 		"effect": "4.1.2"
 	},
 	"devDependencies": {

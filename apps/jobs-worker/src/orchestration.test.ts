@@ -132,6 +132,35 @@ describe("makeOrchestrationWorker", () => {
 		expect(sub?.status).toBe("done");
 	});
 
+	it("resolves plugin pack defs and kinds (pipeline-transcript)", async () => {
+		const db = makeTestDb();
+		const { jobs, sent } = fakeJobs();
+		const worker = makeOrchestrationWorker({ db, jobs });
+		const registry = makeJobHandlerRegistry();
+		worker.registerStepHandler(registry);
+
+		// start() validates kind resolution up front — an unknown pack
+		// kind would reject here, so a resolved runId proves the pack
+		// kinds registered.
+		const runId = await worker.startRun("consultation-transcript", {
+			consultationId: 1,
+		});
+		expect(runId).toMatch(/^orun-/);
+
+		// Drive every enqueued step job (FIFO — continuations append).
+		const registration = registry.lookup(ORCHESTRATOR_STEP_KIND);
+		for (let i = 0; i < sent.length; i += 1) {
+			const payload = registration?.decodePayload?.(sent[i]?.payload);
+			await registration?.handle(payload, stepEnvelope(sent[i]?.payload));
+		}
+		// The pack's stage kinds degrade honestly without ambient ports
+		// (no PlatformLlm/EnvCorrector in this process) — degraded state
+		// is data, so the run still drains to a terminal status.
+		const record = await getOrchestrationRun(db, runId);
+		expect(["done", "failed"]).toContain(record?.status);
+		expect(record?.status).toBe("done");
+	});
+
 	it("clears the memoized build on failure so the next call retries", async () => {
 		// A SqlDatabase whose first prepare() throws simulates a
 		// transient db failure during loadStoredDefs; the memo must

@@ -120,15 +120,20 @@ export const gateKind: OrchestrationKind = {
  * ordinal, read back from its own previous `output` at
  * `state[node.id]` (`intervalMs` is echoed into the payload when set).
  *
- * PHASE-1 LIMITATION: this kind does NOT schedule real intervals — it
- * emits once per triggering event. A self-sustaining poll is expressed
- * by subscribing the node to its own tick event (`on: ["<trigger>",
- * "<nodeId>.tick"]`) and bounding it with the ENGINE's node policies:
- * `until`/`retireOn` for `params.untilEvent` and `maxFires` for
- * `params.maxPolls` (+1 when the node also fires on the initial
- * trigger). True wall-clock intervals need the durable runner to
- * re-enqueue a delayed step — a later phase; `intervalMs` is carried
- * in the payload now so that scheduling layer can honor it. */
+ * REAL INTERVALS: when `params.intervalMs` is a positive number, the
+ * emitted event carries `notBefore = firedAt + intervalMs` — delayed
+ * routing (see {@link OrchestrationEvent.notBefore}). A self-sustaining
+ * poll subscribes the node to its own tick event (`on: ["<trigger>",
+ * "<nodeId>.tick"]`) and re-fires on a wall-clock cadence: the
+ * in-memory runner sleeps until the wake instant and the durable
+ * runner enqueues its next `orchestrator.step` job with `runAt` set,
+ * which the jobs transport honors (Cloudflare `delaySeconds`, the
+ * dev:node `run_at` column, the Redis delayed zset). Bound the loop
+ * with the ENGINE's node policies: `until`/`retireOn` for
+ * `params.untilEvent` and `maxFires` for `params.maxPolls` (+1 when
+ * the node also fires on the initial trigger). Without `intervalMs`
+ * the kind keeps its phase-1 emit-per-fire behavior — the tick is
+ * due immediately and a self-subscription spins until a bound hits. */
 export const pollKind: OrchestrationKind = {
 	id: "poll",
 	run: (ctx) =>
@@ -140,12 +145,17 @@ export const pollKind: OrchestrationKind = {
 					? ctx.params["emitEvent"]
 					: `${ctx.node.id}.tick`;
 			const intervalMs = ctx.params["intervalMs"];
-			const payload = (
-				typeof intervalMs === "number" ? { count, intervalMs } : { count }
-			) as JsonObject;
+			const hasInterval = typeof intervalMs === "number" && intervalMs > 0;
+			const payload = (hasInterval ? { count, intervalMs } : { count }) as JsonObject;
 			return {
 				output: { count },
-				events: [{ type: emitEvent, payload }],
+				events: [
+					{
+						type: emitEvent,
+						payload,
+						...(hasInterval ? { notBefore: Date.now() + (intervalMs as number) } : {}),
+					},
+				],
 			};
 		}),
 };
