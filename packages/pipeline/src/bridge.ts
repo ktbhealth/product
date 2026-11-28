@@ -3,6 +3,7 @@ import type { JsonObject } from "effect/Schema";
 import type {
 	KindResult,
 	NodeContext,
+	OrchestrationDef,
 	OrchestrationKind,
 	OrchestrationNode,
 	OrchestrationPack,
@@ -259,6 +260,14 @@ const stageEventType = (defId: string, stageId: string): string => `${defId}.${s
  * same stage id in two packs never collides in the kind registry. */
 const stageKindId = (defId: string, stageId: string): string => `pipeline.${defId}.${stageId}`;
 
+/** The pack {@link pipelinePackToOrchestration} returns — an {@link
+ * OrchestrationPack} whose `def` is always present (a
+ * {@link PipelinePack} always declares its PipelineDef, so the
+ * derived orchestration always has one). */
+export type DerivedOrchestrationPack = OrchestrationPack & {
+	readonly def: OrchestrationDef;
+};
+
 /** Derive an {@link OrchestrationPack} (def + kinds) from a linear
  * {@link PipelinePack} — the PipelineDef → OrchestrationDef
  * translation. Every `def.stages` entry becomes one node wired to the
@@ -274,7 +283,7 @@ const stageKindId = (defId: string, stageId: string): string => `pipeline.${defI
 export const pipelinePackToOrchestration = (
 	pack: PipelinePack,
 	options: PipelineOrchestrationOptions = {},
-): OrchestrationPack => {
+): DerivedOrchestrationPack => {
 	const def = pack.def;
 	const kinds = def.stages.map((entry) => {
 		const stage = pack.stages[entry.id];

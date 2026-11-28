@@ -16,6 +16,7 @@ export {
 export {
 	pipelinePackToOrchestration,
 	pipelineStageKind,
+	type DerivedOrchestrationPack,
 	type PipelineOrchestrationOptions,
 	type PipelineStageKindOptions,
 	type StageKindFire,

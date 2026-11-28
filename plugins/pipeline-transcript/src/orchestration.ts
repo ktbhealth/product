@@ -110,12 +110,8 @@ const TRANSCRIPT_EVENT_SCHEMAS = [
 ] as const;
 
 const derivedPack = pipelinePackToOrchestration(transcriptPipelinePack);
-const derivedDef = derivedPack.def;
-if (derivedDef === undefined) {
-	throw new Error("pipelinePackToOrchestration produced no def for the transcript pack");
-}
 const transcriptDef: OrchestrationDef = {
-	...derivedDef,
+	...derivedPack.def,
 	eventSchemas: [...TRANSCRIPT_EVENT_SCHEMAS],
 };
 
