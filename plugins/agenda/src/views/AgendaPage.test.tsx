@@ -231,7 +231,12 @@ describe("AgendaPage", () => {
 		};
 		render(<AgendaPage appointments={[]} patients={[]} api={a} onChanged={onChanged} />);
 		fireEvent.click(await screen.findByText("Import from Google"));
+		// The click opens the filter dialog (defaulting to the current
+		// month); the import fires on submit with the composed AST.
+		fireEvent.click(await screen.findByText("Import", { selector: '[type="submit"]' }));
 		await waitFor(() => expect(importGoogleCalendar).toHaveBeenCalled());
+		const input = importGoogleCalendar.mock.calls[0]?.[0];
+		expect(input?.filter?.op).toBe("and");
 		expect(await screen.findByText(/1 imported · 2 already existed/)).toBeTruthy();
 		await waitFor(() => expect(onChanged).toHaveBeenCalled());
 	});

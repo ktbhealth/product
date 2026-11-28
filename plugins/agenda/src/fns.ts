@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
+import { FilterExprSchema, type FilterExpr } from "@ktb/filters";
 
 import { doctorHandler, ensureDoctorUser, forbiddenTo, runAs } from "@ktb/server-fns";
 
@@ -217,8 +218,10 @@ export const calendarConnectionFn = createServerFn({ method: "GET" }).handler(
 );
 
 const ImportCalendarInput = Schema.Struct({
-	from: Schema.optionalKey(Schema.Date),
-	to: Schema.optionalKey(Schema.Date),
+	/** Provider-agnostic filter AST (@ktb/filters) — dates ride inside as
+	 * ISO strings, so the wire needs no coercion. Absent → the domain
+	 * imports the current month. */
+	filter: Schema.optionalKey(FilterExprSchema),
 });
 
 export type ImportCalendarFnResult =
@@ -230,24 +233,24 @@ export type ImportCalendarFnResult =
  * returned for review instead of guessed into patient rows. */
 export const importGoogleCalendarFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) =>
-		Schema.decodeUnknownSync(ImportCalendarInput)(normalizeRange(input ?? {})),
+		// The recursive filter schema is service-free, but Schema.suspend
+		// can't prove it at the type level (DecodingServices stays
+		// unknown) — the cast restates the fact, not a behavioral change.
+		Schema.decodeUnknownSync(
+			ImportCalendarInput as unknown as Schema.ConstraintDecoder<{
+				readonly filter?: FilterExpr;
+			}>,
+		)(input ?? {}),
 	)
 	.handler(
 		doctorHandler(async ({ data, user, run }) => {
-			const now = Date.now();
-			const from = data.from ?? new Date(now - 7 * 86_400_000);
-			const to = data.to ?? new Date(now + 90 * 86_400_000);
-			if (to.getTime() < from.getTime() || to.getTime() - from.getTime() > 180 * 86_400_000) {
-				return { ok: false, reason: "unavailable" } as const;
-			}
 			return run(
 				Effect.gen(function* () {
 					const integrations = yield* CalendarIntegrations;
 					const result = yield* integrations.importEvents(user.id, {
 						provider: "google",
 						calendarId: "primary",
-						from,
-						to,
+						...(data.filter === undefined ? {} : { filter: data.filter }),
 					});
 					return { ok: true, result } as const;
 				}).pipe(

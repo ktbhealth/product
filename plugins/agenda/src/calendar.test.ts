@@ -2,7 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { EventBus, type EventBusShape, makeEventBus } from "@effect-server-utils/cqrs";
 import { Principal } from "@ktb/authz";
-import { Calendars, makeCalendarsRegistry, type ExternalCalendarEvent } from "@ktb/calendar";
+import {
+	Calendars,
+	evaluateEventFilter,
+	makeCalendarsRegistry,
+	overlapWindowFilter,
+	type ExternalCalendarEvent,
+} from "@ktb/calendar";
+import type { FilterExpr } from "@ktb/filters";
 import { ConsultationsLive } from "@ktb/consultations";
 import { Db, makeDb } from "@ktb/db";
 import { makeTestD1 } from "@ktb/db-testing";
@@ -108,7 +115,10 @@ describe("CalendarIntegrationsLive", () => {
 			},
 			connect: async () => ({
 				provider: "google",
-				listEvents: async () => externalEvents,
+				listEvents: async (_calendarId: string, query?: { filter?: FilterExpr }) =>
+					query?.filter === undefined
+						? externalEvents
+						: externalEvents.filter((e) => evaluateEventFilter(query.filter!, e)),
 				createEvent: async () => {
 					throw new Error("unused");
 				},
@@ -196,8 +206,10 @@ describe("CalendarIntegrationsLive", () => {
 		const input = {
 			provider: "google",
 			calendarId: "primary",
-			from: new Date(base.getTime() - 60_000),
-			to: new Date(base.getTime() + 4 * 60 * 60_000),
+			filter: overlapWindowFilter(
+				new Date(base.getTime() - 60_000),
+				new Date(base.getTime() + 4 * 60 * 60_000),
+			),
 		};
 		const first = await asDoctor(call((p) => p.importEvents("u1", input)));
 		expect(first.imported).toBe(1);
@@ -221,6 +233,31 @@ describe("CalendarIntegrationsLive", () => {
 		expect(second).toMatchObject({ imported: 0, existing: 1 });
 	});
 
+	it("defaults to the current month when no filter is given", async () => {
+		const now = new Date();
+		const inside = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 15, 14));
+		const outside = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 15, 14));
+		externalEvents = [
+			event("evt-in-month", "Consulta Ana Silva", inside, 30),
+			event("evt-out-month", "Consulta Bia Souza", outside, 30),
+		];
+		await asDoctor(
+			call((p) =>
+				p.completeOAuth("u1", {
+					provider: "google",
+					calendarId: "primary",
+					credentials: { accessToken: "access", refreshToken: "refresh" },
+				}),
+			),
+		);
+		const result = await asDoctor(
+			call((p) => p.importEvents("u1", { provider: "google", calendarId: "primary" })),
+		);
+		expect(result.imported + result.review.length + result.existing).toBe(1);
+		const all = [...result.review.map((item) => item.externalEventId)];
+		expect(all).not.toContain("evt-out-month");
+	});
+
 	it("dedupes external event identity per owner, not globally across doctors", async () => {
 		const base = new Date(Date.now() + 96 * 60 * 60 * 1000);
 		externalEvents = [event("evt-shared-alias", "Consulta Ana Silva", base, 30)];
@@ -241,8 +278,10 @@ describe("CalendarIntegrationsLive", () => {
 		const input = {
 			provider: "google",
 			calendarId: "primary",
-			from: new Date(base.getTime() - 60_000),
-			to: new Date(base.getTime() + 60 * 60_000),
+			filter: overlapWindowFilter(
+				new Date(base.getTime() - 60_000),
+				new Date(base.getTime() + 60 * 60_000),
+			),
 		};
 		expect((await asDoctor(call((p) => p.importEvents("u1", input)))).imported).toBe(1);
 		const secondDoctor = await asDoctor2(call((p) => p.importEvents("u2", input)));
@@ -275,8 +314,10 @@ describe("CalendarIntegrationsLive", () => {
 				p.importEvents("u1", {
 					provider: "google",
 					calendarId: "primary",
-					from: new Date(base.getTime() - 60_000),
-					to: new Date(base.getTime() + 60 * 60_000),
+					filter: overlapWindowFilter(
+						new Date(base.getTime() - 60_000),
+						new Date(base.getTime() + 60 * 60_000),
+					),
 				}),
 			),
 		);
@@ -311,8 +352,10 @@ describe("CalendarIntegrationsLive", () => {
 				p.importEvents("u1", {
 					provider: "google",
 					calendarId: "primary",
-					from: new Date(base.getTime() - 60_000),
-					to: new Date(base.getTime() + 60 * 60_000),
+					filter: overlapWindowFilter(
+						new Date(base.getTime() - 60_000),
+						new Date(base.getTime() + 60 * 60_000),
+					),
 				}),
 			),
 		);

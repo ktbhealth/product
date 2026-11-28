@@ -274,7 +274,7 @@ describe("calendar import fns", () => {
 		expect(seen).toEqual(["u1", "google", "primary"]);
 	});
 
-	it("decodes the optional import window and returns the import result", async () => {
+	it("passes the filter AST through to the domain and returns the import result", async () => {
 		let seen: unknown;
 		const result = { imported: 1, existing: 2, skipped: 3, review: [], conflicts: [] };
 		runCalendarEffects({
@@ -283,13 +283,36 @@ describe("calendar import fns", () => {
 				return Effect.succeed(result);
 			},
 		});
-		expect(
-			await importGoogleCalendarFn({
-				data: { from: "2030-01-01T00:00:00Z", to: "2030-01-20T00:00:00Z" },
-			}),
-		).toEqual({ ok: true, result });
-		expect((seen as { from: Date }).from).toBeInstanceOf(Date);
-		expect((seen as { to: Date }).to).toBeInstanceOf(Date);
+		const filter = {
+			op: "and" as const,
+			args: [
+				{ op: "gt" as const, field: "endsAt", value: "2030-01-01T00:00:00.000Z" },
+				{ op: "contains" as const, field: "text", value: "consulta" },
+			],
+		};
+		expect(await importGoogleCalendarFn({ data: { filter } })).toEqual({ ok: true, result });
+		expect((seen as { filter: unknown }).filter).toEqual(filter);
+	});
+
+	it("omits the filter key entirely when none is sent — the domain default applies", async () => {
+		let seen: unknown;
+		const result = { imported: 0, existing: 0, skipped: 0, review: [], conflicts: [] };
+		runCalendarEffects({
+			importEvents: (_owner: string, input: unknown) => {
+				seen = input;
+				return Effect.succeed(result);
+			},
+		});
+		expect(await importGoogleCalendarFn({ data: {} })).toEqual({ ok: true, result });
+		expect("filter" in (seen as object)).toBe(false);
+	});
+
+	it("rejects a malformed filter at the wire boundary", async () => {
+		mocks.runAs.mockClear();
+		await expect(
+			importGoogleCalendarFn({ data: { filter: { op: "xor", args: [] } } }),
+		).rejects.toThrow();
+		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 
 	it("maps a missing connection to the reconnect reason", async () => {
@@ -300,14 +323,5 @@ describe("calendar import fns", () => {
 			ok: false,
 			reason: "not-connected",
 		});
-	});
-
-	it("refuses over-wide ranges before touching the runtime", async () => {
-		mocks.runAs.mockClear();
-		const day = 86_400_000;
-		expect(
-			await importGoogleCalendarFn({ data: { from: new Date(0), to: new Date(181 * day) } }),
-		).toEqual({ ok: false, reason: "unavailable" });
-		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 });

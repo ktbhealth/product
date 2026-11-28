@@ -84,6 +84,29 @@ export interface AgendaMessages {
 		) => string;
 		readonly unavailable: string;
 		readonly failed: string;
+		/** Import filter dialog — date range, text, location, participant,
+		 * event types and a tag key=value pair compose into the filter AST. */
+		readonly filters: {
+			readonly title: string;
+			readonly dateFrom: string;
+			readonly dateTo: string;
+			readonly textQuery: string;
+			readonly textPlaceholder: string;
+			readonly location: string;
+			readonly locationPlaceholder: string;
+			readonly participant: string;
+			readonly participantPlaceholder: string;
+			readonly eventTypes: string;
+			readonly typeDefault: string;
+			readonly typeOutOfOffice: string;
+			readonly typeFocusTime: string;
+			readonly typeBirthday: string;
+			readonly tag: string;
+			readonly tagKeyPlaceholder: string;
+			readonly tagValuePlaceholder: string;
+			readonly apply: string;
+			readonly cancel: string;
+		};
 		/** Post-import review dialog — events that need doctor input. */
 		readonly review: {
 			readonly title: string;
@@ -161,6 +184,27 @@ const en: AgendaMessages = {
 		),
 		unavailable: "Google Calendar connection is not configured yet.",
 		failed: "Calendar import failed.",
+		filters: {
+			title: "Import from Google",
+			dateFrom: "From",
+			dateTo: "To",
+			textQuery: "Search text",
+			textPlaceholder: "Title, description, participant…",
+			location: "Location",
+			locationPlaceholder: "Clinic address or room",
+			participant: "Participant",
+			participantPlaceholder: "Name or email",
+			eventTypes: "Event types",
+			typeDefault: "Regular",
+			typeOutOfOffice: "Out of office",
+			typeFocusTime: "Focus time",
+			typeBirthday: "Birthdays",
+			tag: "Tag (key = value)",
+			tagKeyPlaceholder: "key",
+			tagValuePlaceholder: "value",
+			apply: "Import",
+			cancel: "Cancel",
+		},
 		review: {
 			title: "Review imported events",
 			patientNeeded: "No matching patient",
@@ -237,6 +281,27 @@ const ptBR: AgendaMessages = {
 		),
 		unavailable: "A conexão com o Google Agenda ainda não está configurada.",
 		failed: "Falha ao importar a agenda.",
+		filters: {
+			title: "Importar do Google",
+			dateFrom: "De",
+			dateTo: "Até",
+			textQuery: "Texto de busca",
+			textPlaceholder: "Título, descrição, participante…",
+			location: "Local",
+			locationPlaceholder: "Endereço ou sala da clínica",
+			participant: "Participante",
+			participantPlaceholder: "Nome ou e-mail",
+			eventTypes: "Tipos de evento",
+			typeDefault: "Comuns",
+			typeOutOfOffice: "Fora do escritório",
+			typeFocusTime: "Tempo de foco",
+			typeBirthday: "Aniversários",
+			tag: "Etiqueta (chave = valor)",
+			tagKeyPlaceholder: "chave",
+			tagValuePlaceholder: "valor",
+			apply: "Importar",
+			cancel: "Cancelar",
+		},
 		review: {
 			title: "Revisar eventos importados",
 			patientNeeded: "Nenhum paciente correspondente",
@@ -313,6 +378,27 @@ const es: AgendaMessages = {
 		),
 		unavailable: "La conexión con Google Calendar aún no está configurada.",
 		failed: "La importación del calendario falló.",
+		filters: {
+			title: "Importar desde Google",
+			dateFrom: "Desde",
+			dateTo: "Hasta",
+			textQuery: "Texto de búsqueda",
+			textPlaceholder: "Título, descripción, participante…",
+			location: "Ubicación",
+			locationPlaceholder: "Dirección o sala de la clínica",
+			participant: "Participante",
+			participantPlaceholder: "Nombre o correo",
+			eventTypes: "Tipos de evento",
+			typeDefault: "Regulares",
+			typeOutOfOffice: "Fuera de la oficina",
+			typeFocusTime: "Tiempo de concentración",
+			typeBirthday: "Cumpleaños",
+			tag: "Etiqueta (clave = valor)",
+			tagKeyPlaceholder: "clave",
+			tagValuePlaceholder: "valor",
+			apply: "Importar",
+			cancel: "Cancelar",
+		},
 		review: {
 			title: "Revisar eventos importados",
 			patientNeeded: "Ningún paciente coincide",

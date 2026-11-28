@@ -54,6 +54,9 @@ import type { AppointmentStatus } from "../schema.ts";
 import { agendaApi } from "../apis.ts";
 import { AGENDA_WINDOW } from "../window.ts";
 import { MonthGrid, monthGridDays, WeekGrid } from "./-calendar.tsx";
+import type { FilterExpr } from "@ktb/filters";
+
+import { CalendarImportDialog } from "./CalendarImportDialog.tsx";
 import { CalendarReviewDialog, type CalendarReviewItem } from "./CalendarReviewDialog.tsx";
 import {
 	addDays,
@@ -144,7 +147,9 @@ export interface AgendaApi {
 		| { readonly ok: true; readonly connection: CalendarConnectionState | null }
 		| { readonly ok: false }
 	>;
-	readonly importGoogleCalendar?: () => Promise<
+	readonly importGoogleCalendar?: (input: {
+		readonly filter?: FilterExpr;
+	}) => Promise<
 		| { readonly ok: true; readonly result: CalendarImportOutcome }
 		| { readonly ok: false; readonly reason?: "not-connected" | "unavailable" | "provider-error" }
 	>;
@@ -225,6 +230,7 @@ export function AgendaPage({
 	const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
 	const [calendarBusy, setCalendarBusy] = useState(false);
 	const [reviewItems, setReviewItems] = useState<readonly CalendarReviewItem[]>([]);
+	const [importDialogOpen, setImportDialogOpen] = useState(false);
 	const [calendarMessage, setCalendarMessage] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -259,16 +265,21 @@ export function AgendaPage({
 		);
 	}, [t]);
 
-	const importGoogleCalendar = async () => {
+	const importGoogleCalendar = () => {
 		if (calendarConnected !== true) {
 			window.location.assign("/api/calendar/google/connect");
 			return;
 		}
 		if (api.importGoogleCalendar === undefined || calendarBusy) return;
+		setImportDialogOpen(true);
+	};
+
+	const runImport = async (filter: FilterExpr) => {
+		if (api.importGoogleCalendar === undefined || calendarBusy) return;
 		setCalendarBusy(true);
 		setCalendarMessage(null);
 		try {
-			const res = await api.importGoogleCalendar();
+			const res = await api.importGoogleCalendar({ filter });
 			if (!res.ok) {
 				if (res.reason === "not-connected") {
 					setCalendarConnected(false);
@@ -278,6 +289,7 @@ export function AgendaPage({
 				setCalendarMessage(t.calendar.failed);
 				return;
 			}
+			setImportDialogOpen(false);
 			setCalendarMessage(
 				t.calendar.result(
 					res.result.imported,
@@ -392,7 +404,7 @@ export function AgendaPage({
 								variant="outline"
 								size="sm"
 								disabled={calendarBusy || calendarConnected === null}
-								onClick={() => void importGoogleCalendar()}
+								onClick={importGoogleCalendar}
 							>
 								<CalendarDaysIcon />
 								{calendarBusy
@@ -596,6 +608,13 @@ export function AgendaPage({
 					onClose={() => setEditing(null)}
 				/>
 			) : null}
+			<CalendarImportDialog
+				open={importDialogOpen}
+				busy={calendarBusy}
+				t={t}
+				onImport={(filter) => void runImport(filter)}
+				onClose={() => setImportDialogOpen(false)}
+			/>
 			<CalendarReviewDialog
 				items={reviewItems}
 				patients={patients}

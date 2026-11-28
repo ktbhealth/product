@@ -24,6 +24,6 @@ export const agendaApi: AgendaApi = {
 	start: (id: number) => startAppointmentFn({ data: { id } }),
 	list: (from: Date, to: Date) => listAppointmentsFn({ data: { from, to } }),
 	calendarConnection: () => calendarConnectionFn(),
-	importGoogleCalendar: () => importGoogleCalendarFn({ data: {} }),
+	importGoogleCalendar: (input) => importGoogleCalendarFn({ data: input }),
 	resolveCalendarImportItem: (input) => resolveCalendarImportItemFn({ data: input }),
 };

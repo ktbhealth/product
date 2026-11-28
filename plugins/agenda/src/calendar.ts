@@ -7,7 +7,13 @@ import * as Option from "effect/Option";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { Forbidden, requirePrincipalUser } from "@ktb/authz";
-import { Calendars, type CalendarCredentials, type ExternalCalendarEvent } from "@ktb/calendar";
+import {
+	Calendars,
+	overlapWindowFilter,
+	type CalendarCredentials,
+	type ExternalCalendarEvent,
+} from "@ktb/calendar";
+import type { FilterExpr } from "@ktb/filters";
 import { Db, type DbClient } from "@ktb/db";
 import { appointments, calendarConnections } from "@ktb/db/schema";
 import { Patients, type Patient } from "@ktb/patients";
@@ -181,8 +187,10 @@ export class CalendarIntegrations extends Context.Service<
 			input: {
 				readonly provider: string;
 				readonly calendarId?: string;
-				readonly from: Date;
-				readonly to: Date;
+				/** Provider-agnostic filter (@ktb/filters AST) — the date
+				 * range rides inside it as `endsAt gt`/`startsAt lt` overlap
+				 * conditions. Absent → the current month (UTC) is imported. */
+				readonly filter?: FilterExpr;
 			},
 		) => Effect.Effect<CalendarImportResult, Forbidden | CalendarIntegrationError>;
 		readonly resolveImportItem: (
@@ -198,6 +206,16 @@ export class CalendarIntegrations extends Context.Service<
 		) => Effect.Effect<CalendarImportResolveResult, Forbidden | CalendarIntegrationError>;
 	}
 >()("@ktb/agenda/CalendarIntegrations") {}
+
+/** Server-side default import window: the current month in UTC —
+ * overlap semantics, so events bleeding across the boundary come along.
+ * The UI normally sends an explicit range in the user's own timezone;
+ * this fallback exists for bare API callers. */
+const currentMonthWindowFilter = (now: Date): FilterExpr => {
+	const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+	const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+	return overlapWindowFilter(start, end);
+};
 
 export const CalendarIntegrationsLive = Layer.effect(
 	CalendarIntegrations,
@@ -278,11 +296,6 @@ export const CalendarIntegrationsLive = Layer.effect(
 			}),
 			importEvents: Effect.fn("CalendarIntegrations.importEvents")(function* (ownerId, input) {
 				yield* requirePrincipalUser(ownerId, "calendar.import");
-				if (input.to.getTime() <= input.from.getTime()) {
-					return yield* Effect.fail(
-						new CalendarIntegrationError({ reason: "unavailable", detail: "invalid import range" }),
-					);
-				}
 				const calendarId = input.calendarId ?? "primary";
 				const connectionRow = yield* Effect.promise(() =>
 					findConnection(db, ownerId, input.provider, calendarId),
@@ -344,11 +357,11 @@ export const CalendarIntegrationsLive = Layer.effect(
 					catch: (error) =>
 						new CalendarIntegrationError({ reason: "provider-error", detail: String(error) }),
 				});
+				const filter = input.filter ?? currentMonthWindowFilter(new Date());
 				const events = yield* Effect.tryPromise({
 					try: () =>
 						external.listEvents(calendarId, {
-							from: input.from,
-							to: input.to,
+							filter,
 							expandRecurring: true,
 						}),
 					catch: (error) =>
