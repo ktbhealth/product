@@ -4,7 +4,7 @@ import { Query } from "@effect-server-utils/cqrs";
 /** Cross-plugin surface for users — dispatch via
  * `Query.dispatcher(UsersQueries)`. Raw repo reads; authz is the
  * caller's concern (same contract as `patients.ownerOf`). */
-export const UserGet = Query.make("users.get", {
+const UserGet = Query.make("users.get", {
 	payload: { id: Schema.String },
 	success: Schema.NullOr(
 		Schema.Struct({

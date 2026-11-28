@@ -176,12 +176,26 @@ const cqrsPkg = (plugin: Plugin): string => {
 	}
 	return plugin.pkg;
 };
-const queryGroups = plugins.flatMap((plugin) =>
-	(plugin.cqrs?.queries ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
-);
-const commandGroups = plugins.flatMap((plugin) =>
-	(plugin.cqrs?.commands ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
-);
+
+/** Manifest `cqrs` declarations → package-tagged query/command groups.
+ * Exported for tests: the `pkg`-stamp guard is a fail-fast for
+ * misdeclared manifests (every real `plugins/*` discovery carries the
+ * stamp, so the throw is unreachable through `plugins` itself). */
+export const manifestCqrsGroups = (
+	list: readonly Plugin[],
+): {
+	readonly queries: readonly { readonly pkg: string; readonly group: Query.AnyGroup }[];
+	readonly commands: readonly { readonly pkg: string; readonly group: Command.AnyGroup }[];
+} => ({
+	queries: list.flatMap((plugin) =>
+		(plugin.cqrs?.queries ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
+	),
+	commands: list.flatMap((plugin) =>
+		(plugin.cqrs?.commands ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
+	),
+});
+
+const { queries: queryGroups, commands: commandGroups } = manifestCqrsGroups(plugins);
 
 /**
  * CQRS group sets the app-wide QueryBus/CommandBus dispatch over —
