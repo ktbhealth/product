@@ -678,13 +678,12 @@ const recordVaultAudit = (
 		readonly tenantId: number;
 		readonly entityType: string;
 		readonly entityId: string | number;
-		readonly grants?: readonly {
-			readonly readerKind: EntityDekReaderKind;
-			readonly readerPubkey: string;
-			readonly readerId?: string | null;
-		}[];
-		readonly readerPubkey?: string;
 	},
+	readers: readonly {
+		readonly kind?: EntityDekReaderKind;
+		readonly pubkey: string | null;
+		readonly readerId?: string | null;
+	}[],
 ) =>
 	Effect.gen(function* () {
 		const audit = yield* Effect.serviceOption(Audit);
@@ -696,11 +695,7 @@ const recordVaultAudit = (
 			detail: {
 				entityType: input.entityType,
 				entityId: String(input.entityId),
-				readers: input.grants?.map((g) => ({
-					kind: g.readerKind,
-					pubkey: g.readerPubkey,
-					readerId: g.readerId ?? null,
-				})) ?? [{ pubkey: input.readerPubkey ?? null }],
+				readers,
 			},
 			tenantId: input.tenantId,
 		});
@@ -776,7 +771,15 @@ export const VaultLive = Layer.effect(
 						replace: input.bootstrap === true,
 					}),
 				);
-				yield* recordVaultAudit("vault.entity-dek.grant", input);
+				yield* recordVaultAudit(
+					"vault.entity-dek.grant",
+					input,
+					input.grants.map((g) => ({
+						kind: g.readerKind,
+						pubkey: g.readerPubkey,
+						readerId: g.readerId ?? null,
+					})),
+				);
 				return rows;
 			}),
 			revokeAccess: Effect.fn("Vault.revokeAccess")(function* (input) {
@@ -785,7 +788,7 @@ export const VaultLive = Layer.effect(
 				yield* Effect.promise(() =>
 					revokeEntityDek(db, input.tenantId, input.entityType, input.entityId, input.readerPubkey),
 				);
-				yield* recordVaultAudit("vault.entity-dek.revoke", input);
+				yield* recordVaultAudit("vault.entity-dek.revoke", input, [{ pubkey: input.readerPubkey }]);
 			}),
 			readers: Effect.fn("Vault.readers")(function* (tenantId, entityType, entityId) {
 				yield* requireBoundTenant(tenantId, "member");

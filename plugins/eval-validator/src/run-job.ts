@@ -192,9 +192,9 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 				if (renewed.length === 0) {
 					leaseAlive = false;
 					yield* Deferred.succeed(leaseLost, undefined);
-					return;
+				} else {
+					yield* Ref.set(leaseRef, next);
 				}
-				yield* Ref.set(leaseRef, next);
 			}),
 		step: () => {},
 	});
@@ -325,6 +325,9 @@ export const executeEvalRun = Effect.fn("EvalValidator.executeEvalRun")(function
 	const [runRow] = yield* Effect.promise(() =>
 		db.select().from(evalRun).where(eq(evalRun.id, run.id)),
 	);
+	/* v8 ignore else -- the row can only vanish between the lease-guarded
+	   finalize and this re-read via a concurrent delete; single-threaded
+	   tests cannot interleave there. */
 	if (runRow !== undefined) {
 		const paramsInstanceId = parseJson<{ instanceId?: number }>(runRow.params, {}).instanceId;
 		const pinInstanceId = runRow.instanceId ?? paramsInstanceId ?? null;

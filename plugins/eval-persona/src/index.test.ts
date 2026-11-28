@@ -934,6 +934,7 @@ describe("EvalInstances — edge inputs", () => {
 		await run(
 			Effect.forEach(
 				[
+					{ ...persona, ageBand: "child" },
 					{ ...persona, ageBand: "teen" },
 					{ ...persona, ageBand: "adult" },
 				],
@@ -942,7 +943,7 @@ describe("EvalInstances — edge inputs", () => {
 			),
 		);
 		const { id } = await run(
-			Effect.flatMap(EvalInstances, (s) => s.create({ name: "bands", mode: "random", count: 2 })),
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "bands", mode: "random", count: 3 })),
 		);
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
 		for (let i = 0; i < 50; i++) {
@@ -953,7 +954,7 @@ describe("EvalInstances — edge inputs", () => {
 		const pats = await db.select().from(patients);
 		const byDate = (a: string | null, b: string | null) => String(a).localeCompare(String(b));
 		expect(pats.map((p) => p.birthDate).sort(byDate)).toEqual(
-			[`${year - 15}-01-01`, `${year - 35}-01-01`].sort(byDate),
+			[`${year - 9}-01-01`, `${year - 15}-01-01`, `${year - 35}-01-01`].sort(byDate),
 		);
 		await rt.dispose();
 	});

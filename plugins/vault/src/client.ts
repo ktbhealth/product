@@ -54,7 +54,13 @@ export const vaultChromePlugin = definePlugin({
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	definePlugin({ id: "vault.tables", meta: { keywords: ["vault", "tables"] } }),
-	definePlugin({ id: "vault.services", meta: { keywords: ["vault", "services"] } }),
+	definePlugin({
+		id: "vault.services",
+		meta: { keywords: ["vault", "services"] },
+		// Mirrors index.ts — grant/revoke writes are audit-logged when
+		// the audit plugin is present.
+		optionalDeps: ["audit.services"],
+	}),
 	definePlugin({
 		id: "vault.secrets",
 		meta: { keywords: ["vault", "services"] },

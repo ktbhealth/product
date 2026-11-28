@@ -11,6 +11,7 @@ import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/s
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import { TestClock } from "effect/testing";
 
 import { EVAL_RUN_JOB_KIND, evalRunJobRegistration, executeEvalRun } from "./run-job.ts";
 import { evalRun, evalRunSample } from "./schema.ts";
@@ -260,6 +261,116 @@ describe("eval.run job — executeEvalRun", () => {
 		await Effect.runPromise(Fiber.join(first));
 		const [run] = await db.select().from(evalRun);
 		expect(run?.status).toBe("done");
+	});
+
+	/** Gated runner: holds every sample until `release()` — used to keep
+	 * an attempt mid-run while the test drives the lease heartbeat. */
+	const gatedRunner = (release: Promise<void>) =>
+		EvalRunner.of({
+			run: ({ items, onSample }) =>
+				Effect.promise(() => release).pipe(
+					Effect.andThen(
+						Effect.forEach(
+							items,
+							(item) => onSample(item.id, { status: "ok" as const, result: { wer: 0 } }),
+							{ discard: true },
+						),
+					),
+				),
+		});
+	const realTick = () => new Promise((r) => setTimeout(r, 50));
+
+	it("finalizes a claimed run with nothing pending without touching items", async () => {
+		const db = makeDb(makeTestD1());
+		// Sample already ok — the claim succeeds but the pending set is
+		// empty, so the runner sees zero items.
+		const { runId } = await seedRun(db, { statuses: ["ok"] });
+		const seen: number[] = [];
+		await Effect.runPromise(executeEvalRun(db, okRunner(seen), runId));
+		expect(seen).toEqual([]);
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+	});
+
+	it("maps a teen persona to a teenage patient context for the runner", async () => {
+		const db = makeDb(makeTestD1());
+		const { runId, itemIds } = await seedRun(db);
+		await db
+			.update(evalInstanceItem)
+			.set({ persona: JSON.stringify({ gender: "f", ageBand: "teen" }) })
+			.where(eq(evalInstanceItem.id, itemIds[0]!));
+		let patient: { age?: number } | undefined;
+		const capture = EvalRunner.of({
+			run: ({ items }) =>
+				Effect.sync(() => {
+					patient = items[0]?.patient as { age?: number } | undefined;
+				}),
+		});
+		await Effect.runPromise(executeEvalRun(db, capture, runId));
+		expect(patient?.age).toBe(15);
+	});
+
+	it("renews the lease on heartbeat while the runner works", async () => {
+		const db = makeDb(makeTestD1());
+		const { runId } = await seedRun(db);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const fiber = yield* executeEvalRun(db, gatedRunner(gate), runId).pipe(Effect.forkChild);
+				// Let the attempt claim the run and fork the heartbeat.
+				yield* Effect.promise(realTick);
+				const [before] = yield* Effect.promise(() =>
+					db.select().from(evalRun).where(eq(evalRun.id, runId)),
+				);
+				// One heartbeat interval — the CAS renewal is a real async
+				// write, so yield real time for it to land afterwards.
+				yield* TestClock.adjust(31_000);
+				yield* Effect.promise(realTick);
+				const [after] = yield* Effect.promise(() =>
+					db.select().from(evalRun).where(eq(evalRun.id, runId)),
+				);
+				expect(after?.leaseUntil?.getTime()).toBeGreaterThan(before?.leaseUntil?.getTime() ?? 0);
+				release();
+				yield* Fiber.join(fiber);
+			}).pipe(Effect.provide(TestClock.layer())),
+		);
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+	});
+
+	it("hands the run to a new owner when the lease is lost mid-run", async () => {
+		const db = makeDb(makeTestD1());
+		const { runId } = await seedRun(db);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const fiber = yield* executeEvalRun(db, gatedRunner(gate), runId).pipe(Effect.forkChild);
+				yield* Effect.promise(realTick);
+				// Another consumer claimed the run: lease_until no longer
+				// matches what this attempt last wrote, so the heartbeat
+				// CAS fails and the run resolves as lease-lost.
+				yield* Effect.promise(() =>
+					db
+						.update(evalRun)
+						.set({ leaseUntil: new Date(Date.now() + 600_000) })
+						.where(eq(evalRun.id, runId)),
+				);
+				yield* TestClock.adjust(31_000);
+				yield* Effect.promise(realTick);
+				release();
+				yield* Fiber.join(fiber);
+			}).pipe(Effect.provide(TestClock.layer())),
+		);
+		const [run] = await db.select().from(evalRun);
+		// This attempt observed the loss and returned without
+		// finalizing — the row stays `running` for the new owner.
+		expect(run?.status).toBe("running");
 	});
 
 	it("writes pipeline outputs back onto the item's synthetic consultations row", async () => {

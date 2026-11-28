@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Audit, type AuditEntryInput } from "@ktb/audit";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Db, makeDb, type DbClient } from "@ktb/db";
@@ -715,6 +716,136 @@ describe("Vault service", () => {
 			{ role: "member" },
 		);
 		expect(readers.map((r) => r.readerPubkey)).toEqual(["patW"]);
+	});
+
+	it("audit-logs grant and revoke writes when the Audit service is bound", async () => {
+		const calls: AuditEntryInput[] = [];
+		const audit = Audit.of({
+			record: (entry: AuditEntryInput) =>
+				Effect.sync(() => {
+					calls.push(entry);
+				}),
+			adminList: () => Effect.die("audit stub: adminList"),
+			adminVerify: () => Effect.die("audit stub: adminVerify"),
+			adminFacets: () => Effect.die("audit stub: adminFacets"),
+			activityAccess: () => Effect.succeed(false),
+			activityList: () => Effect.die("audit stub: activityList"),
+			activityFacets: () => Effect.die("audit stub: activityFacets"),
+			patientList: () => Effect.die("audit stub: patientList"),
+			patientFacets: () => Effect.die("audit stub: patientFacets"),
+		});
+		const runAudited = <A, E>(effect: Effect.Effect<A, E, Vault | Secrets>) =>
+			runtime.runPromise(
+				effect.pipe(
+					Effect.provideService(Audit, audit),
+					Effect.provideService(Tenant, {
+						id: TENANT_ID,
+						kind: "clinic",
+						slug: "clinic-7",
+						role: "admin" as TenantRole,
+					}),
+					Effect.provideService(Principal, { userId: "u-admin" }),
+				),
+			);
+		await runAudited(
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "patient",
+					entityId: 88,
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wAudit",
+							readerId: "dev-1",
+							wrappedDek: "w1.m.n.o",
+						},
+						{
+							readerKind: "patient" as const,
+							readerPubkey: "patAudit",
+							wrappedDek: "w1.p.q.r",
+						},
+					],
+				}),
+			),
+		);
+		await runAudited(
+			Effect.flatMap(Vault, (v) =>
+				v.revokeAccess({
+					tenantId: TENANT_ID,
+					entityType: "patient",
+					entityId: 88,
+					readerPubkey: "wAudit",
+				}),
+			),
+		);
+		expect(calls.map((c) => c.action)).toEqual([
+			"vault.entity-dek.grant",
+			"vault.entity-dek.revoke",
+		]);
+		expect(calls[0]).toMatchObject({
+			targetType: "entity_deks",
+			targetId: "patient:88",
+			tenantId: TENANT_ID,
+		});
+		expect(calls[0]?.detail?.readers).toEqual([
+			{ kind: "device", pubkey: "wAudit", readerId: "dev-1" },
+			{ kind: "patient", pubkey: "patAudit", readerId: null },
+		]);
+		// Revoke carries a bare pubkey — no kind/readerId correlation.
+		expect(calls[1]?.detail?.readers).toEqual([{ pubkey: "wAudit" }]);
+	});
+
+	it("denies grant writes on claimed records to principals with no user id", async () => {
+		// Claim patient/89 — the record now requires a held envelope.
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "patient",
+					entityId: 89,
+					grants: [
+						{
+							readerKind: "device" as const,
+							readerPubkey: "wHeld",
+							wrappedDek: "w1.x.y.z",
+						},
+					],
+				}),
+			),
+			{ role: "admin" },
+		);
+		// Empty-string and absent user ids both resolve to "no approved
+		// devices" — the hold-check must fail closed with not-a-reader.
+		for (const principal of [{ userId: "" }, null] as const) {
+			const exit = await runtime.runPromise(
+				Effect.flatMap(Vault, (v) =>
+					v.grantAccess({
+						tenantId: TENANT_ID,
+						entityType: "patient",
+						entityId: 89,
+						grants: [
+							{
+								readerKind: "device" as const,
+								readerPubkey: "wNew",
+								wrappedDek: "w1.x.y.z",
+							},
+						],
+					}),
+				).pipe(
+					Effect.exit,
+					Effect.provideService(Tenant, {
+						id: TENANT_ID,
+						kind: "clinic",
+						slug: "clinic-7",
+						role: "member" as TenantRole,
+					}),
+					Effect.provideService(Principal, principal),
+				),
+			);
+			expect(exit._tag).toBe("Failure");
+		}
 	});
 
 	it("isZk reflects the bound tenant's flag, false when mismatched", async () => {

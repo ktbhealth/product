@@ -160,8 +160,10 @@ async function upsertSecret(
 	return rows[0]!;
 }
 
-/** Replace material columns on an existing row — bumps `version`,
- * stamps `rotated_at` only on explicit rotation. */
+/** Replace material columns on an existing row — bumps `version` and
+ * stamps `rotated_at`. Metadata columns (provider/kind/hint) are
+ * put-path concerns handled by upsertSecret; the sole caller here is
+ * rotate, which reseals in place. */
 async function replaceSecretMaterial(
 	db: DbClient,
 	input: {
@@ -169,10 +171,6 @@ async function replaceSecretMaterial(
 		readonly wrappedDek: string;
 		readonly ciphertext: string;
 		readonly kekVersion: string | null;
-		readonly provider?: string | null;
-		readonly kind?: VaultSecretKind;
-		readonly hint?: string | null;
-		readonly rotate?: boolean;
 	},
 ): Promise<VaultSecret> {
 	const rows = await db
@@ -181,12 +179,9 @@ async function replaceSecretMaterial(
 			wrappedDek: input.wrappedDek,
 			ciphertext: input.ciphertext,
 			kekVersion: input.kekVersion,
-			...(input.provider !== undefined ? { provider: input.provider } : {}),
-			...(input.kind !== undefined ? { kind: input.kind } : {}),
-			...(input.hint !== undefined ? { hint: input.hint } : {}),
 			version: sql`${vaultSecret.version} + 1`,
 			updatedAt: new Date(),
-			...(input.rotate === true ? { rotatedAt: new Date() } : {}),
+			rotatedAt: new Date(),
 		})
 		.where(eq(vaultSecret.id, input.id))
 		.returning();
@@ -458,7 +453,6 @@ export const SecretsLive = Layer.effect(
 						wrappedDek: sealed.wrappedDek,
 						ciphertext: sealed.ciphertext,
 						kekVersion: sealed.kekVersion,
-						rotate: true,
 					}),
 				);
 				yield* recordAudit("vault.secret.rotate", updated, { version: updated.version });
