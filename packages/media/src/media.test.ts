@@ -68,11 +68,22 @@ describe("checkUpload", () => {
 				policy,
 			),
 		).toEqual({ ok: false, status: 413, error: "file too large (max 2MB)" });
+		// Fractional MB limit renders one decimal.
+		expect(
+			checkUpload(
+				{ bytes: bytes(1024 * 1024 * 2), fileName: "a.png", mime: "image/png" },
+				{ ...policy, maxBytes: 1024 * 1024 * 1.5 },
+			),
+		).toEqual({ ok: false, status: 413, error: "file too large (max 1.5MB)" });
 		expect(checkUpload({ bytes: bytes(4), fileName: "a.svg", mime: "image/png" }, policy)).toEqual({
 			ok: false,
 			status: 415,
 			error: "unsupported file type",
 		});
+		// fileName "" falls back to the "upload" placeholder → unknown ext.
+		expect(
+			checkUpload({ bytes: bytes(4), fileName: "", mime: "image/png" }, policy),
+		).toEqual({ ok: false, status: 415, error: "unsupported file type" });
 		expect(checkUpload({ bytes: bytes(4), fileName: "a.png", mime: "text/html" }, policy)).toEqual({
 			ok: false,
 			status: 415,
@@ -85,6 +96,28 @@ describe("checkUpload", () => {
 			const result = checkUpload({ bytes: bytes(4), fileName: "a.png", mime }, policy);
 			expect(result.ok).toBe(true);
 		}
+	});
+
+	it("checkUpload without mimePrefixes skips the mime gate; ArrayBuffer bytes normalize", () => {
+		const noMimePolicy = { maxBytes: 1024, extensions: ["png"] };
+		const result = checkUpload(
+			{ bytes: bytes(4).buffer as ArrayBuffer, fileName: "a.png", mime: "text/html" },
+			noMimePolicy,
+		);
+		expect(result).toEqual({ ok: true, bytes: bytes(4), ext: "png", mime: "text/html" });
+	});
+
+	it("checkUpload deny rules match on extensions alone", () => {
+		const extPolicy = {
+			...policy,
+			deny: [{ extensions: ["png"], error: "png denied" }],
+		};
+		expect(
+			checkUpload({ bytes: bytes(4), fileName: "a.png", mime: "image/png" }, extPolicy),
+		).toEqual({ ok: false, status: 415, error: "png denied" });
+		expect(
+			checkUpload({ bytes: bytes(4), fileName: "a.woff2", mime: "font/woff2" }, extPolicy).ok,
+		).toBe(true);
 	});
 
 	it("applies deny rules after the allowlist", () => {
@@ -136,6 +169,17 @@ describe("store helpers", () => {
 		const withBuffer = stored({ arrayBuffer: async () => bytes(5).buffer as ArrayBuffer });
 		expect(await objectBytes(withBuffer)).toEqual(bytes(5));
 		expect(await objectBytes(stored())).toEqual(bytes(3));
+	});
+
+	it("objectBytes skips undefined stream chunks", async () => {
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(undefined as unknown as Uint8Array);
+				controller.enqueue(new Uint8Array(3));
+				controller.close();
+			},
+		});
+		expect(await objectBytes(stored({ body: stream }))).toEqual(bytes(3));
 	});
 
 	it("putStoredObject writes with the key-derived content type", async () => {
@@ -298,6 +342,12 @@ describe("catalog font variants contract", () => {
 		expect(
 			catalogFontSubsetKeysOf(JSON.stringify({ subsetKey: "old", subsetKeys: ["new", "old"] })),
 		).toEqual(["new", "old"]);
+		// Legacy subsetKey duplicating a subsetKeys entry dedupes too.
+		expect(
+			catalogFontSubsetKeysOf(JSON.stringify({ subsetKey: "k1", subsetKeys: ["k1", 7, ""] })),
+		).toEqual(["k1"]);
+		// subsetKey alone (no subsetKeys array) still surfaces.
+		expect(catalogFontSubsetKeysOf(JSON.stringify({ subsetKey: "solo" }))).toEqual(["solo"]);
 		expect(catalogFontSubsetKeysOf("{bad")).toEqual([]);
 		expect(catalogFontSubsetKeysOf(null)).toEqual([]);
 	});
@@ -308,9 +358,109 @@ describe("catalog font variants contract", () => {
 		expect(asset?.faces[0]).toMatchObject({ url: "/u", weight: 400 });
 		expect(asset?.faces[1]?.weightRange).toEqual([100, 900]);
 		expect(asset?.fallback).toBeNull();
+		// Face-level tolerant reads: non-finite weight/weightRange parts
+		// and empty format are dropped field-by-field.
+		const edge = catalogFontAssetOf(
+			JSON.stringify({
+				fontAsset: {
+					faces: [
+						{ url: "/w", weight: Number.NaN },
+						{ url: "/r", weightRange: [100, "x"] },
+						{ url: "/f", format: "", axes: [] },
+						{ url: "" },
+						{ url: "/s", weight: "700", weightRange: "bad" },
+						{ url: "/t", weightRange: [100] },
+						{ url: "/a", format: "woff2", axes: [{ tag: "wdth", min: 50, default: 100, max: 200 }] },
+						null,
+						"junk",
+					],
+				},
+			}),
+		);
+		expect(edge?.faces).toHaveLength(6);
+		expect(edge?.faces[0]).toEqual({ url: "/w" });
+		expect(edge?.faces[1]).toEqual({ url: "/r" });
+		expect(edge?.faces[2]).toEqual({ url: "/f" });
+		expect(edge?.faces[3]).toEqual({ url: "/s" });
+		expect(edge?.faces[4]).toEqual({ url: "/t" });
+		expect(edge?.faces[5]).toMatchObject({
+			url: "/a",
+			format: "woff2",
+			axes: [{ tag: "wdth", min: 50, default: 100, max: 200 }],
+		});
 		expect(catalogFontAssetOf(JSON.stringify({ fontAsset: { faces: "x" } }))).toBeNull();
 		expect(catalogFontAssetOf(JSON.stringify({ fontAsset: null }))).toBeNull();
 		expect(catalogFontAssetOf("{bad")).toBeNull();
+	});
+
+	it("catalogFontInfoOf falls back to per-face weights and tolerates minimal variants", () => {
+		// faces carry weights, no explicit weights/axis → faceWeightsOf path.
+		const faceWeighted = catalogFontInfoOf(
+			JSON.stringify({
+				family: "F",
+				fontAsset: { faces: [{ url: "/a", weight: 300 }, { url: "/b", weight: 600 }] },
+			}),
+		);
+		expect(faceWeighted?.weights).toEqual([300, 600]);
+		expect(faceWeighted?.variable).toBeUndefined();
+		// Minimal variant — every optional spread takes the empty side.
+		const minimal = catalogFontInfoOf(JSON.stringify({ family: "M" }));
+		expect(minimal).toEqual({ family: "M" });
+		// fontAsset.faces not an array → faceWeightsOf undefined branch.
+		const badFaces = catalogFontInfoOf(
+			JSON.stringify({ family: "B", fontAsset: { faces: "nope" } }),
+		);
+		expect(badFaces?.weights).toBeUndefined();
+	});
+
+	it("catalogFontAssetOf keeps a fallback only with complete finite metrics", () => {
+		const withFallback = catalogFontAssetOf(
+			JSON.stringify({
+				fontAsset: {
+					faces: [],
+					fallback: {
+						name: "Arial",
+						local: "Arial Local",
+						metrics: {
+							sizeAdjust: 105,
+							ascentOverride: 90,
+							descentOverride: 20,
+							lineGapOverride: 0,
+						},
+					},
+				},
+			}),
+		);
+		expect(withFallback?.fallback).toEqual({
+			name: "Arial",
+			local: "Arial Local",
+			metrics: { sizeAdjust: 105, ascentOverride: 90, descentOverride: 20, lineGapOverride: 0 },
+		});
+		// Incomplete metrics → fallback dropped, manifest survives.
+		const partial = catalogFontAssetOf(
+			JSON.stringify({
+				fontAsset: {
+					faces: [{ url: "/u" }],
+					fallback: { name: "A", local: "B", metrics: { sizeAdjust: 105 } },
+				},
+			}),
+		);
+		expect(partial?.fallback).toBeNull();
+		expect(partial?.faces).toHaveLength(1);
+		// Non-finite metric → dropped too.
+		const nan = catalogFontAssetOf(
+			JSON.stringify({
+				fontAsset: {
+					faces: [],
+					fallback: {
+						name: "A",
+						local: "B",
+						metrics: { sizeAdjust: "x", ascentOverride: 1, descentOverride: 1, lineGapOverride: 1 },
+					},
+				},
+			}),
+		);
+		expect(nan?.fallback).toBeNull();
 	});
 
 	it("catalogFontInfoOf resolves weights/variable/axes like the adapter", () => {

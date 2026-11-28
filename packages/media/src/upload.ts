@@ -32,7 +32,7 @@ export const fileExtension = (name: string): string => {
 
 /** Declared MIME base type — lowercase, parameters stripped. */
 export const mimeBase = (contentType: string): string =>
-	(contentType.split(";")[0] ?? "").trim().toLowerCase();
+	(contentType.split(";")[0] as string).trim().toLowerCase();
 
 /** A refuse-outright rule checked AFTER the allowlist — e.g. svg
  * (script-capable) on the image route. `extensions`/`mimes` are
