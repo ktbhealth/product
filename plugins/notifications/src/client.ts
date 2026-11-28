@@ -56,5 +56,6 @@ export const plugins: readonly Plugin[] = [
 		meta: { keywords: ["notifications", "services"] },
 		requiredDeps: ["patients.services", "consultations.services"],
 	}),
+	definePlugin({ id: "notifications.cqrs", meta: { keywords: ["notifications", "cqrs"] } }),
 	definePlugin({ id: "notifications.routes", meta: { keywords: ["notifications", "routes"] } }),
 ];

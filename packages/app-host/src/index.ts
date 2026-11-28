@@ -153,29 +153,49 @@ export * from "./namespaces.ts";
 export * from "./server-runtime.ts";
 
 /**
- * CQRS groups are enumerated by convention, not by plugin objects: every
- * plugin api module (`plugins/<name>/src/api.ts`) may export query/command
- * group values, and the `isGroup` guards (provided by the library exactly for
- * host reflection) filter them out of each module's export surface.
- * Events need no enumeration — `EventBus` is already app-wide.
+ * CQRS groups are manifest-declared (E.20): a plugin's `cqrs` field
+ * lists the query/command groups the host folds into the app-wide
+ * buses — the same registry that carries services/tables/routes, so
+ * discovery, topo order and the package-granular enable gate all come
+ * from `plugins` itself. This replaces the retired
+ * `plugins/<pkg>/src/api.ts` glob convention (every api module's
+ * exports were scanned and `Query.isGroup`/`Command.isGroup` filtered
+ * them). Events need no enumeration — `EventBus` is already app-wide.
+ *
+ * The enabled-state gate stays package-granular (P-058): each group is
+ * tagged with the `pkg` stamp `discoverPlugins` put on the DECLARING
+ * plugin, so a package's CQRS surface is live while ANY of its plugin
+ * ids is enabled — identical to the old api.ts-file ownership.
  */
-const apiModules = import.meta.glob("../../../plugins/*/src/api.ts", { eager: true });
-// Each api module belongs to a plugin PACKAGE (`plugins/<pkg>/src/api.ts`);
-// the enabled-state gate below is package-granular — a package's CQRS
-// surface is live while ANY of its plugin ids is enabled (P-058).
-const apiEntries = Object.entries(apiModules).flatMap(([path, m]) => {
-	const pkg = /(?:^|\/)plugins\/([^/]+)\/src\/api\.ts$/.exec(path)?.[1];
-	/* v8 ignore next -- glob keys always match the plugins/<pkg>/src/api.ts shape */
-	return pkg === undefined
-		? []
-		: Object.values(m as Record<string, unknown>).map((value) => ({ pkg, value }));
+const cqrsPkg = (plugin: Plugin): string => {
+	if (plugin.pkg === undefined) {
+		throw new Error(
+			`plugin "${plugin.id}" declares cqrs groups without a package stamp — ` +
+				"cqrs manifests only resolve for plugins/* discoveries",
+		);
+	}
+	return plugin.pkg;
+};
+
+/** Manifest `cqrs` declarations → package-tagged query/command groups.
+ * Exported for tests: the `pkg`-stamp guard is a fail-fast for
+ * misdeclared manifests (every real `plugins/*` discovery carries the
+ * stamp, so the throw is unreachable through `plugins` itself). */
+export const manifestCqrsGroups = (
+	list: readonly Plugin[],
+): {
+	readonly queries: readonly { readonly pkg: string; readonly group: Query.AnyGroup }[];
+	readonly commands: readonly { readonly pkg: string; readonly group: Command.AnyGroup }[];
+} => ({
+	queries: list.flatMap((plugin) =>
+		(plugin.cqrs?.queries ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
+	),
+	commands: list.flatMap((plugin) =>
+		(plugin.cqrs?.commands ?? []).map((group) => ({ pkg: cqrsPkg(plugin), group })),
+	),
 });
-const queryGroups = apiEntries.flatMap(({ pkg, value }) =>
-	Query.isGroup(value) ? [{ pkg, group: value }] : [],
-);
-const commandGroups = apiEntries.flatMap(({ pkg, value }) =>
-	Command.isGroup(value) ? [{ pkg, group: value }] : [],
-);
+
+const { queries: queryGroups, commands: commandGroups } = manifestCqrsGroups(plugins);
 
 /**
  * CQRS group sets the app-wide QueryBus/CommandBus dispatch over —

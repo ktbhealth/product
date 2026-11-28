@@ -73,6 +73,7 @@ export const PLUGIN_KEYWORDS = [
 	"validator",
 	// roles
 	"admin",
+	"cqrs",
 	"marker",
 	"routes",
 	"services",

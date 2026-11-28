@@ -510,6 +510,7 @@ describe("plugins", () => {
 			"notifications.dashboard",
 			"notifications.tables",
 			"notifications.services",
+			"notifications.cqrs",
 			"notifications.routes",
 		]);
 	});

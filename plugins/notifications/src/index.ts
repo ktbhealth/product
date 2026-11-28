@@ -119,6 +119,14 @@ export const notificationsServicesPlugin = definePlugin({
 	),
 });
 
+/** CQRS surface (E.20): the query/command groups declared in
+ * ./api.ts, folded into the app-wide buses by the host. */
+export const notificationsCqrsPlugin = definePlugin({
+	id: "notifications.cqrs",
+	meta: { keywords: ["notifications", "cqrs"] },
+	cqrs: { queries: [NotificationsQueries], commands: [NotificationsCommands] },
+});
+
 // Route subtree composed into the host's virtualRouteConfig (P-033):
 // the SSE route module lives in THIS package (src/api-routes/**) and is
 // discovered by a physical() directory scan mounted under the shared
@@ -142,6 +150,7 @@ export const plugins: readonly Plugin[] = [
 	notificationsDashboardPlugin,
 	notificationsTablesPlugin,
 	notificationsServicesPlugin,
+	notificationsCqrsPlugin,
 	notificationsRoutesPlugin,
 ];
 
@@ -184,6 +193,7 @@ declare module "@ktb/kernel" {
 		"notifications.dashboard": true;
 		"notifications.tables": true;
 		"notifications.services": true;
+		"notifications.cqrs": true;
 		"notifications.routes": true;
 	}
 }

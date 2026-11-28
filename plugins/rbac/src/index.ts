@@ -897,6 +897,14 @@ export const rbacServicesPlugin = definePlugin({
 	),
 });
 
+/** CQRS surface (E.20): the query/command groups declared in ./api.ts,
+ * folded into the app-wide buses by the host. */
+export const rbacCqrsPlugin = definePlugin({
+	id: "rbac.cqrs",
+	meta: { keywords: ["rbac", "cqrs"] },
+	cqrs: { queries: [RbacQueries], commands: [RbacCommands] },
+});
+
 export const rbacTablesPlugin = definePlugin({
 	id: "rbac.tables",
 	meta: { keywords: ["rbac", "tables"] },
@@ -986,6 +994,7 @@ export const rbacPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	rbacTablesPlugin,
 	rbacServicesPlugin,
+	rbacCqrsPlugin,
 	rbacChromePlugin,
 	rbacPanelPlugin,
 ];
@@ -996,6 +1005,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"rbac.tables": true;
 		"rbac.services": true;
+		"rbac.cqrs": true;
 		"rbac.chrome": true;
 		"rbac.panel": true;
 	}

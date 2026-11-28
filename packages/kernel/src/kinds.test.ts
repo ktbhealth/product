@@ -26,6 +26,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 		expect(FIELD_CONTRIBUTION_KINDS.map((k) => k.id)).toEqual([
 			"tables",
 			"services",
+			"cqrs",
 			"routes",
 			"landing",
 			"chrome",
@@ -47,6 +48,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 		const consumers = (id: string) => byId.get(id)?.consumers;
 		expect(consumers("tables")).toEqual(["app-host.server", "plugin-manager"]);
 		expect(consumers("services")).toEqual(["app-host.server", "plugin-manager"]);
+		expect(consumers("cqrs")).toEqual(["app-host.server", "plugin-manager"]);
 		expect(consumers("routes")).toEqual(["app.routes", "plugin-manager"]);
 		expect(consumers("landing")).toEqual(["app-host.client", "app.routes"]);
 		expect(consumers("chrome")).toEqual(["app-host.client", "app.routes"]);

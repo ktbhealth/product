@@ -61,6 +61,7 @@ export const plugins: readonly Plugin[] = [
 		// Mirrors rbacServicesPlugin.optionalDeps (server index.ts).
 		optionalDeps: ["audit.services"],
 	}),
+	definePlugin({ id: "rbac.cqrs", meta: { keywords: ["rbac", "cqrs"] } }),
 	rbacChromePlugin,
 	rbacPanelPlugin,
 ];

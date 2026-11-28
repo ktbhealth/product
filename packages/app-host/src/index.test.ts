@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
-import { CommandBus, QueryBus } from "@effect-server-utils/cqrs";
+import { Command, CommandBus, Query, QueryBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { makeTestD1 } from "@ktb/db-testing";
@@ -23,6 +23,7 @@ import {
 	defaultPasswordResetEmail,
 	defaultVerificationEmail,
 	isProductionBuild,
+	manifestCqrsGroups,
 	plugins,
 } from "./index.ts";
 
@@ -75,6 +76,20 @@ describe("createApp", () => {
 			expect(p?.pages).toBeUndefined();
 			expect(p?.landing).toBeUndefined();
 		}
+	});
+
+	it("manifestCqrsGroups tags groups with the declaring package and rejects unstamped manifests", () => {
+		const query = Query.group(Query.make("test.query"));
+		const command = Command.group(Command.make("test.command"));
+		const stamped = manifestCqrsGroups([
+			{ id: "a.one", pkg: "pkg-a", cqrs: { queries: [query], commands: [command] } },
+			{ id: "b.two", pkg: "pkg-b" },
+		]);
+		expect(stamped.queries).toEqual([{ pkg: "pkg-a", group: query }]);
+		expect(stamped.commands).toEqual([{ pkg: "pkg-a", group: command }]);
+		expect(() => manifestCqrsGroups([{ id: "c.three", cqrs: { queries: [query] } }])).toThrow(
+			'plugin "c.three" declares cqrs groups without a package stamp',
+		);
 	});
 
 	it("run executes system-path effects without a principal", async () => {

@@ -19,7 +19,14 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { viewDefContribution, defineView } from "@ktb/views";
 import { defineWizard, wizardDefContribution, WizardHooks } from "@ktb/wizards";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
-import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
+import {
+	PatientCascadeCommands,
+	PatientCreated,
+	PatientDeleted,
+	PatientRecordConsultationsQueries,
+	PatientsCommands,
+	PatientsQueries,
+} from "./api.ts";
 import {
 	INTAKE_COLLECTION,
 	INTAKE_SUBMIT_HOOK,
@@ -701,6 +708,20 @@ export const patientsServicesPlugin = definePlugin({
 	services: Layer.mergeAll(PatientsLive, PatientsQueriesLive, PatientsCommandsLive),
 });
 
+/** CQRS surface (E.20): the query/command groups declared in ./api.ts,
+ * folded into the app-wide buses by the host. `PatientRecordConsultationsQueries`
+ * and `PatientCascadeCommands` are declared here (patients owns the api
+ * surface) even though the consultations plugin registers their
+ * handlers — the package-granular enable gate keys off this package. */
+export const patientsCqrsPlugin = definePlugin({
+	id: "patients.cqrs",
+	meta: { keywords: ["patients", "cqrs"] },
+	cqrs: {
+		queries: [PatientsQueries, PatientRecordConsultationsQueries],
+		commands: [PatientsCommands, PatientCascadeCommands],
+	},
+});
+
 // Route subtree composed into the host's virtualRouteConfig (P-033):
 // the route modules live in THIS package (src/routes/**) and are
 // discovered by a physical() directory scan. The directory path is
@@ -887,6 +908,7 @@ export const patientsIntakePlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	patientsTablesPlugin,
 	patientsServicesPlugin,
+	patientsCqrsPlugin,
 	patientsRoutesPlugin,
 	patientsChromePlugin,
 	patientsPanelPlugin,
@@ -899,6 +921,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"patients.tables": true;
 		"patients.services": true;
+		"patients.cqrs": true;
 		"patients.routes": true;
 		"patients.chrome": true;
 		"patients.panel": true;

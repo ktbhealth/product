@@ -64,6 +64,7 @@ export const plugins: readonly Plugin[] = [
 		// into the client bundle.
 		optionalDeps: ["audit.services"],
 	}),
+	definePlugin({ id: "users.cqrs", meta: { keywords: ["users", "cqrs"] } }),
 	usersChromePlugin,
 	usersPanelPlugin,
 ];

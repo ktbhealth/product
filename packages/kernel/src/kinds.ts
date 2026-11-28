@@ -64,6 +64,16 @@ export const ELEMENT_KINDS_KIND: ContributionKindDescriptor = fieldKind("element
 	"plugin-manager",
 ]);
 
+/** CQRS message groups (E.20): the dedicated `cqrs` Plugin field —
+ * query/command groups the host folds into the app-wide buses.
+ * Server-only: group objects carry handler metadata and never reach
+ * the client registry, so the only consumers are the app-host
+ * composition root and the plugin-manager kinds column. */
+export const CQRS_KIND: ContributionKindDescriptor = fieldKind("cqrs", [
+	"app-host.server",
+	"plugin-manager",
+]);
+
 /** Request-middleware stages (PL-015/P-110): the dedicated `middleware`
  * Plugin field. Server-only — stage handlers are Effects and never
  * reach the client registry, so the only consumers are the app-host
@@ -87,6 +97,8 @@ export const FIELD_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[] = [
 	fieldKind("tables", ["app-host.server", "plugin-manager"]),
 	// Effect layers composed by app-host createApp in topo order.
 	fieldKind("services", ["app-host.server", "plugin-manager"]),
+	// CQRS query/command groups folded into the app-wide buses (E.20).
+	CQRS_KIND,
 	// Route subtree composed by apps/web routes.ts.
 	fieldKind("routes", ["app.routes", "plugin-manager"]),
 	// Whole-page "/" slot, read by apps/web routes/index.tsx.
