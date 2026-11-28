@@ -200,6 +200,31 @@ describe("Machines", () => {
 		expect(drained?.status).toBe("draining");
 	});
 
+	it("disabled machines ignore beats", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(Machines, (m) => m.create({ name: "off-box", host: "off.local" })),
+			asAdmin,
+		);
+		await run(
+			rt,
+			Effect.flatMap(Machines, (m) => m.update({ id: card.id, enabled: false })),
+			asAdmin,
+		);
+		await run(
+			rt,
+			Effect.flatMap(Machines, (m) => m.beat(card.id)),
+		);
+		const after = await run(
+			rt,
+			Effect.flatMap(Machines, (m) => m.get(card.id)),
+		);
+		// No heartbeat was recorded — derived status stays "unknown".
+		expect(after?.status).toBe("unknown");
+		expect(after?.lastSeenAt).toBeNull();
+	});
+
 	it("check probes healthUrl and persists the result", async () => {
 		const rt = makeRuntime(db);
 		const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));

@@ -47,7 +47,11 @@ describe("machines fns", () => {
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN))),
 		);
-		runtime = ManagedRuntime.make(MachinesLive.pipe(Layer.provide(env)) as never);
+		// The fn context must expose PlatformAdmin too — machinesBeatFn
+		// re-checks the admin gate inside the served runtime.
+		runtime = ManagedRuntime.make(
+			Layer.mergeAll(MachinesLive.pipe(Layer.provide(env)), env) as never,
+		);
 		installServerFnRuntime(runtime, auth);
 	});
 
@@ -157,6 +161,26 @@ describe("machines fns", () => {
 			data: null,
 		});
 		expect((await machinesListFn()).map((m) => m.name)).toEqual(["full-box"]);
+	});
+
+	it("beat is admin-gated — a non-admin cannot spoof health", async () => {
+		currentEmail = ADMIN;
+		const created = await machinesCreateFn({ data: { name: "beat-target", host: "bt.local" } });
+		expect(created.ok).toBe(true);
+		if (!created.ok) return;
+
+		currentEmail = "doc@x.com";
+		expect(await machinesBeatFn({ data: { id: created.data.id } })).toEqual({ ok: false });
+		// The spoofed beat never landed — still unknown under admin eyes.
+		currentEmail = ADMIN;
+		const listed = await machinesListFn();
+		expect(listed.find((m) => m.id === created.data.id)?.status).toBe("unknown");
+
+		// Admins still land beats.
+		expect(await machinesBeatFn({ data: { id: created.data.id } })).toEqual({
+			ok: true,
+			data: null,
+		});
 	});
 
 	it("collapses service denials to { ok: false }", async () => {

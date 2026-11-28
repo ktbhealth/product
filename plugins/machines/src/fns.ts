@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { optionalSessionHandler, sessionHandler } from "@ktb/server-fns";
+import { PlatformAdmin } from "@ktb/platform";
 
 import { Machines, type MachineCard } from "./machines.ts";
 import type { MachineKind } from "./schema.ts";
@@ -14,9 +15,10 @@ import type { MachineKind } from "./schema.ts";
 // `{ ok: false }` / `[]` like the other admin surfaces.
 //
 // `machinesBeatFn` is the agent heartbeat path: the service treats the
-// machine id as the capability (system callers, no Principal). Agent
-// token auth is a later iteration — for now it still requires a
-// session like every server fn.
+// machine id as the capability (system callers, no Principal), so the
+// fn itself re-checks the PlatformAdmin gate — until agent tokens
+// land, only admins may spoof a heartbeat. Agent token auth is a
+// later iteration.
 
 const MachineKindSchema = Schema.Literals(["shell", "vm", "gpu", "endpoint", "other"]);
 const Capabilities = Schema.optionalKey(Schema.Array(Schema.NonEmptyString));
@@ -178,20 +180,22 @@ export const machinesCheckAllFn = createServerFn({ method: "POST" }).handler(
 );
 
 /** Agent heartbeat — stamps lastSeenAt and marks the machine online.
- * The service treats the machine id as the capability; session-gated
- * here until agent tokens land. */
+ * The service treats the machine id as the capability for system
+ * callers; this fn re-checks PlatformAdmin so an arbitrary session
+ * cannot spoof health signals until agent tokens land. */
 export const machinesBeatFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
 	.handler(
 		sessionHandler(async ({ data, run }): Promise<Result<null>> => {
 			return run(
 				Effect.gen(function* () {
+					const platformAdmin = yield* PlatformAdmin;
+					yield* platformAdmin.requireAdmin();
 					const machines = yield* Machines;
-					return yield* machines.beat(data.id).pipe(
-						Effect.map(() => ({ ok: true as const, data: null })),
-						denyToFalse({ ok: false as const }),
-					);
-				}),
+					return yield* machines
+						.beat(data.id)
+						.pipe(Effect.map(() => ({ ok: true as const, data: null })));
+				}).pipe(denyToFalse({ ok: false as const })),
 			);
 		}),
 	);
