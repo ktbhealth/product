@@ -239,6 +239,14 @@ describe("sniffImageSize", () => {
 		expect(sniffImageSize(svg)).toEqual({ width: 24, height: 24 });
 	});
 
+	it("accepts explicit px units but rejects other units", () => {
+		expect(
+			sniffImageSize(bytes('<svg width="100px" height="50PX"></svg>')),
+		).toEqual({ width: 100, height: 50 });
+		expect(sniffImageSize(bytes('<svg width="100pt" height="50"></svg>'))).toBeNull();
+		expect(sniffImageSize(bytes('<svg width="10em" height="50"></svg>'))).toBeNull();
+	});
+
 	it("derives SVG dimensions from viewBox when attributes are absent", () => {
 		const svg = bytes('<svg viewBox="0 0 100 50"></svg>');
 		expect(sniffImageSize(svg)).toEqual({ width: 100, height: 50 });

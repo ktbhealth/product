@@ -123,6 +123,17 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 					return Response.json({ error: "invalid kind" }, { status: 400 });
 				}
 				const kind = kindRaw;
+				// Font uploads carry family/slot metadata — extract and
+				// validate BEFORE storing bytes/row so a rejected request
+				// can't orphan an R2 object and a pending theme_assets row.
+				const family = kind === "font" ? String(form.get("family") ?? "").trim() : "";
+				const slotRaw = String(form.get("slot") ?? "sans");
+				const slot = (FONT_SLOTS as readonly string[]).includes(slotRaw)
+					? (slotRaw as ThemeFontSlot)
+					: "sans";
+				if (kind === "font" && family === "") {
+					return Response.json({ error: "font family required" }, { status: 400 });
+				}
 				if (!(await themeExists(user, themeId))) {
 					return Response.json({ error: "theme not found" }, { status: 404 });
 				}
@@ -153,19 +164,13 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 
 				const asset = await insertAsset(user, { themeId, kind, r2Key: key });
 				if (asset === null) {
+					// Don't leak the just-stored object when the row insert fails.
+					await bucket.delete([key]).catch(() => {});
 					return Response.json({ error: "failed to record asset" }, { status: 500 });
 				}
 
 				try {
 					if (kind === "font") {
-						const family = String(form.get("family") ?? "").trim();
-						const slotRaw = String(form.get("slot") ?? "sans");
-						const slot = (FONT_SLOTS as readonly string[]).includes(slotRaw)
-							? (slotRaw as ThemeFontSlot)
-							: "sans";
-						if (family === "") {
-							return Response.json({ error: "font family required" }, { status: 400 });
-						}
 						// Payload shape is validated again at the consumer —
 						// decode here so a malformed enqueue never happens.
 						const payload = decodeThemeFontJob({

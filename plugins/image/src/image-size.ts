@@ -108,10 +108,11 @@ const SVG_SIZE_RE = /<svg[^>]*>/i;
 const SVG_ATTR_RE = /([\w:-]+)\s*=\s*["']([^"']+)["']/g;
 const SVG_LENGTH_RE = /^([\d.]+)(px|pt|pc|mm|cm|in|em|rem|%)?$/i;
 
-/** SVG: read width/height attributes (px assumed for unitless values),
- * falling back to the viewBox aspect when only one dimension is given.
- * Percentages and exotic units are ignored — the renderer treats a null
- * size as "unknown". */
+/** SVG: read width/height attributes (unitless values and an explicit
+ * `px` suffix are both treated as px), falling back to the viewBox
+ * aspect when only one dimension is given. Other units and percentages
+ * are ignored — they can't map to px without DPI/font context, and the
+ * renderer treats a null size as "unknown". */
 const svgSize = (b: Uint8Array): ImageDimensions | null => {
 	const head = new TextDecoder().decode(b.subarray(0, Math.min(b.length, 8192)));
 	const tag = SVG_SIZE_RE.exec(head)?.[0];
@@ -123,7 +124,9 @@ const svgSize = (b: Uint8Array): ImageDimensions | null => {
 	const parse = (raw: string | undefined): number | null => {
 		if (raw === undefined) return null;
 		const m = SVG_LENGTH_RE.exec(raw.trim());
-		if (m === null || m[2] !== undefined) return null;
+		// Only unitless or explicit "px" values map to px; pt/pc/mm/cm/in/
+		// em/rem/% need DPI or font context the sniffer doesn't have.
+		if (m === null || (m[2] !== undefined && m[2].toLowerCase() !== "px")) return null;
 		const value = Number(m[1]);
 		return Number.isFinite(value) && value > 0 ? value : null;
 	};

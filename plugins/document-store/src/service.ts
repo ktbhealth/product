@@ -546,6 +546,30 @@ const parseData = (raw: string): Record<string, unknown> => {
 const fail = (error: DocumentStoreError): Effect.Effect<never, DocumentStoreError> =>
 	Effect.fail(error);
 
+/** `JSON.stringify` with object keys sorted — a canonical form for
+ * comparing stored document values. Plain `JSON.stringify` is key-order
+ * sensitive, so `{a:1,b:2}` and `{b:2,a:1}` would compare unequal even
+ * though they are the same logical value; sorting makes the comparison
+ * semantic. `undefined` object members are dropped and `undefined` array
+ * members become `null`, matching JSON.stringify's own semantics for
+ * JSON-safe document data. */
+const canonicalJson = (value: unknown): string => {
+	if (Array.isArray(value)) {
+		return `[${value.map((v) => canonicalJson(v === undefined ? null : v)).join(",")}]`;
+	}
+	if (typeof value === "object" && value !== null) {
+		const entries = Object.entries(value as Record<string, unknown>)
+			.filter(([, v]) => v !== undefined)
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`);
+		return `{${entries.join(",")}}`;
+	}
+	// Primitives: JSON.stringify covers string/number/boolean/null;
+	// functions/symbols/undefined can't appear in validated document
+	// data, but map them to null rather than emitting `undefined`.
+	return JSON.stringify(value) ?? "null";
+};
+
 /** Serialized-`data` size cap in UTF-8 bytes, enforced on insert and
  * update (T-128). 64KB keeps one document small against the JS-side
  * query scan and worker memory; bigger payloads belong in dedicated
@@ -1450,7 +1474,7 @@ export const DocumentStoreLive = Layer.effect(
 						const otherValue = row.data[field];
 						const same =
 							typeof value === "object" && value !== null
-								? JSON.stringify(value) === JSON.stringify(otherValue)
+								? canonicalJson(value) === canonicalJson(otherValue)
 								: Object.is(value, otherValue);
 						if (same) {
 							return yield* fail(new DuplicateFieldValue({ collection: def.name, field, value }));
