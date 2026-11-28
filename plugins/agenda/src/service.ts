@@ -154,7 +154,7 @@ export async function updateAppointment(
  * mutex: of two concurrent starts only the first returns a row, so a
  * losing caller must reuse the winner's link instead of overwriting.
  */
-export async function claimConsultationLink(
+async function claimConsultationLink(
 	db: DbClient,
 	id: number,
 	consultationId: number,
