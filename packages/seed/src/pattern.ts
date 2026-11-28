@@ -19,7 +19,7 @@ import { SeedError } from "./errors.ts";
 
 /** Hard cap on generated pattern output — guards `(a+)+`-style
  * blowups the subset checker already rejects, plus `{10000}` quantifiers. */
-const MAX_PATTERN_OUTPUT = 1024;
+export const MAX_PATTERN_OUTPUT = 1024;
 /** Per-quantifier expansion cap. */
 const MAX_REPEAT = 64;
 /** Default upper bound for unbounded quantifiers. */

@@ -2060,6 +2060,15 @@ describe("generate — pattern length boundaries", () => {
 		).toThrow(SeedError);
 	});
 
+	it("reaches minLength beyond the default pattern output limit", () => {
+		// maxLength defaults the generator's output ceiling to 1024 —
+		// minLength must raise it or every candidate is too short.
+		const v = generate({ type: "string", pattern: "[a-z]+", minLength: 1500 } as JsonSchema, {
+			seed: 1,
+		}) as string;
+		expect(v.length).toBeGreaterThanOrEqual(1500);
+	});
+
 	it("stops after PATTERN_ATTEMPTS failed candidates", () => {
 		// Each attempt consumes 6 rng draws. Attempts 1-25 pick the
 		// a{70} alternation branch — {70} is capped at 64 reps, so the

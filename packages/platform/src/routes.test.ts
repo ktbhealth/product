@@ -190,6 +190,20 @@ describe("makeRoutes", () => {
 		expect(strict.match("/b")).toBeUndefined();
 	});
 
+	it("match() fails closed on malformed percent-encoding", () => {
+		const strict = makeRoutes([{ key: "a", path: "/a/:id", pluginId: "p" }]);
+		// decodeURIComponent throws URIError on these — the pattern must
+		// simply not match rather than crash the matcher.
+		expect(strict.match("/a/%")).toBeUndefined();
+		expect(strict.match("/a/%zz")).toBeUndefined();
+		expect(strict.match("/a/%E0%A4%A")).toBeUndefined();
+		// Well-formed escapes still decode into params.
+		expect(strict.match("/a/a%20b")).toEqual({ key: "a", params: { id: "a b" } });
+		// With a wildcard registered, the malformed path falls through to
+		// it instead of throwing.
+		expect(routes.match("/patients/%")).toEqual({ key: "custom", params: {} });
+	});
+
 	it("get()/list() expose the defs", () => {
 		expect(routes.get("patients.detail")?.path).toBe("/patients/:id");
 		expect(routes.list()).toHaveLength(6);

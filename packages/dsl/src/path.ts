@@ -23,9 +23,11 @@ export const getPath = (data: unknown, path: string): unknown => {
 		// object, so the typeof guard below returns undefined either way.
 		if (current === null || current === undefined) return undefined;
 		if (Array.isArray(current)) {
-			const index = Number(segment);
-			if (!Number.isInteger(index)) return undefined;
-			current = current[index];
+			// Canonical decimal indices only (same convention setPath uses
+			// for next-segment detection) — "", "1e2", "0x10", " 1" are
+			// NOT array indices even though Number() parses some of them.
+			if (!/^\d+$/.test(segment)) return undefined;
+			current = current[Number(segment)];
 			continue;
 		}
 		if (typeof current !== "object") return undefined;
